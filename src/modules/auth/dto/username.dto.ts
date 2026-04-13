@@ -46,7 +46,6 @@ import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { GENDER } from '@common/enums';
 import { ERROR_CODE } from '@constant/error-code';
-import { ADDRESS_TYPE } from '@modules/databases/order-address.entity';
 
 export class CommonUsernameDto {
   @ApiProperty({ required: true })
@@ -134,12 +133,6 @@ export class GenderDto {
   gender: GENDER;
 }
 
-export class AddressTypeDto {
-  @ApiProperty({ required: true, example: '', description: 'address type' })
-  @IsEnum(ADDRESS_TYPE)
-  @IsNotEmpty()
-  address_type: ADDRESS_TYPE;
-}
 
 export class DateOfBirthDto {
   @ApiProperty({ required: true, example: '', description: 'date of birth' })

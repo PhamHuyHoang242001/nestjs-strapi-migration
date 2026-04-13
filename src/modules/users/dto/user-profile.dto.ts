@@ -30,6 +30,12 @@ export class UserProfileDto {
   @IsString()
   @MaxLength(12)
   public phone?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  public phone_code?: string;
+
   @ApiProperty()
   @IsOptional()
   @IsDateString()
@@ -38,7 +44,27 @@ export class UserProfileDto {
   @ApiProperty()
   @IsOptional()
   @IsString()
-  public country?: string;
+  public country: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  public country_iso?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  public phone_iso?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  public state?: string;
+
+  @ApiProperty()
+  @IsOptional()
+  @IsString()
+  public state_iso?: string;
 
   @ApiProperty()
   @IsOptional()
@@ -51,4 +77,4 @@ export class UserProfileDto {
   public social_link?: boolean;
 }
 
-export class UpdateMyProfileDto extends OmitType(UserProfileDto, ['id', 'social_link'] as const) { }
+export class UpdateMyProfileDto extends OmitType(UserProfileDto, ['id', 'social_link', 'country', 'state'] as const) {}

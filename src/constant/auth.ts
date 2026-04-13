@@ -20,11 +20,7 @@ export const TOKEN_TIME = {
 };
 
 export const CLIENT_TOKEN = [
-  /**
-   * officer_fancho:1suLJvEQtZpUHTnIJPl++MG3BYtohbvcYkrvMKRLETjg
-   * user_fancho:vddsemnmRt7QI+8ff4Wi+e2nlCBMDl2CuFITTWFgidfY
-   *
-   */
+
   {
     client: USER_CLIENT.ADMIN,
     token: 'b2ZmaWNlcl9mYW5jaG86MXN1TEp2RVF0WnBVSFRuSUpQbCsrTUczQll0b2hidmNZa3J2TUtSTEVUamc=',

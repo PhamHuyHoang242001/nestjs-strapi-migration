@@ -1,12 +1,10 @@
-import { GENDER, USER_CLIENT, USER_STATUS } from '@common/enums';
+import { GENDER, USER_STATUS } from '@common/enums';
 import { Role } from '@modules/databases/role.entity';
 import { BaseSoftDeleteEntity } from '../../configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
 @Entity('admins')
 export class Admins extends BaseSoftDeleteEntity {
-  @Column({ enum: USER_CLIENT, default: USER_CLIENT.ADMIN })
-  client: USER_CLIENT;
 
   @Column({ nullable: true })
   public last_name: string;

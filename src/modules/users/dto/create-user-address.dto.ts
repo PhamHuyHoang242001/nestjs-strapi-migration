@@ -1,6 +1,5 @@
 import { EmailDto } from '@common/dto/common.dto';
 import {
-  AddressTypeDto,
   CountryDto,
   FirstnameDto,
   LastnameDto,
@@ -10,7 +9,6 @@ import {
   TownCityDto,
   ZipCodeDto,
 } from '@modules/auth/dto';
-import { DELIVERY_TYPE } from '@modules/databases/order.entity';
 import { ApiProperty, IntersectionType } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
@@ -24,7 +22,6 @@ export class UpdateUserAddressDto extends IntersectionType(
   CountryDto,
   ZipCodeDto,
   TownCityDto,
-  AddressTypeDto,
 ) {
   @ApiProperty({ description: 'address line ' })
   @IsString()
@@ -36,10 +33,6 @@ export class UpdateUserAddressDto extends IntersectionType(
   @IsString()
   notes: string;
 
-  @ApiProperty({ description: 'Delivery type' })
-  @IsOptional()
-  @IsEnum(DELIVERY_TYPE)
-  delivery_type?: DELIVERY_TYPE;
 }
 export class CreateUserAddressDto extends IntersectionType(UpdateUserAddressDto) {
   @ApiProperty({ description: 'is save ' })

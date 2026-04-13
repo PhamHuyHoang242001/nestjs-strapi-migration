@@ -1,8 +1,8 @@
-import {Injectable} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class AppService {
   ping(): string {
-    return 'Server running';
+    return 'Hello baby, server is running :)';
   }
 }

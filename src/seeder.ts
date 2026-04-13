@@ -5,7 +5,6 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { seeder } from 'nestjs-seeder';
 import ormConfig from './configuration/orm.config';
-import { AuthSeeder } from './seeders/auth.seeder';
 import { PermissionSeeder } from './seeders/permission.seeder';
 import { RoleSeeder } from './seeders/role.seeder';
 import { UserSeeder } from './seeders/user.seeder';
@@ -19,6 +18,7 @@ seeder({
     ConfigModule.forRoot(),
     TypeOrmModule.forRoot(ormConfig),
     TypeOrmModule.forFeature([
+      Permission,
       Role,
       Users,
       Settings,
@@ -29,7 +29,6 @@ seeder({
   PermissionSeeder,
   RoleSeeder,
   UserSeeder,
-  AuthSeeder,
   SettingSeeder,
   AdminSeeder,
 ]);

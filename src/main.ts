@@ -1,7 +1,7 @@
 import { TransformInterceptor } from '@common/interceptors';
 import { initConfigSystem, validation_Errors_Translate } from '@common/utils';
 import { CONFIG } from '@configuration/config.provider';
-import { BASE_URL, REDIS_HOST, REDIS_PORT, SWAGGER_BASE_URL, NODE_ENV, PORT } from '@configuration/env.config';
+import { BASE_URL, NODE_ENV, PORT, REDIS_HOST, REDIS_PORT, SWAGGER_BASE_URL } from '@configuration/env.config';
 import { customOptions, swaggerConfig } from '@configuration/swagger.config';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -31,7 +31,7 @@ async function initializeApp(app: INestApplication) {
   });
 
   app.setGlobalPrefix(BASE_URL);
-  app.useGlobalFilters(new AllExceptionsFilter());
+  // app.useGlobalFilters(new AllExceptionsFilter());
   // Interceptors
   app.useGlobalInterceptors(new TransformInterceptor());
 
@@ -64,6 +64,7 @@ async function initializeMicroservice(app: INestApplication) {
       port: REDIS_PORT,
     },
   });
+
   await app.startAllMicroservices();
 }
 async function initializeSwagger(app: INestApplication) {
@@ -84,6 +85,9 @@ async function bootstrap() {
   app.get<Config>(CONFIG);
 
   await initializeApp(app);
+
+  // serve static files from /public so uploaded files are accessible
+  (app as NestExpressApplication).useStaticAssets(path.join(__dirname, '..', 'public'));
 
   await initializeMicroservice(app);
 

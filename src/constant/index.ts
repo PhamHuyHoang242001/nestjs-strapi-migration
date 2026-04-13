@@ -1,4 +1,3 @@
-import { LINK_STATIC, LINK_CDN } from '@configuration/env.config';
 
 require('dotenv').config();
 
@@ -14,7 +13,6 @@ export const NODE_ENVIRONMENT = {
 
 export const SALT = 10;
 
-export const REGEX_AWS_CONFIGURATION_SPACE = `${LINK_STATIC}|${LINK_CDN}`;
 export const DEFAULT_AVATAR = 'hpg/1705561583968_unnamed.png';
 export const FORMAT_DATE = 'YYYY-MM-DD HH:mm:ss'; // đầu vào database transDate
 /**

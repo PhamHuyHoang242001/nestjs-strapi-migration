@@ -5,14 +5,13 @@ import { IsAdminGuard } from '@common/guards/is-admin.guard';
 import { Body, Controller, HttpCode, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBasicAuth, ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { AdminLoginDto, EmailDto, VerifyOtpDto } from './dto';
+import { AdminLoginDto, EmailDto } from './dto';
 import { AdminChangePasswordDto } from './dto/change-password.dto';
 import { RecoverPasswordDto } from './dto/confirm-forgot-password.dto';
 
 import { UserScope } from '@common/decorators';
 import { AccessToken } from './interfaces';
 import { USER_CLIENT } from '@common/enums';
-import { PlatformScope } from '@common/decorators/platform.decorator';
 
 @Controller('v1/admin')
 @ApiTags('Auth-Admin')
@@ -28,8 +27,8 @@ export class AuthAdminController {
   @HttpCode(200)
   @ApiBasicAuth()
   @UseGuards(BasicGuard, IsAdminGuard, IsMaintenanceGuard)
-  async login(@Body() body: AdminLoginDto, @PlatformScope() platform, @HeaderScope() header): Promise<AccessToken> {
-    return this.authService.login(body as any, platform, USER_CLIENT.ADMIN, header);
+  async login(@Body() body: AdminLoginDto, @HeaderScope() header): Promise<AccessToken> {
+    return this.authService.login(body as any, USER_CLIENT.ADMIN, header);
   }
 
   @ApiOperation({ summary: 'change-password' })
@@ -44,4 +43,28 @@ export class AuthAdminController {
     return this.authService.changePassword(body, user.id);
   }
 
+  @ApiOperation({ summary: 'forgot-password' })
+  @ApiBody({
+    description: 'forgot-password',
+    type: EmailDto,
+  })
+  @Post('forgot-password')
+  @ApiBasicAuth()
+  @HttpCode(200)
+  @UseGuards(BasicGuard, IsAdminGuard)
+  async forgotPassword(@Body() body: EmailDto) {
+    return this.authService.forgotPassword(body, USER_CLIENT.ADMIN);
+  }
+
+  @ApiOperation({ summary: 'admin-recover-password' })
+  @ApiBody({
+    description: 'admin recover-password',
+    type: RecoverPasswordDto,
+  })
+  @Put('recover-password')
+  @ApiBasicAuth()
+  @UseGuards(BasicGuard, IsAdminGuard)
+  async recoverPassword(@Body() body: RecoverPasswordDto) {
+    return this.authService.recoverPassword(body, USER_CLIENT.ADMIN);
+  }
 }

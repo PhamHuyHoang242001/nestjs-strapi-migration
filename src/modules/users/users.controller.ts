@@ -2,14 +2,13 @@ import { UserScope } from '@common/decorators';
 import { BearerGuard } from '@common/guards';
 import { IsUserGuard } from '@common/guards/is-user.guard';
 import { UsersService } from '@modules/users/users.service';
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Query, UseGuards } from '@nestjs/common';
 import { ApiBasicAuth, ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SearchUserAddressDto } from './dto/search-user-address.dto';
 import { Users } from '@modules/databases/user.entity';
 import { UpdateMyProfileDto, UserProfileDto } from './dto/user-profile.dto';
 import { DeleteMyAccountDto } from './dto/delete-my-account.dto';
 import { SortType } from '@common/enums';
-import { UpdateUserAddressDto } from './dto/create-user-address.dto';
 
 @Controller('v1/users')
 @ApiTags('users')
@@ -18,11 +17,6 @@ import { UpdateUserAddressDto } from './dto/create-user-address.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
-  @Get('paypal-client-token')
-  @UseGuards(BearerGuard, IsUserGuard)
-  async generateClientTokenPaypal(@UserScope() user) {
-    return this.usersService.generateClientTokenPaypal(user.id);
-  }
 
   @Get('order-address')
   @UseGuards(BearerGuard)
@@ -35,11 +29,6 @@ export class UsersController {
     return this.usersService.getListOrderAddress(query);
   }
 
-  @Patch('order-address/:id')
-  @UseGuards(BearerGuard)
-  async updateOrderAddress(@Param('id') user_address_id: number, @Body() query: UpdateUserAddressDto) {
-    return this.usersService.updateOrderAddress(user_address_id, query);
-  }
 
   @Get('me')
   @ApiOperation({ summary: 'Get my user profile' })

@@ -1,5 +1,4 @@
 import { i18nMsg } from '@common/utils';
-import { FEDEX_LIMIT_PACKAGE_ITEMS, USPS_LIMIT_PACKAGE_ITEMS } from '@modules/databases/packages.entity';
 
 export function getMessage(key: string, params: {} = {}) {
   return i18nMsg(key, params);
@@ -129,8 +128,7 @@ export const UPDATE_SHIPMENT_ERROR_MESSAGE = 'Failed to update shipment.';
 export const VERIFY_FEDEX_ADDRESS_ERROR = 'Failed to verify FedEx shipping address.';
 export const VERIFY_USPS_ADDRESS_ERROR = 'Failed to verify USPS shipping address.';
 export const GET_USPS_SHIPPING_EVENTS_ERROR = 'Failed to get USPS shipping events.';
-export const FEDEX_LIMIT_PACKAGE_ITEMS_ERROR = `You can only order ${FEDEX_LIMIT_PACKAGE_ITEMS} products per an order in maximum with Fedex.`;
-export const USPS_LIMIT_PACKAGE_ITEMS_ERROR = `You can only order ${USPS_LIMIT_PACKAGE_ITEMS} products per an order in maximum with USPS.`;
+
 export const NO_PROPER_PACKAGE_FOUND = 'No proper package found.';
 export const INVALID_PICKUP_TIME_ERROR = 'Invalid pick-up time.';
 

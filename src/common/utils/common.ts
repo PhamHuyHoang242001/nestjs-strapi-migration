@@ -1,14 +1,4 @@
 import {
-  ENCRYPT_KEY,
-  COUNTRY_API_LIST,
-  COUNTRY_API_KEY,
-  COUNTRY_API_DETAIL,
-  COUNTRY_API_STATE_BY_COUNTRY,
-  COUNTRY_API_CITIES_BY_STATE,
-  COUNTRY_API_STATE_DETAIL,
-  COUNTRY_API_PUBLIC_LIST_COUNTRY,
-} from '@configuration/env.config';
-import {
   CHARACTER_SEPARATE_SUB_INFO,
   DATA_INVALID,
   LIMIT_GET_ALL,
@@ -23,57 +13,24 @@ import * as bcrypt from 'bcryptjs';
 import * as dayjs from 'dayjs';
 import * as _ from 'lodash';
 import { PaginationTypeEnum, paginate } from 'nestjs-typeorm-paginate';
-import * as crypto from 'crypto';
-
+import {
+  decryptCryptoDecipher,
+  encryptCryptoDecipher,
+  encryptMD5,
+  randomBytesCrypto,
+  sha256Password,
+} from '../../service/cryptoJs';
 import i18n from '../../service/i18n';
-// Crypto helpers (used as replacements for missing service/cryptoJs)
-const randomBytesCrypto = (length: number) => {
-  const buf = crypto.randomBytes(length);
-  return Array.from(buf);
-};
-
-const sha256Password = (input: string) => {
-  return crypto.createHash('sha256').update(input).digest('hex');
-};
-
-const encryptMD5 = (input: string) => {
-  return crypto.createHash('md5').update(input).digest('hex');
-};
-
-const encryptCryptoDecipher = (input: any, key: string) => {
-  const text = typeof input === 'string' ? input : JSON.stringify(input);
-  const hash = crypto.createHash('sha256').update(key || '').digest();
-  const iv = Buffer.alloc(16, 0);
-  const cipher = crypto.createCipheriv('aes-256-cbc', hash, iv);
-  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-  return encrypted.toString('base64');
-};
-
-const decryptCryptoDecipher = (input: string, key: string) => {
-  if (!input) return '';
-  try {
-    const hash = crypto.createHash('sha256').update(key || '').digest();
-    const iv = Buffer.alloc(16, 0);
-    const decipher = crypto.createDecipheriv('aes-256-cbc', hash, iv);
-    const decrypted = Buffer.concat([decipher.update(Buffer.from(input, 'base64')), decipher.final()]);
-    return decrypted.toString('utf8');
-  } catch (e) {
-    return '';
-  }
-};
 import * as uuid from 'uuid';
 import isUUID from 'validator/lib/isUUID';
 import { DATA_TYPE, LANGUAGE, STATUS, USER_STATUS } from '../enums';
-import { DayJS } from './dayjs';
+import { ENCRYPT_KEY } from '@configuration/env.config';
 const phoneUtil = require('libphonenumbers').PhoneNumberUtil.getInstance();
 
 const DIGIT_NUMBER = '0123456789';
 const CHARACTERS_LOWER_CASE = 'abcdefghijklmnopqrstuvwxyz';
 const CHARACTERS_CAPITALIZE = CHARACTERS_LOWER_CASE.toUpperCase();
 export const CHARACTERS = `${CHARACTERS_CAPITALIZE}${CHARACTERS_LOWER_CASE}${DIGIT_NUMBER}`;
-
-// Fallback for MAX_PICKUP_DAYS when shipment module/config is not present
-export const MAX_PICKUP_DAYS: number = Number(process.env.MAX_PICKUP_DAYS ?? 7);
 
 const common: any = {
   STATUS_MAPPING: [],
@@ -86,7 +43,16 @@ export const hashPassword = (password: string) => {
 export const comparePassword = (password: string, hash: string) => {
   return bcrypt.compareSync(password, hash);
 };
+export const encrypt = (input) => {
+  return encryptCryptoDecipher(input, ENCRYPT_KEY);
+};
 
+export const decrypt = (input) => {
+  return decryptCryptoDecipher(input, ENCRYPT_KEY);
+};
+export const encryptBiometrict = (input) => {
+  return encryptMD5(input);
+};
 export const randomUuidV4 = () => {
   return uuid.v4();
 };
@@ -97,21 +63,21 @@ export const randomStringUuid = () => {
   return `${randomUuidV4()}-${dayjs().valueOf()}`;
 };
 
-export const i18nMsg = (message: string, payload?: any) => {
+export const i18nMsg = (message: string, payload?: object) => {
   // translate message
   if (!message) return '';
-  if (!payload) message = i18n.__(message as any);
-  else message = i18n.__(message as any, payload as any);
+  if (!payload) message = i18n.__(message);
+  else message = i18n.__(message, payload);
   return message;
 };
 
-export const i18nMsgByLanguage = (message: string, payload?: any) => {
+export const i18nMsgByLanguage = (message: string, payload?: object) => {
   // translate message
   if (!message) return '';
-  const output: any = {};
+  let output = {};
   Object.values(LANGUAGE).forEach((lang) => {
-    if (!payload) output[lang as string] = i18n.__({ phrase: message, locale: lang } as any);
-    else output[lang as string] = i18n.__({ phrase: message, locale: lang } as any, payload as any);
+    if (!payload) output[lang] = i18n.__({ phrase: message, locale: lang });
+    else output[lang] = i18n.__({ phrase: message, locale: lang }, payload);
   });
 
   return output;
@@ -173,9 +139,13 @@ export const validateDatatype = (value, typeMask) => {
     case DATA_TYPE.OBJECT:
       return typeof value === DATA_TYPE.OBJECT;
     case DATA_TYPE.DATETIME:
-      return dayjs(value).isValid();
+      if (value instanceof Date) return true;
+      if (typeof value === 'string' || typeof value === 'number') return dayjs(value).isValid();
+      return false;
     case DATA_TYPE.DATE:
-      return dayjs(value).isValid();
+      if (value instanceof Date) return true;
+      if (typeof value === 'string' || typeof value === 'number') return dayjs(value).isValid();
+      return false;
     case DATA_TYPE.UUID:
       return isUUID(value);
 
@@ -540,54 +510,6 @@ export const removeSpaceByUnderScore = (str: string) => {
   return str.replace(/\s/g, '_');
 };
 
-export const getListCountry = async () => {
-  const countries = await axios.get(COUNTRY_API_LIST, {
-    headers: { 'X-CSCAPI-KEY': COUNTRY_API_KEY },
-  });
-  return countries.data;
-};
-
-export const getCountryDetail = async (code: string) => {
-  const url = COUNTRY_API_DETAIL.replace('[ciso]', code);
-  const countries = await axios.get(url, {
-    headers: { 'X-CSCAPI-KEY': COUNTRY_API_KEY },
-  });
-  return countries.data;
-};
-
-export const getStateByCountry = async (code: string) => {
-  const url = COUNTRY_API_STATE_BY_COUNTRY.replace('[ciso]', code);
-  const state = await axios.get(url, {
-    headers: { 'X-CSCAPI-KEY': COUNTRY_API_KEY },
-  });
-  return state.data;
-};
-
-export const getCitiesByCountryAndState = async (countryCode: string, stateCode: string) => {
-  const url = COUNTRY_API_CITIES_BY_STATE.replace('[country_code]', countryCode).replace('[state_code]', stateCode);
-  const cities = await new Promise((res) => {
-    axios
-      .get(url, {
-        headers: { 'X-CSCAPI-KEY': COUNTRY_API_KEY },
-      })
-      .then((resp) => {
-        res(resp.data);
-      })
-      .catch(() => {
-        res([]);
-      });
-  });
-
-  return cities;
-};
-
-export const getStateDetail = async (countryCode: string, stateCode: string) => {
-  const url = COUNTRY_API_STATE_DETAIL.replace('[country_code]', countryCode).replace('[state_code]', stateCode);
-  const state = await axios.get(url, {
-    headers: { 'X-CSCAPI-KEY': COUNTRY_API_KEY },
-  });
-  return state.data;
-};
 
 export const formatPhoneNumberByCountryCode = (phoneNumber: string, country_iso: string) => {
   if (!phoneNumber || !country_iso) return phoneNumber;
@@ -596,7 +518,6 @@ export const formatPhoneNumberByCountryCode = (phoneNumber: string, country_iso:
   return ['+', number.getCountryCode(), phoneNumber.slice(1, phoneNumber.length)].join('');
 };
 
-export default common;
 
 export const enumToArray = (e: any) => {
   return Object.keys(e)
@@ -608,9 +529,6 @@ export const enumToArray = (e: any) => {
     .filter((item) => isNaN(Number(item.key)));
 };
 
-export const verifyShipmentPickUpTime = (timestamp: string): boolean => {
-  const currentTime = DayJS().utc().startOf('day');
-  const pickUpTime = DayJS.utc(timestamp).startOf('day');
-  const maxPickUpTime = currentTime.add(MAX_PICKUP_DAYS, 'days');
-  return pickUpTime.isSameOrAfter(currentTime) && pickUpTime.isSameOrBefore(maxPickUpTime);
-};
+export default common;
+
+

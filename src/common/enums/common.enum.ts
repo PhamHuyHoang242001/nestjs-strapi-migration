@@ -2,20 +2,6 @@ export enum STATUS {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
 }
-export enum SYNC_STATUS {
-  INIT = 'init',
-  PENDING = 'pending',
-  FAILED = 'failed',
-  PROCESSING = 'processing',
-  COMPLETED = 'completed',
-}
-
-export enum USER_CLIENT {
-  USER = 'user',
-  TECHNICIAN = 'technician',
-  OFFICER = 'officer',
-  ADMIN = 'admin',
-}
 
 export enum SortType {
   DESC = 'DESC',
@@ -59,19 +45,18 @@ export enum TOKEN_TYPE {
   REFRESH_TOKEN,
   DELETE_ACCOUNT,
 }
-export enum BIOMETRICT_TYPE {
-  FACEID = 'faceid',
-  FINGERPRINT = 'fingerprint',
-}
+
 export enum GENDER {
   MALE,
   FEMALE,
   UNKNOW,
 }
 
-export enum CUSTOMER_TYPE {
-  PERSONAL,
-  COMPANY,
+export enum USER_CLIENT {
+  USER = 'user',
+  TECHNICIAN = 'technician',
+  OFFICER = 'officer',
+  ADMIN = 'admin',
 }
 
 export enum ACTION_TYPE {
@@ -85,7 +70,6 @@ export enum ACTION_TYPE {
   ALL = 'all',
 }
 export enum CHECK_ACCOUNT {
-  BIOMETRICT,
   LOGIN,
   CHECK_ACCOUNT,
 }
@@ -97,25 +81,3 @@ export enum OTP_STATUS {
   EXPIRED = 'expired',
 }
 
-export enum PROVINCE_TYPE {
-  PROVINCE = 'Tỉnh',
-  CENTRAL_CITY = 'Thành phố Trung ương',
-  NOMRAL_CITY = 'Thành phố',
-}
-
-export enum DISTRICT_TYPE {
-  DISTRICT = 'Quận',
-  PROVENCE_DISTRICT = 'Huyện',
-  CITY = 'Thành phố',
-}
-
-export enum WARD_TYPE {
-  COMMUNE = 'Xã',
-  WARD = 'Phường',
-}
-
-export enum PLATFORM {
-  IOS = 'ios',
-  ANDROID = 'android',
-  WEB = 'web',
-}

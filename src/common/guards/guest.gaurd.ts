@@ -1,11 +1,16 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { USER_CLIENT } from '@common/enums';
+import { USER_CLIENT, USER_STATUS } from '@common/enums';
 import { encryptDevice } from '@common/utils';
 import { AUTH_FAIL } from '@constant/index';
+import { UserRepository } from '@modules/users/repository/users.repository';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class GuestGuard implements CanActivate {
-  constructor() { }
+  constructor(
+    private readonly userRepository: UserRepository,
+    private readonly connection: DataSource,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
@@ -17,13 +22,18 @@ export class GuestGuard implements CanActivate {
     req.info.language = req.headers['accept-language'];
 
     if (!guest_id) throw new UnauthorizedException(AUTH_FAIL);
-
-    // We no longer persist guest users in the DB (guest_id and is_registered columns removed).
-    req.info.user = {
-      id: null,
-      guest_id,
-    } as any;
-
+    let user = await this.userRepository.findOneBy({ guest_id, is_registered: false });
+    if (!user) {
+      user = await this.userRepository.save({ guest_id, status: USER_STATUS.ANONYMOUS, is_registered: false });
+    }
+    if (user) {
+      req.info.user = user;
+    } else {
+      req.info.user = {
+        id: null,
+        guest_id,
+      };
+    }
     req.info.client = USER_CLIENT.USER;
 
     req.info.ip = req.headers.ip;

@@ -6,8 +6,8 @@ import { ArgumentsHost, Catch, HttpException, HttpStatus, Logger } from '@nestjs
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Request, Response } from 'express';
 
-// Error responses now use error codes (ERROR_CODE enum) rather than i18n translation strings.
-// We intentionally avoid translating error messages here so the API consistently returns codes.
+import i18n from '../service/i18n';
+import * as util from 'util';
 
 @Catch()
 export class AllExceptionsFilter extends BaseExceptionFilter {
@@ -38,14 +38,45 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     };
     if (ignoreRoute.includes(url)) requestInfo.body = {};
 
-    if (exception?.stack) exception.stack = exception.stack.split('\n    at ')[1] || '';
+    // Build a safe, serializable representation of the thrown value so logging
+    // cannot crash the filter. This helps diagnose cases where non-Error objects
+    // (for example `throw new Date()`) are thrown.
+    let safeException: any = {};
+    try {
+      if (exception instanceof Error) {
+        safeException.message = exception.message;
+        safeException.stack = exception.stack;
+        // copy enumerable properties defensively
+        for (const k of Object.keys(exception)) {
+          try {
+            safeException[k] = (exception as any)[k];
+          } catch (e) {
+            safeException[k] = '[unserializable]';
+          }
+        }
+      } else if (exception && typeof exception === 'object') {
+        // shallow copy may still contain weird values; keep the raw object for inspect
+        try {
+          safeException = { ...exception };
+        } catch (e) {
+          safeException = { message: String(exception) };
+        }
+      } else {
+        safeException = { message: String(exception) };
+      }
+    } catch (e) {
+      safeException = { message: 'Unknown exception (failed to serialize)' };
+    }
 
     const status = this.getStatusCode(exception);
     const { message, logTag } = this.getMessageError(exception);
     const logData = {
       tag: logTag,
       url: url,
-      exception: exception || '',
+      exception: safeException,
+      // include a diagnostic string of the original thrown value
+      thrownValueDebug: util.inspect(exception, { depth: 3 }),
+      thrownValueType: exception && exception.constructor ? String(exception.constructor) : typeof exception,
       request: requestInfo,
     };
     const responseData = {
@@ -67,24 +98,34 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     let message = validateDatatype(exceptionObject.message, DATA_TYPE.STRING)
       ? exceptionObject.message
       : exceptionObject.message[0];
-    // Do not translate here; message may already be an error code (eg. ERROR_CODE.*)
+    // Avoid translating here; return raw message (may be an error code or key)
+    try {
+      if (!exceptionObject.validation) message = message;
+    } catch (e) {
+      // swallow
+    }
     return message;
   }
   getMessageError(exception: any) {
     let logTag = 'NORMAL';
     let message = SYSTEM_ERROR;
     try {
-      console.log(exception.stack);
+      // Log exception diagnostic to help identify thrown value types
+      try {
+        console.log('Exception diag ->', util.inspect(exception, { depth: 3 }));
+      } catch (e) {
+        console.log('Exception diag ->', String(exception));
+      }
       if (exception instanceof HttpException) {
         logTag = 'HttpException';
         message = this.getMessageErrorHttpException(exception);
       } else if (exception instanceof Error) {
         logTag = 'Error';
-        message = exception.message; // keep raw message (could be code or plain text)
+        message = exception.message; //(1)
       } else {
         if (validateDatatype(exception, DATA_TYPE.OBJECT)) {
           message = exception.message || message;
-          // keep as-is; if a code is used, it will be returned to the client
+          // keep as-is
         } else {
           message = exception || message;
         }
@@ -95,15 +136,30 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     return { message, logTag };
   }
   standardizeLogger(logData) {
-    this.logger.error(
-      JSON.stringify({
+    try {
+      const payload: any = {
         type: logData.tag,
         date: new Date(),
-        exception: logData.exception.stack,
-        message: logData.exception.message,
         apiPath: logData.url,
         request: logData.request,
-      }),
-    );
+        thrownValueDebug: logData.thrownValueDebug,
+        thrownValueType: logData.thrownValueType,
+      };
+      const exc = logData.exception || {};
+      payload.exception = exc.stack || exc;
+      payload.message = exc.message || (typeof exc === 'string' ? exc : undefined);
+
+      try {
+        this.logger.error(JSON.stringify(payload));
+      } catch (err) {
+        this.logger.error(util.inspect(payload, { depth: 5 }));
+      }
+    } catch (err) {
+      try {
+        this.logger.error('Failed to log exception: ' + String(err));
+      } catch (e) {
+        // ignore
+      }
+    }
   }
 }

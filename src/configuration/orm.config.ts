@@ -1,6 +1,6 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as path from 'path';
-import { DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME, NODE_ENV } from './env.config';
+import { DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME } from './env.config';
 const rootDir = path.join(__dirname, '..', '..');
 
 const ormConfig: TypeOrmModuleOptions = {
@@ -10,7 +10,7 @@ const ormConfig: TypeOrmModuleOptions = {
   username: DB_USERNAME,
   password: DB_PASSWORD,
   database: DB_NAME,
-  synchronize: ['production', 'prod'].includes(NODE_ENV) ? false : true,
+  synchronize: ['production', 'prod'].includes(process.env.NODE_ENV) ? false : true,
   logging: false,
   entities: [rootDir + '/dist/**/*.entity.js'],
   migrations: [rootDir + '/dist/migration/**/*.js'],

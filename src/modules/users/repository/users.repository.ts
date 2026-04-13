@@ -34,7 +34,7 @@ export class UserRepository extends BaseRepository<Users> {
           q.orWhere(`(LOWER(CONCAT(user.first_name, ' ', user.last_name)) LIKE :keyword)`, {
             keyword: `%${keyword.toLowerCase()}%`,
           })
-            .orWhere(`(LOWER(user.phone) LIKE :keyword)`, {
+            .orWhere(`(LOWER(CONCAT(user.phone_code, user.phone)) LIKE :keyword)`, {
               keyword: `%${keyword.toLowerCase()}%`,
             })
             .orWhere(`(LOWER(user.email) LIKE :keyword)`, { keyword: `%${keyword.toLowerCase()}%` });
@@ -96,10 +96,12 @@ export class UserRepository extends BaseRepository<Users> {
       .addSelect('user.last_name as last_name')
       .addSelect(`CONCAT(user.first_name, ' ', user.last_name) as fullname`)
       .addSelect('user.phone as phone')
+      .addSelect('user.phone_code as phone_code')
       .addSelect('user.email as email')
       .addSelect('user.gender as gender')
       .addSelect('user.date_of_birth as date_of_birth')
       .addSelect('user.country as country')
+      .addSelect('user.state as state')
       .addSelect('user.status as status')
       .addSelect('user.created_at as created_at')
       .addSelect('COUNT(ud) as total_device')

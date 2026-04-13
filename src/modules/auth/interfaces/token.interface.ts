@@ -1,10 +1,9 @@
-import { LANGUAGE, TOKEN_TYPE, USER_CLIENT } from '@common/enums';
+import { LANGUAGE, TOKEN_TYPE } from '@common/enums';
 import { Users } from '@modules/databases/user.entity';
 
 export interface ICreateToken {
   token_ref?: string;
   user: number;
-  client?: USER_CLIENT;
   options?: Object;
   type: TOKEN_TYPE;
   remember_me?: boolean;
@@ -13,7 +12,6 @@ export interface ICreateToken {
 }
 
 export interface ClientBasic {
-  client: USER_CLIENT;
   ip: string;
   domain: string;
 
@@ -27,7 +25,6 @@ export interface ClientBasic {
   type: TOKEN_TYPE;
 }
 export interface ClientBearer {
-  client: USER_CLIENT;
   language: LANGUAGE;
   user: Users;
 

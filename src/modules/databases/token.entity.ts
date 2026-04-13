@@ -1,11 +1,11 @@
-import { STATUS, TOKEN_TYPE, USER_CLIENT } from '@common/enums';
-import { BaseUuidColumn } from '@configuration/base-entity';
+import { STATUS, TOKEN_TYPE } from '@common/enums';
+import { BaseColumn } from '@configuration/base-entity';
 import { Users } from '@modules/databases/user.entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { Admins } from './admin.entity';
 
 @Entity()
-export class Token extends BaseUuidColumn {
+export class Token extends BaseColumn {
   @Column({ nullable: true })
   public user_id: number;
   @ManyToOne(() => Users, (u) => u.id, { nullable: true })
@@ -18,7 +18,7 @@ export class Token extends BaseUuidColumn {
   @JoinColumn({ name: 'admin_id' })
   public admin: Admins;
 
-  @Column({ enum: USER_CLIENT, default: USER_CLIENT.USER })
+  @Column({ nullable: false })
   public client: string;
 
   @Column({ nullable: true })

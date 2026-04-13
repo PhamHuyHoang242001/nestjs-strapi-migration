@@ -1,4 +1,3 @@
-import { USER_CLIENT } from '@common/enums';
 import { hashPassword } from '@common/utils';
 import { Users } from '@modules/databases/user.entity';
 import { Injectable } from '@nestjs/common';
@@ -7,7 +6,7 @@ import { DataSource } from 'typeorm';
 
 @Injectable()
 export class UserSeeder implements Seeder {
-  constructor(private connection: DataSource) {}
+  constructor(private connection: DataSource) { }
 
   private dataRef: number[] = [];
   async seed(): Promise<any> {
@@ -17,9 +16,9 @@ export class UserSeeder implements Seeder {
     const dataConfig = [
       {
         id: 1,
-        email: 'hieubt@vmogroup.com',
+        email: 'congvudev@gmail.com',
         password: hashPassword('123456789a@A'),
-        client: USER_CLIENT.ADMIN,
+        client: 'admin',
       },
     ];
     for (const item of dataConfig) {

@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { LoggerMiddleware } from './common/middlewares/logger.middleware';
 import ormConfig from './configuration/orm.config';
+import { PermissionModule } from '@modules/permission/permission.module';
 import { MulterModule } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
 import { addTransactionalDataSource } from 'typeorm-transactional';
@@ -57,21 +58,17 @@ import { UploadsModule } from '@modules/upload/uploads.module';
       ],
       errorMessage: THROTTLE_MESSAGE,
     }),
-    // CacheModule.register({
-    //   store: redisStore,
-    //   host: envConfig.REDIS_HOST,
-    //   port: envConfig.REDIS_PORT,
-    //   isGlobal: true,
-    // }),
     ScheduleModule.forRoot(),
     UsersModule,
     AuthModule,
     TokenModule,
     RoleModule,
+    PermissionModule,
     SettingsModule,
     CommonServiceModule,
     AdminsModule,
     UploadsModule,
+
   ],
   controllers: [AppController],
   providers: [

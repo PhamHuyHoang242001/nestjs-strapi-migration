@@ -1,10 +1,10 @@
-import {ApiProperty} from '@nestjs/swagger';
-import {Type} from 'class-transformer';
-import {IsEnum, IsInt, IsOptional, Max, Min} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 
-import {ToSortType} from '@common/decorators/transforms.decorator';
-import {SortType, SortTypeNumber} from '@common/enums';
-import {PAGE_DEFAULT, PERPAGE_DEFAULT, PERPAGE_MAXIMUM, SORT_DEFAULT} from '../../constant';
+import { ToSortType } from '@common/decorators/transforms.decorator';
+import { SortType, SortTypeNumber } from '@common/enums';
+import { PAGE_DEFAULT, PERPAGE_DEFAULT, PERPAGE_MAXIMUM, SORT_DEFAULT } from '../../constant';
 
 export class PaginationDto {
   @ApiProperty({ default: PAGE_DEFAULT })
@@ -41,7 +41,7 @@ export class SortDto<T = string> {
 export class PaginationDtoAndSortDto extends PaginationDto {
   @ApiProperty({ required: false, default: SORT_DEFAULT })
   @IsOptional()
-  sort_field?: string = SORT_DEFAULT;
+  sort_value?: string = SORT_DEFAULT;
 
   @ApiProperty({
     enum: SortType,
@@ -51,5 +51,5 @@ export class PaginationDtoAndSortDto extends PaginationDto {
   @IsOptional()
   @ToSortType()
   @IsEnum(SortTypeNumber)
-  sort_order?: SortTypeNumber = SortTypeNumber.DESC;
+  sort_direction?: SortTypeNumber = SortTypeNumber.DESC;
 }
