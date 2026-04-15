@@ -43,13 +43,13 @@ export class BiPaymentProgram extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'enum', enum: BiPaymentProgressStatus })
   public progress_status: BiPaymentProgressStatus;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public expected_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public expected_ending_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public request_duedate: Date;
 
   @Column({ nullable: true })
@@ -91,22 +91,22 @@ export class BiPaymentProgram extends BaseSoftDeleteEntity {
   @Column({ nullable: true, default: true })
   public is_apply_upfile_preparing_data: boolean;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public preparing_up_file_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public preparing_up_file_ending_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public issue_file_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public issue_file_ending_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public calculating_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public calculating_ending_date: Date;
 
   @Column({ nullable: true, type: 'jsonb' })

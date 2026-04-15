@@ -78,23 +78,23 @@ export class BiPaymentProgramHistory extends BaseSoftDeleteEntity {
   @Column({ nullable: true, default: false })
   public is_deleted: boolean;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public preparing_up_file_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public preparing_up_file_ending_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public issue_file_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public issue_file_ending_date: Date;
 
   // Audit diff columns (jsonb pattern)
   @Column({ nullable: true, type: 'jsonb' })
   public diff: object;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public changed_at: Date;
 
   // N:1 parent program

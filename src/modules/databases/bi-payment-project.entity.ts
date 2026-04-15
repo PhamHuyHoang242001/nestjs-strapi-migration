@@ -21,10 +21,10 @@ export class BiPaymentProject extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'enum', enum: BiPaymentProgramType })
   public project_type: BiPaymentProgramType;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public expected_starting_date: Date;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public expected_ending_date: Date;
 
   @Column({ nullable: true, type: 'enum', enum: BiPaymentProjectStatus })

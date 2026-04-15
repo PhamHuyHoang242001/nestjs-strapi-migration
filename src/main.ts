@@ -57,15 +57,19 @@ async function initializeApp(app: INestApplication) {
 }
 
 async function initializeMicroservice(app: INestApplication) {
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.REDIS,
-    options: {
-      host: REDIS_HOST,
-      port: REDIS_PORT,
-    },
-  });
+  try {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.REDIS,
+      options: {
+        host: REDIS_HOST,
+        port: REDIS_PORT,
+      },
+    });
 
-  await app.startAllMicroservices();
+    await app.startAllMicroservices();
+  } catch (error) {
+    console.warn(`[Microservice] Redis microservice failed to start (non-fatal): ${error?.message}`);
+  }
 }
 async function initializeSwagger(app: INestApplication) {
   // Swagger

@@ -12,7 +12,7 @@ export class BiPaymentProjectHistory extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'jsonb' })
   public diff: object;
 
-  @Column({ nullable: true, type: 'datetime' })
+  @Column({ nullable: true, type: 'timestamptz' })
   public changed_at: Date;
 
   // N:1 parent project
