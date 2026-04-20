@@ -1,5 +1,8 @@
 import { GENDER, USER_STATUS } from '@common/enums';
+import { ChangeHistory } from '@modules/databases/change-history.entity';
 import { Role } from '@modules/databases/role.entity';
+import { UserPermissionData } from '@modules/databases/user-permission-data.entity';
+import { UserRole } from '@modules/databases/user-role.entity';
 import { BaseSoftDeleteEntity } from '../../configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 
@@ -70,7 +73,41 @@ export class Users extends BaseSoftDeleteEntity {
 
   @Column({ nullable: true })
   role_id?: number;
-  @ManyToOne(() => Role, (u) => u.id)
+  @ManyToOne('Role')
   @JoinColumn({ name: 'role_id' })
   role?: Role;
+
+  @Column({ nullable: true, unique: true })
+  public username: string;
+
+  @Column({ nullable: true })
+  public full_name: string;
+
+  @Column({ nullable: true })
+  public team: string;
+
+  @Column({ nullable: true })
+  public department: string;
+
+  @Column({ nullable: true })
+  public branch_code: string;
+
+  @Column({ nullable: true })
+  public region: string;
+
+  @Column({ default: true })
+  public is_active: boolean;
+
+  // Inverse relations
+  @OneToMany('UserRole', 'user')
+  user_roles?: UserRole[];
+
+  @OneToMany('UserPermissionData', 'user')
+  user_permission_data?: UserPermissionData[];
+
+  @OneToMany('ChangeHistory', 'user_ref')
+  change_histories?: ChangeHistory[];
+
+  @OneToMany('Role', 'creator')
+  created_roles?: Role[];
 }

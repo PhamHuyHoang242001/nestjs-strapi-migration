@@ -1,7 +1,11 @@
 import { STATUS } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
+import { ChangeHistory } from '@modules/databases/change-history.entity';
 import { Permission } from '@modules/databases/permission.entity';
-import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
+import { RoleDataAccess } from '@modules/databases/role-data-access.entity';
+import { UserRole } from '@modules/databases/user-role.entity';
+import { Users } from '@modules/databases/user.entity';
+import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 export const ROLE_PERMISSION = 'roles_permissions';
 
 @Entity()
@@ -30,4 +34,23 @@ export class Role extends BaseSoftDeleteEntity {
 
   @Column({ default: STATUS.ACTIVE })
   public status: STATUS;
+
+  @Column({ nullable: true, unique: true })
+  public code: string;
+
+  @Column({ nullable: true })
+  public user_id?: number;
+  @ManyToOne('Users', 'created_roles')
+  @JoinColumn({ name: 'user_id' })
+  public creator?: Users;
+
+  // Inverse relations
+  @OneToMany('UserRole', 'role')
+  user_roles?: UserRole[];
+
+  @OneToMany('RoleDataAccess', 'role')
+  role_data_access?: RoleDataAccess[];
+
+  @OneToMany('ChangeHistory', 'role_ref')
+  change_histories?: ChangeHistory[];
 }
