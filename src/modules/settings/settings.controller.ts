@@ -10,6 +10,4 @@ export class SettingsController {
   getListFirmwareVersion() {
     return this.settingsService.getValueByKey(SettingType.FIRMWARE_VERSION);
   }
-
-
 }

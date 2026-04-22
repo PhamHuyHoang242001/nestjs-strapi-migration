@@ -3,11 +3,10 @@ import { CommonServiceService } from './common-service.service';
 import { ApiBasicAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DynamicAuthGuard, IsMaintenanceGuard } from '@common/guards';
 
-
 @ApiTags('Common Service')
 @Controller('v1/common-service')
 export class CommonServiceController {
-  constructor(private readonly commonServiceService: CommonServiceService) { }
+  constructor(private readonly commonServiceService: CommonServiceService) {}
 
   @ApiOperation({ summary: 'get list country' })
   @ApiBody({
@@ -20,6 +19,4 @@ export class CommonServiceController {
   async getListCountry() {
     return this.commonServiceService.getListCountry();
   }
-
-
 }

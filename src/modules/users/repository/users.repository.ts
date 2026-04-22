@@ -8,13 +8,15 @@ import { SearchingUserDto } from '../dto';
 import { UpdateMyProfileDto } from '../dto/user-profile.dto';
 import { DayJS } from '@common/utils/dayjs';
 import { ORDER_STATUS } from '@constant/orders';
+import { SearchUserManagementDto } from '../dto/search-user-management.dto';
+import { SortParams } from '@common/decorators/sort.decorator';
 
 @Injectable()
 export class UserRepository extends BaseRepository<Users> {
   constructor(private dataSource: DataSource) {
     super(Users, dataSource);
   }
-  async checkUserValid(condition: Object): Promise<Users | undefined> {
+  async checkUserValid(condition: object): Promise<Users | undefined> {
     const user = await this.findOneByCondition({ ...condition });
     if (!user) throw new NotFoundException(NOT_FOUND);
     return user;
@@ -78,7 +80,7 @@ export class UserRepository extends BaseRepository<Users> {
     };
   }
 
-  async findOneById(user_id: number) {
+  async findUserProfileById(user_id: number) {
     const userQuery = this.createQueryBuilder('user')
       .leftJoinAndSelect('user.orders', 'orders', 'orders.status = :orderStatus', {
         orderStatus: ORDER_STATUS.COMPLETED,
@@ -86,10 +88,10 @@ export class UserRepository extends BaseRepository<Users> {
       .where('user.id = :id', { id: user_id });
     this.selectFields(userQuery);
 
-    return userQuery.groupBy('user.id').getRawOne();
+    return userQuery.groupBy('user.id').getRawOne<Record<string, unknown>>();
   }
 
-  selectFields(query: any) {
+  selectFields(query: import('typeorm').SelectQueryBuilder<Users>) {
     return query
       .select('user.id as id')
       .addSelect('user.first_name as first_name')
@@ -124,5 +126,52 @@ export class UserRepository extends BaseRepository<Users> {
       .set({ status: USER_STATUS.DELETED, delete_reason: deleteReason, deleted_at: DayJS.utc().toDate() })
       .where(`id = :userId`, { userId })
       .execute();
+  }
+
+  /**
+   * Builds a query for admin user management with filtering and sorting.
+   * Supports search by name/email/username/id, department, branch, region, role, and status.
+   */
+  buildAdminQueryBuilder(dto: SearchUserManagementDto, sortParams: SortParams) {
+    const query = this.createQueryBuilder('user')
+      .select([
+        'user.id',
+        'user.username',
+        'user.full_name',
+        'user.email',
+        'user.department',
+        'user.branch_code',
+        'user.region',
+        'user.is_active',
+        'user.created_at',
+        'user.updated_at',
+      ])
+      .leftJoin('user.user_roles', 'ur')
+      .addSelect(['ur.id', 'ur.role_id'])
+      .leftJoin('ur.role', 'role')
+      .addSelect(['role.id', 'role.name', 'role.code']);
+
+    if (dto.search) {
+      query.andWhere(
+        '(unaccent(user.full_name) ILIKE unaccent(:s) OR user.email ILIKE :s OR user.username ILIKE :s OR CAST(user.id AS TEXT) = :exact)',
+        { s: `%${dto.search}%`, exact: dto.search },
+      );
+    }
+    if (dto.department) query.andWhere('user.department = :dept', { dept: dto.department });
+    if (dto.branch_code) query.andWhere('user.branch_code = :branch', { branch: dto.branch_code });
+    if (dto.region) query.andWhere('user.region = :region', { region: dto.region });
+    if (dto.role_id) query.andWhere('ur.role_id = :roleId', { roleId: dto.role_id });
+
+    if (dto.status === 'active') query.andWhere('user.is_active = true');
+    else if (dto.status === 'inactive') query.andWhere('user.is_active = false');
+    else if (dto.status === 'orphan') query.andWhere('ur.id IS NULL');
+
+    if (sortParams?.sort_field) {
+      query.orderBy(`user.${sortParams.sort_field}`, sortParams.sort_order);
+    } else {
+      query.orderBy('user.id', 'DESC');
+    }
+
+    return query;
   }
 }

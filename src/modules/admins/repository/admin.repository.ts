@@ -9,7 +9,7 @@ export class AdminRepository extends BaseRepository<Admins> {
   constructor(private dataSource: DataSource) {
     super(Admins, dataSource);
   }
-  async checkAdminValid(condition: Object): Promise<Admins | undefined> {
+  async checkAdminValid(condition: object): Promise<Admins | undefined> {
     const admin = await this.findOneByCondition({ ...condition });
     if (!admin) throw new NotFoundException(NOT_FOUND);
     return admin;

@@ -15,11 +15,9 @@ import { PermissionRepository } from './repository/permission.repository';
 export class PermissionService {
   constructor(private readonly permissionRepository: PermissionRepository) {}
   async validateForm(data: CreatePermissionDto) {
-    const { code, screen_id } = data;
+    const { code } = data;
     if (await this.permissionRepository.findOneByCondition({ code }))
       throw new BadRequestException(MODEL_PERMISSION_CODE_INVAID);
-
-    if (!screen_id) return data;
 
     return data;
   }
@@ -34,7 +32,7 @@ export class PermissionService {
   }
 
   async validateFormUpdate(data: UpdatePermissionDto, id: number) {
-    const { screen_id, code } = data;
+    const { code } = data;
     const pipeline = [{ id }, { id: Not(id), code }];
 
     const rs = await this.permissionRepository.findListByCondition(pipeline, 0, 2);
@@ -59,6 +57,7 @@ export class PermissionService {
     const rs = await this.permissionRepository.findOneByCondition({ screen_id: id });
     if (rs) throw new BadRequestException(MODEL_PERMISSION_USING_CAN_NOT_DELETE);
     await this.permissionRepository.softDelete({ id });
+    return { id };
   }
 
   async getAll() {

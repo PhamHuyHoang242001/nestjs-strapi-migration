@@ -16,7 +16,7 @@ import { USER_CLIENT } from '@common/enums';
 @Controller('v1/admin')
 @ApiTags('Auth-Admin')
 export class AuthAdminController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   @ApiOperation({ summary: 'login' })
   @ApiBody({
@@ -39,8 +39,8 @@ export class AuthAdminController {
   @Put('change-password')
   @ApiBearerAuth()
   @UseGuards(BearerGuard, IsAdminGuard)
-  async changePassword(@Body() body: AdminChangePasswordDto, @UserScope() user) {
-    return this.authService.changePassword(body, user.id);
+  async changePassword(@Body() body: AdminChangePasswordDto, @UserScope() user: Record<string, unknown>) {
+    return this.authService.changePassword(body, user['id'] as number);
   }
 
   @ApiOperation({ summary: 'forgot-password' })
@@ -52,7 +52,7 @@ export class AuthAdminController {
   @ApiBasicAuth()
   @HttpCode(200)
   @UseGuards(BasicGuard, IsAdminGuard)
-  async forgotPassword(@Body() body: EmailDto) {
+  forgotPassword(@Body() body: EmailDto) {
     return this.authService.forgotPassword(body, USER_CLIENT.ADMIN);
   }
 

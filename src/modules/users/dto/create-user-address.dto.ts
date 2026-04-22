@@ -10,7 +10,7 @@ import {
   ZipCodeDto,
 } from '@modules/auth/dto';
 import { ApiProperty, IntersectionType } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class UpdateUserAddressDto extends IntersectionType(
   FirstnameDto,
@@ -32,7 +32,6 @@ export class UpdateUserAddressDto extends IntersectionType(
   @IsOptional()
   @IsString()
   notes: string;
-
 }
 export class CreateUserAddressDto extends IntersectionType(UpdateUserAddressDto) {
   @ApiProperty({ description: 'is save ' })

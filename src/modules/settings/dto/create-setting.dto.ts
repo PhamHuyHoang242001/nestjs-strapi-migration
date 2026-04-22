@@ -1,5 +1,5 @@
 import { SettingType } from '@modules/databases/setting.entity';
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty } from 'class-validator';
 
 export class CreateSettingDto {
   @IsNotEmpty()

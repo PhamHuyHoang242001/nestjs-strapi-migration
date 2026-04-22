@@ -16,7 +16,7 @@ export class TokenRepository extends BaseRepository<Token> {
       where: { access_token: accessToken, status: STATUS.ACTIVE },
     });
   }
-  async checkTokenValid(access_token: string, type): Promise<Token | undefined> {
+  async checkTokenValid(access_token: string, type: TOKEN_TYPE[]): Promise<Token | undefined> {
     const rs = await this.findOneByCondition({ access_token, type: In(type), status: STATUS.ACTIVE });
     if (!rs) throw new UnauthorizedException(AUTH_FAIL);
     if (rs.expired_at && dayjs(rs.expired_at).isBefore(dayjs())) throw new UnauthorizedException(EXPIRED);

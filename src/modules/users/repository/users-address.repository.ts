@@ -10,7 +10,6 @@ export class UserAddressRepository extends BaseRepository<UserAddress> {
     super(UserAddress, dataSource);
   }
 
-
   async findAll(query: SearchUserAddressDto) {
     const { user_id, sort, page, limit } = query;
     const userAddressQuery = this.createQueryBuilder('user_address')

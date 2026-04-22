@@ -25,4 +25,10 @@ export class RoleRepository extends BaseRepository<Role> {
     if (!rs) throw new NotFoundException(NOT_FOUND);
     return rs;
   }
+
+  async findDetailRelationWithModule(id: number): Promise<Role | undefined> {
+    const rs = await this.findOne({ where: { id }, relations: ['permissions', 'permissions.module'] });
+    if (!rs) throw new NotFoundException(NOT_FOUND);
+    return rs;
+  }
 }

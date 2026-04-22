@@ -21,7 +21,7 @@ export class AppController {
   @HttpCode(200)
   @ApiBasicAuth()
   @UseGuards(BasicGuard)
-  async checkHash(@Body() body: PasswordDto) {
+  checkHash(@Body() body: PasswordDto) {
     const { password } = body;
     return { data: sha256Password(password) };
   }

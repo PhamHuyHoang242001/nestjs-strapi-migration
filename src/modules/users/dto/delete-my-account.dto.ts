@@ -1,8 +1,8 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsString } from "class-validator";
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString } from 'class-validator';
 
 export class DeleteMyAccountDto {
-    @ApiProperty()
-    @IsString()
-    public reason: string;
+  @ApiProperty()
+  @IsString()
+  public reason: string;
 }

@@ -4,7 +4,7 @@ import { Users } from '@modules/databases/user.entity';
 export interface ICreateToken {
   token_ref?: string;
   user: number;
-  options?: Object;
+  options?: object;
   type: TOKEN_TYPE;
   remember_me?: boolean;
   device_hash?: string;

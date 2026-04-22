@@ -95,7 +95,9 @@ export class UsernameDto {
   @IsString()
   @Matches(RegExp(REGEX_PHONE, 'g'), { message: PHONE_NUMBER_INVALID })
   @IsPhoneNumber('VN')
-  @Transform((u) => (u.value ? u.value.replace(new RegExp(REGEX_PRE_PHONE, 'gm'), '') : u.value))
+  @Transform((u) =>
+    u.value ? (u.value as string).replace(new RegExp(REGEX_PRE_PHONE, 'gm'), '') : (u.value as string | undefined),
+  )
   @MinLength(MIN_PHONE_LENGTH, { message: PHONE_NUMBER_INVALID })
   @MaxLength(MAX_PHONE_LENGTH, { message: PHONE_NUMBER_INVALID })
   @IsNotEmpty()
@@ -132,7 +134,6 @@ export class GenderDto {
   @IsOptional()
   gender: GENDER;
 }
-
 
 export class DateOfBirthDto {
   @ApiProperty({ required: true, example: '', description: 'date of birth' })

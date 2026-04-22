@@ -15,8 +15,7 @@ import { SortType } from '@common/enums';
 @ApiBearerAuth()
 @ApiBasicAuth()
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
-
+  constructor(private readonly usersService: UsersService) {}
 
   @Get('order-address')
   @UseGuards(BearerGuard)
@@ -28,7 +27,6 @@ export class UsersController {
     };
     return this.usersService.getListOrderAddress(query);
   }
-
 
   @Get('me')
   @ApiOperation({ summary: 'Get my user profile' })

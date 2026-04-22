@@ -22,4 +22,4 @@ import { CommonServiceModule } from '@modules/common-service/common-service.modu
   providers: [AuthService, UserRepository, TokenRepository, AdminRepository],
   exports: [AuthService],
 })
-export class AuthModule { }
+export class AuthModule {}

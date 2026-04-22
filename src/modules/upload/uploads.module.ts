@@ -10,4 +10,4 @@ import { MediaRepository } from './repository/media.repository';
   controllers: [UploadsController],
   providers: [UploadsService, AdminRepository, MediaRepository],
 })
-export class UploadsModule { }
+export class UploadsModule {}

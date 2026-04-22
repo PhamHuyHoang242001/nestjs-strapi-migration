@@ -66,7 +66,8 @@ export class PermissionController {
 
   @Delete('delete/:id')
   @UseGuards(BearerGuard, IsMaintenanceGuard)
-  delete(@Param('id') id: number, @HeaderScope() header) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  delete(@Param('id') id: number, @HeaderScope() _header: unknown) {
     return this.permissionService.delete(id);
   }
 

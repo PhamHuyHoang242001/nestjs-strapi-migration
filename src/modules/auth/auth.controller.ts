@@ -4,7 +4,7 @@ import { BearerGuard, DynamicAuthGuard, HeaderGuard } from '@common/guards';
 import { BasicGuard } from '@common/guards/basic.guard';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { IsUserGuard } from '@common/guards/is-user.guard';
-import { Body, Controller, Delete, Get, HttpCode, Post, Put, Req, Res, UseGuards, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Post, Put, Res, UseGuards, Query } from '@nestjs/common';
 import { ApiBasicAuth, ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { EmailDto, LogoutDto, RefreshTokenDto, TokenDto, UserLoginDto } from './dto';
@@ -12,16 +12,12 @@ import { UserChangePasswordDto } from './dto/change-password.dto';
 import { RecoverPasswordDto } from './dto/confirm-forgot-password.dto';
 import { AccessToken } from './interfaces';
 import { UserRegisterDto } from './dto/register.dto';
-import { VefifyEmailDto } from './dto/verfify-email.dto';
-import { AuthGuard } from '@nestjs/passport';
-import { Throttle } from '@nestjs/throttler';
-import { LIMIT_THROTTLE } from '@constant/index';
 import { USER_CLIENT } from '@common/enums';
 
 @Controller('v1/auth')
 @ApiTags('Auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   @ApiOperation({ summary: 'login' })
   @ApiBody({
@@ -32,24 +28,25 @@ export class AuthController {
   @HttpCode(200)
   @ApiBasicAuth()
   @UseGuards(BasicGuard, IsUserGuard, IsMaintenanceGuard)
-  async login(@Body() body: UserLoginDto, @HeaderScope() header): Promise<AccessToken> {
-    return this.authService.login(body as any, USER_CLIENT.USER, header);
+  async login(@Body() body: UserLoginDto, @HeaderScope() header: Record<string, unknown>): Promise<AccessToken> {
+    return this.authService.login(body as unknown as UserLoginDto, USER_CLIENT.USER, header as never);
   }
 
   @Get('oidc/authorize')
   @ApiOperation({ summary: 'OIDC authorize (redirect to provider)' })
-  async oidcAuthorize(@HeaderScope() header, @Res() res) {
+  oidcAuthorize(@HeaderScope() header: Record<string, unknown>, @Res() res: { redirect: (url: string) => void }) {
     // Build authorization URL and redirect
-    const state = header && header.device_hash ? encodeURIComponent(header.device_hash) : '';
-    const params: any = {
+    const deviceHash = header?.['device_hash'] as string | undefined;
+    const state = deviceHash ? encodeURIComponent(deviceHash) : '';
+    const rawParams: Record<string, string | undefined> = {
       client_id: process.env.OIDC_CLIENT_ID || undefined,
       response_type: 'code',
       scope: process.env.OIDC_SCOPE || 'openid profile email',
       redirect_uri: process.env.OIDC_REDIRECT_URI || undefined,
     };
-    const query = Object.keys(params)
-      .filter((k) => params[k])
-      .map((k) => `${k}=${encodeURIComponent(params[k])}`)
+    const query = Object.entries(rawParams)
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
       .join('&');
     const url = `${process.env.OIDC_AUTHORIZATION_ENDPOINT || ''}?${query}${state ? `&state=${state}` : ''}`;
     return res.redirect(url);
@@ -57,7 +54,7 @@ export class AuthController {
 
   @Get('oidc/callback')
   @ApiOperation({ summary: 'OIDC callback' })
-  async oidcCallback(@Query('code') code: string, @HeaderScope() header) {
+  async oidcCallback(@Query('code') code: string, @HeaderScope() header: Record<string, unknown>) {
     return this.authService.handleOidcCallback(code, header);
   }
 
@@ -70,8 +67,8 @@ export class AuthController {
   @HttpCode(200)
   @ApiBasicAuth()
   @UseGuards(BasicGuard, IsMaintenanceGuard)
-  async register(@Body() body: UserRegisterDto, @HeaderScope() header) {
-    return this.authService.register(body, header);
+  async register(@Body() body: UserRegisterDto, @HeaderScope() header: Record<string, unknown>) {
+    return this.authService.register(body, header as never);
   }
 
   @ApiOperation({ summary: 'refresh session ' })
@@ -83,8 +80,11 @@ export class AuthController {
   @HttpCode(200)
   @ApiBasicAuth()
   @UseGuards(DynamicAuthGuard)
-  async refreshSession(@Body() body: RefreshTokenDto, @HeaderScope() header): Promise<AccessToken> {
-    return this.authService.refreshSession(body, header);
+  async refreshSession(
+    @Body() body: RefreshTokenDto,
+    @HeaderScope() header: Record<string, unknown>,
+  ): Promise<AccessToken> {
+    return this.authService.refreshSession(body, header as never);
   }
 
   @ApiBody({
@@ -95,15 +95,15 @@ export class AuthController {
   @Post('logout')
   @HttpCode(200)
   async logOut(@Body() body: LogoutDto) {
-    return await this.authService.logOut(body);
+    return this.authService.logOut(body);
   }
 
   @ApiOperation({ summary: 'fetch-profile' })
   @ApiBearerAuth()
   @UseGuards(BearerGuard)
   @Get('fetch-profile')
-  async profile(@UserScope() user) {
-    return this.authService.profile(user);
+  profile(@UserScope() user: Record<string, unknown>) {
+    return this.authService.profile(user as never);
   }
 
   @ApiOperation({ summary: 'delete-my-account' })
@@ -114,8 +114,8 @@ export class AuthController {
   @Delete('delete-my-account')
   @ApiBearerAuth()
   @UseGuards(BearerGuard)
-  async deleteMyAccount(@Body() body: TokenDto, @HeaderScope() header) {
-    return this.authService.deleteMyAccount(body, header);
+  async deleteMyAccount(@Body() body: TokenDto, @HeaderScope() header: Record<string, unknown>) {
+    return this.authService.deleteMyAccount(body, header as never);
   }
 
   @ApiOperation({ summary: 'recover-account' })
@@ -125,8 +125,8 @@ export class AuthController {
   })
   @Put('recover-account')
   @UseGuards(HeaderGuard)
-  async recoverAccount(@Body() body: EmailDto, @HeaderScope() header) {
-    return this.authService.recoverAccount(body, header);
+  async recoverAccount(@Body() body: EmailDto, @HeaderScope() header: Record<string, unknown>) {
+    return this.authService.recoverAccount(body, header as never);
   }
 
   @ApiOperation({ summary: 'forgot-password' })
@@ -138,10 +138,9 @@ export class AuthController {
   @ApiBasicAuth()
   @HttpCode(200)
   @UseGuards(BasicGuard)
-  async forgotPassword(@Body() body: EmailDto) {
+  forgotPassword(@Body() body: EmailDto) {
     return this.authService.forgotPassword(body, USER_CLIENT.USER);
   }
-
 
   @ApiOperation({ summary: 'recover-password' })
   @ApiBody({
@@ -163,9 +162,10 @@ export class AuthController {
   @Put('change-password')
   @ApiBearerAuth()
   @UseGuards(BearerGuard, IsUserGuard)
-  async changePassword(@Body() body: UserChangePasswordDto, @HeaderScope() header) {
+  async changePassword(@Body() body: UserChangePasswordDto, @HeaderScope() header: Record<string, unknown>) {
     const { ...data } = body;
-    const user_id = header.user.id;
+    const user = header['user'] as Record<string, unknown>;
+    const user_id = user['id'] as number;
     await this.authService.changePassword(data, user_id);
   }
 }

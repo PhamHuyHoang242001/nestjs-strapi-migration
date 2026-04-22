@@ -1,42 +1,24 @@
-import { STATUS, TOKEN_TYPE, USER_CLIENT, USER_STATUS, OTP_STATUS } from '@common/enums';
-import {
-  comparePassword,
-  decryptToken,
-  generateToken,
-  generateCode,
-  hashPassword,
-  randomStringUuid,
-} from '@common/utils';
+import { STATUS, TOKEN_TYPE, USER_CLIENT, USER_STATUS } from '@common/enums';
+import { comparePassword, decryptToken, generateToken, hashPassword, randomStringUuid } from '@common/utils';
 import { TOKEN_TIME } from '@constant/auth';
 import {
   DATA_INVALID,
   EXPIRED,
-  INVALID_DATA,
   MAPPING_ENCRYPT_TOKEN,
   MODEL_AUTH_CONFIRM_PASSWORD_NOT_MATCH,
   MODEL_AUTH_OLD_PASSWORD_INVALID,
   MODEL_AUTH_USERNAME_INVALID,
-  NOT_FOUND,
 } from '@constant/index';
 import { TokenRepository } from '@modules/token/repository/token.repository';
 import { Users } from '@modules/databases/user.entity';
 import { UserRepository } from '@modules/users/repository/users.repository';
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as dayjs from 'dayjs';
-import { MoreThanOrEqual } from 'typeorm';
-import { EmailDto, LogoutDto, RefreshTokenDto, TokenDto, UserLoginDto, VerifyOtpDto } from './dto';
+import { EmailDto, LogoutDto, RefreshTokenDto, TokenDto, UserLoginDto } from './dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RecoverPasswordDto } from './dto/confirm-forgot-password.dto';
-import { AccessToken, ClientBasic, ClientBearer, ICreateToken, IToken } from './interfaces';
+import { AccessToken, ClientBasic, ClientBearer, ICreateToken } from './interfaces';
 import { UserRegisterDto } from './dto/register.dto';
-import { VefifyEmailDto } from './dto/verfify-email.dto';
-import { SEND_MAIL_TEMPLATE, TEMPLATE_LIMIT, TEMPLATE_ID } from '@constant/template';
 import { ERROR_CODE } from '@constant/error-code';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { CommonServiceService } from '@modules/common-service/common-service.service';
@@ -47,7 +29,6 @@ import {
   OIDC_CLIENT_ID,
   OIDC_CLIENT_SECRET,
   OIDC_REDIRECT_URI,
-  OIDC_SCOPE,
   OIDC_TOKEN_ENDPOINT,
   OIDC_USERINFO_ENDPOINT,
 } from '@configuration/env.config';
@@ -59,30 +40,38 @@ export class AuthService {
     private readonly userRepository: UserRepository,
     private readonly adminRepository: AdminRepository,
     private readonly commonService: CommonServiceService,
-  ) { }
+  ) {}
 
-  checkPassword(password: string, hash: string, messageError?: string, errorCode = ERROR_CODE.A007) {
+  checkPassword(password: string, hash: string, _messageError?: string, errorCode = ERROR_CODE.A007) {
     if (!comparePassword(password, hash)) throw new BadRequestException(errorCode);
     return true;
   }
-  async checkAccountExist(email: string, client: USER_CLIENT) {
-    let account;
+
+  async checkAccountExist(email: string, client: USER_CLIENT): Promise<Record<string, unknown>> {
+    let account: Record<string, unknown> | null = null;
     if (client === USER_CLIENT.USER) {
-      account = await this.userRepository.findOneBy({ email, status: USER_STATUS.ACTIVE, deleted_at: null });
+      account = (await this.userRepository.findOneBy({
+        email,
+        status: USER_STATUS.ACTIVE,
+        deleted_at: null,
+      })) as unknown as Record<string, unknown> | null;
     } else {
-      account = await this.adminRepository.findOneBy({ email, status: USER_STATUS.ACTIVE, deleted_at: null });
+      account = (await this.adminRepository.findOneBy({
+        email,
+        status: USER_STATUS.ACTIVE,
+        deleted_at: null,
+      })) as unknown as Record<string, unknown> | null;
     }
     if (!account) throw new BadRequestException(ERROR_CODE.A007);
     return account;
   }
 
-
   async login(data: UserLoginDto, client: USER_CLIENT, header: ClientBasic): Promise<AccessToken> {
     const { email, password, remember_me } = data;
-    const { domain, device_hash } = header;
+    const { domain } = header;
     const user = await this.checkAccountExist(email, client);
-    this.checkPassword(password, user.password);
-    return this.createToken(user.id, client, domain, false, remember_me);
+    this.checkPassword(password, user['password'] as string);
+    return this.createToken(user['id'] as number, client, domain, false, remember_me);
   }
 
   async register(payload: UserRegisterDto, header: ClientBasic): Promise<AccessToken> {
@@ -112,7 +101,7 @@ export class AuthService {
 
     const { validCountry, validState } = await this.validateAddress(country_iso, state_iso, phone, phone_code);
 
-    const data: any = {
+    const data: Partial<Users> & Record<string, unknown> = {
       email,
       status: USER_STATUS.ACTIVE,
       password: hashPassword(password),
@@ -120,20 +109,18 @@ export class AuthService {
       first_name,
       last_name,
       phone,
-      country: validCountry ? validCountry.name : null,
+      country: validCountry ? ((validCountry as Record<string, unknown>).name as string) : null,
       country_iso: validCountry ? country_iso : null,
-      state: validState ? validState.name : null,
+      state: validState ? ((validState as Record<string, unknown>).name as string) : null,
       state_iso: validState ? state_iso : null,
       gender,
       phone_code,
       phone_iso,
     };
-    await this.userRepository.updateOne({ email }, data);
+    await this.userRepository.updateOne({ email }, data as Partial<Users>);
     const { domain, device_hash } = header;
     return this.createToken(userVerified.id, domain, device_hash, false, false);
   }
-
-
 
   async createToken(
     user: number,
@@ -143,11 +130,7 @@ export class AuthService {
     remember_me: boolean = false,
     is_mobile: boolean = false,
   ) {
-    const {
-      token,
-      expired_at,
-      id: token_ref,
-    } = await this.generateToken({
+    const { token, expired_at } = await this.generateToken({
       user,
       type: TOKEN_TYPE.LOGIN,
       remember_me,
@@ -171,19 +154,14 @@ export class AuthService {
     };
   }
 
-  /**
-   * tokentype
-   */
   async generateToken(payload: ICreateToken) {
     const { token_ref = null, user, type, remember_me = false, device_hash, is_mobile } = payload;
-    let time;
-    // const time_extend_remember_login = remember_me ? 5 : 0; //14 day
-    const time_extend_remember_login = remember_me ? 14 * 24 * 60 : 0; //14 day
+    let time: number | undefined;
+    const time_extend_remember_login = remember_me ? 14 * 24 * 60 : 0;
     switch (type) {
       case TOKEN_TYPE.LOGIN:
         time = TOKEN_TIME[`${USER_CLIENT.USER}_TIME`];
         break;
-
       case TOKEN_TYPE.RECOVER_PASSWORD:
         time = TOKEN_TIME.RECOVER_PASSWORD;
         break;
@@ -193,13 +171,13 @@ export class AuthService {
       default:
         break;
     }
-    const user_id = user
+    const user_id = user;
     const expired_at = is_mobile
       ? null
       : dayjs()
-        .add(time + time_extend_remember_login || 0, 'minutes')
-        .toDate();
-    const options = {
+          .add((time ?? 0) + time_extend_remember_login, 'minutes')
+          .toDate();
+    const options: Record<string, unknown> = {
       token: '',
       token_ref,
       user_id,
@@ -210,25 +188,30 @@ export class AuthService {
       options: payload.options || {},
     };
 
-    if (is_mobile) delete options.expired_at;
+    if (is_mobile) delete options['expired_at'];
 
-    Object.keys(options.options).forEach((key) => {
-      !options.options[key] && delete options.options[key];
+    const opts = options['options'] as Record<string, unknown>;
+    Object.keys(opts).forEach((key) => {
+      if (!opts[key]) delete opts[key];
     });
 
-    let value = {};
+    const value: Record<string, unknown> = {};
     MAPPING_ENCRYPT_TOKEN.forEach((u) => {
       value[u.fieldName] = options[u.fieldMapping];
     });
     Object.keys(value).forEach((key) => {
-      !value[key] && delete value[key];
+      if (!value[key]) delete value[key];
     });
 
     if (user_id) {
       value['uid'] = user_id;
     }
     const access_token = generateToken(value);
-    const { id } = await this.tokenRepository.save({ ...options, expired_at, access_token });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const savedToken = (await this.tokenRepository.save({ ...options, expired_at, access_token } as any)) as {
+      id: number;
+    };
+    const { id } = savedToken;
 
     return {
       id,
@@ -239,21 +222,21 @@ export class AuthService {
 
   async logOut(payload: LogoutDto) {
     const { access_token } = payload;
-    const rs = await this.tokenRepository.checkTokenValid(access_token, [TOKEN_TYPE.LOGIN]);
+    await this.tokenRepository.checkTokenValid(access_token, [TOKEN_TYPE.LOGIN]);
 
     await this.tokenRepository.delete({ access_token });
     return { logout: true };
   }
 
   async refreshSession(data: RefreshTokenDto, header: ClientBasic): Promise<AccessToken> {
-    let { refresh_token } = data;
+    const { refresh_token } = data;
     const { domain, device_hash } = header;
-    const tokenDecrypt: any = decryptToken(refresh_token);
-    const admin_id = tokenDecrypt.client === USER_CLIENT.ADMIN ? tokenDecrypt.user_id : null;
-    const user_id = tokenDecrypt.client === USER_CLIENT.USER ? tokenDecrypt.user_id : null;
-    const pipeline = {
+    const tokenDecrypt = decryptToken(refresh_token) as Record<string, unknown>;
+    const admin_id = tokenDecrypt['client'] === USER_CLIENT.ADMIN ? tokenDecrypt['user_id'] : null;
+    const user_id = tokenDecrypt['client'] === USER_CLIENT.USER ? tokenDecrypt['user_id'] : null;
+    const pipeline: Record<string, unknown> = {
       access_token: refresh_token,
-      client: tokenDecrypt.client,
+      client: tokenDecrypt['client'],
       status: STATUS.ACTIVE,
     };
     if (admin_id) pipeline['admin_id'] = admin_id;
@@ -261,13 +244,17 @@ export class AuthService {
     const rs = await this.tokenRepository.findOneByCondition(pipeline);
     if (!rs || (rs?.expired_at && dayjs(rs?.expired_at).isBefore(dayjs()))) throw new UnauthorizedException(EXPIRED);
 
-    let account;
-    if (tokenDecrypt.client === USER_CLIENT.USER) {
-      account = await this.userRepository.checkUserValid({ id: tokenDecrypt.user_id });
-    } else if (tokenDecrypt.client === USER_CLIENT.ADMIN) {
-      account = await this.adminRepository.checkAdminValid({ id: tokenDecrypt.user_id });
+    let account: Record<string, unknown> | undefined;
+    if (tokenDecrypt['client'] === USER_CLIENT.USER) {
+      account = (await this.userRepository.checkUserValid({
+        id: tokenDecrypt['user_id'] as number,
+      })) as unknown as Record<string, unknown>;
+    } else if (tokenDecrypt['client'] === USER_CLIENT.ADMIN) {
+      account = (await this.adminRepository.checkAdminValid({
+        id: tokenDecrypt['user_id'] as number,
+      })) as unknown as Record<string, unknown>;
     }
-    const tokenResponse = await this.createToken(account.id, domain, device_hash);
+    const tokenResponse = await this.createToken(account?.['id'] as number, domain, device_hash);
     return tokenResponse;
   }
 
@@ -279,7 +266,7 @@ export class AuthService {
     return 0;
   }
 
-  async profile(user: Users) {
+  profile(user: Users) {
     return user;
   }
 
@@ -287,13 +274,15 @@ export class AuthService {
     const { user } = header;
     const { token } = body;
     await this.tokenRepository.checkTokenValid(token, [TOKEN_TYPE.DELETE_ACCOUNT]);
-    await this.userRepository.softDelete(user.id);
-    await this.tokenRepository.destroyTokenUser(user.id, [
+    const userId = (user as unknown as Record<string, unknown>)?.['id'] as number;
+    await this.userRepository.softDelete(userId);
+    await this.tokenRepository.destroyTokenUser(userId, [
       TOKEN_TYPE.LOGIN,
       TOKEN_TYPE.REFRESH_TOKEN,
       TOKEN_TYPE.DELETE_ACCOUNT,
     ]);
   }
+
   async recoverAccount(data: EmailDto, header: ClientBearer) {
     const { email } = data;
     const { domain, device_hash } = header;
@@ -303,11 +292,11 @@ export class AuthService {
     return this.createToken(rs.id, domain, device_hash, false, false);
   }
 
-  async forgotPassword(data: EmailDto, client: USER_CLIENT) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  forgotPassword(data: EmailDto, _client: USER_CLIENT) {
     const { email } = data;
-
     return {
-      email
+      email,
     };
   }
 
@@ -335,10 +324,12 @@ export class AuthService {
       ]);
     }
   }
+
   async updatePassword(id: number, user_id: number, password: string) {
     await this.userRepository.updateOne({ id }, { password: hashPassword(password) });
     await this.tokenRepository.destroyTokenUser(user_id, [TOKEN_TYPE.LOGIN, TOKEN_TYPE.REFRESH_TOKEN]);
   }
+
   async changePassword(data: ChangePasswordDto, user_id: number) {
     const { password, confirm_password, old_password } = data;
     if (password != confirm_password) throw new BadRequestException(MODEL_AUTH_CONFIRM_PASSWORD_NOT_MATCH);
@@ -356,18 +347,17 @@ export class AuthService {
     return this.createToken(user.id, domain, device_hash);
   }
 
-
-
-  async validateAddress(countryIso: string, stateIso: string, phone: string, phoneCode: string) {
-    let validCountry, validState;
-
-    return { validCountry, validState };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  validateAddress(_countryIso: string, _stateIso: string, _phone: string, _phoneCode: string) {
+    const validCountry: unknown = undefined;
+    const validState: unknown = undefined;
+    return Promise.resolve({ validCountry, validState });
   }
 
   /**
    * Handle OIDC callback: exchange code for tokens, fetch userinfo, find/create user, return local tokens
    */
-  async handleOidcCallback(code: string, header: any) {
+  async handleOidcCallback(code: string, header: Record<string, unknown>) {
     if (!code) throw new BadRequestException(DATA_INVALID);
     // Exchange code for token
     const tokenEndpoint = OIDC_TOKEN_ENDPOINT || `${OIDC_ISSUER}/protocol/openid-connect/token`;
@@ -378,7 +368,7 @@ export class AuthService {
     params.append('client_id', OIDC_CLIENT_ID);
     if (OIDC_CLIENT_SECRET) params.append('client_secret', OIDC_CLIENT_SECRET);
 
-    const tokenRes = await axios.post(tokenEndpoint, params.toString(), {
+    const tokenRes = await axios.post<{ access_token?: string }>(tokenEndpoint, params.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
 
@@ -387,32 +377,32 @@ export class AuthService {
 
     // Fetch userinfo
     const userinfoEndpoint = OIDC_USERINFO_ENDPOINT || `${OIDC_ISSUER}/protocol/openid-connect/userinfo`;
-    const userinfoRes = await axios.get(userinfoEndpoint, {
+    const userinfoRes = await axios.get<Record<string, string>>(userinfoEndpoint, {
       headers: { Authorization: `Bearer ${access_token}` },
     });
-    const userinfo = userinfoRes?.data || {};
+    const userinfo = userinfoRes?.data ?? {};
 
-    const email = userinfo.email || userinfo.preferred_username;
-    const first_name = userinfo.given_name || userinfo.first_name || '';
-    const last_name = userinfo.family_name || userinfo.last_name || '';
+    const email = userinfo['email'] || userinfo['preferred_username'];
+    const first_name = userinfo['given_name'] || userinfo['first_name'] || '';
+    const last_name = userinfo['family_name'] || userinfo['last_name'] || '';
 
     if (!email) throw new BadRequestException('OIDC userinfo missing email');
 
     // Find or create local user
     let user = await this.userRepository.findOneBy({ email });
     if (!user) {
-      const payload: any = {
+      const created = await this.userRepository.createData({
         email,
         first_name,
         last_name,
         status: USER_STATUS.ACTIVE,
         password: hashPassword(randomStringUuid()),
-      };
-      const created = await this.userRepository.createData(payload as any);
-      user = created as any;
+      } as unknown as Users);
+      user = created;
     }
 
-    const { domain, device_hash } = header || {};
-    return this.createToken(user.id, domain || '', device_hash || '', false, false);
+    const domain = (header?.['domain'] as string) || '';
+    const device_hash = (header?.['device_hash'] as string) || '';
+    return this.createToken(user.id, domain, device_hash, false, false);
   }
 }

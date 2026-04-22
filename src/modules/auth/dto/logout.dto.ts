@@ -9,6 +9,8 @@ export class LogoutDto {
   @IsString()
   @IsNotEmpty()
   @TrimSpace()
-  @Transform((u) => (u.value ? u.value.replace(new RegExp(REGEX_PRE_BEAR, 'gm'), '') : u.value))
+  @Transform((u) =>
+    u.value ? (u.value as string).replace(new RegExp(REGEX_PRE_BEAR, 'gm'), '') : (u.value as string | undefined),
+  )
   access_token: string;
 }

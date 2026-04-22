@@ -1,4 +1,4 @@
-import { HeaderScope, UserScope } from '@common/decorators';
+import { UserScope } from '@common/decorators';
 import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
 import { Sort, SortParams } from '@common/decorators/sort.decorator';
 import { StatusDto } from '@common/dto';
@@ -7,6 +7,8 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards 
 import { Put, Query } from '@nestjs/common/decorators';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ListRoleDto } from './dto';
+import { AssignUsersRoleDto } from './dto/assign-users-role.dto';
+import { CloneRoleDto } from './dto/clone-role.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleService } from './role.service';
@@ -87,5 +89,43 @@ export class RoleController {
   @UseGuards(BearerGuard, IsMaintenanceGuard)
   getAll() {
     return this.roleService.getAll();
+  }
+
+  @ApiOperation({ summary: 'Clone a role with its permissions' })
+  @ApiBody({ type: CloneRoleDto })
+  @Post('clone/:id')
+  @HttpCode(200)
+  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  clone(@Param('id') id: number, @Body() body: CloneRoleDto, @UserScope() user: Users) {
+    return this.roleService.clone(id, body, user.id);
+  }
+
+  @ApiOperation({ summary: 'Get users assigned to a role' })
+  @Get('users/:roleId')
+  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  getUsersInRole(
+    @Param('roleId') roleId: number,
+    @Query('search') search: string,
+    @PaginationDecorator() paginationParams: PaginationParams,
+  ) {
+    return this.roleService.getUsersInRole(roleId, search, paginationParams);
+  }
+
+  @ApiOperation({ summary: 'Assign users to a role' })
+  @ApiBody({ type: AssignUsersRoleDto })
+  @Post('assign-users/:roleId')
+  @HttpCode(200)
+  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  assignUsers(@Param('roleId') roleId: number, @Body() body: AssignUsersRoleDto) {
+    return this.roleService.assignUsers(roleId, body);
+  }
+
+  @ApiOperation({ summary: 'Remove users from a role' })
+  @ApiBody({ type: AssignUsersRoleDto })
+  @Post('remove-users/:roleId')
+  @HttpCode(200)
+  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  removeUsers(@Param('roleId') roleId: number, @Body() body: AssignUsersRoleDto) {
+    return this.roleService.removeUsers(roleId, body);
   }
 }

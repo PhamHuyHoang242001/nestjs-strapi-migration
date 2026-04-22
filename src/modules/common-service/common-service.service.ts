@@ -2,13 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { SettingsService } from '@modules/settings/settings.service';
 import { SettingType } from '@modules/databases/setting.entity';
 import { TEMPLATE_ID } from '@constant/template';
-import {
-  USER_STATUS,
-} from '@common/enums';
+import { USER_STATUS } from '@common/enums';
 import { OtpRepository } from './repository/otp.repository';
 import { DataSource, EntityManager, In } from 'typeorm';
 
-import * as dayjs from 'dayjs';
 import { UserRepository } from '@modules/users/repository/users.repository';
 import { LockRepository } from './repository/lock.repository';
 import { CreateLockDto } from './dto/create-lock.dto';
@@ -22,9 +19,9 @@ export class CommonServiceService {
     private readonly otpRepository: OtpRepository,
     private readonly userRepository: UserRepository,
     private readonly lockRepository: LockRepository,
-  ) { }
+  ) {}
 
-  async withLock(data: CreateLockDto, transaction: EntityManager, fn: Function) {
+  async withLock(data: CreateLockDto, transaction: EntityManager, fn: () => Promise<void> | void) {
     const { keys, expire_time } = data;
     try {
       const locks = keys.map((key) => this.lockRepository.create({ key, expire_time }));
@@ -54,9 +51,7 @@ export class CommonServiceService {
     return countries?.value;
   }
 
-
   async createOtp(rs_id: number, template_id: TEMPLATE_ID, code: string, expire_time: number) {
-
     return await this.otpRepository.save({
       user_id: rs_id,
       code,
@@ -65,18 +60,15 @@ export class CommonServiceService {
     });
   }
 
-
   async findGuestById(guest_id: string) {
-    const user = this.userRepository.findOneBy({ guest_id });
+    const user = await this.userRepository.findOneBy({ guest_id });
     if (!user) throw new BadRequestException('Guest not found');
     return user;
   }
 
   async findOneOrCreateGuest(guest_id: string) {
-    let guest = await this.findGuestById(guest_id);
+    const guest = await this.findGuestById(guest_id);
     if (guest) return guest;
     return this.userRepository.save({ guest_id, status: USER_STATUS.ANONYMOUS, is_registered: false });
   }
-
-
 }

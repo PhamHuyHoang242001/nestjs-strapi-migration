@@ -26,6 +26,10 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminsModule } from '@modules/admins/admins.module';
 import { UploadsModule } from '@modules/upload/uploads.module';
+import { ModuleManagementModule } from '@modules/module/module-management.module';
+import { PermissionMatrixModule } from '@modules/permission-matrix/permission-matrix.module';
+import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
+import { DataAccessModule } from '@modules/data-access/data-access.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -36,12 +40,12 @@ import { UploadsModule } from '@modules/upload/uploads.module';
       useFactory() {
         return ormConfig;
       },
-      async dataSourceFactory(options) {
+      dataSourceFactory(options) {
         if (!options) {
           throw new Error('Invalid options passed');
         }
 
-        return addTransactionalDataSource(new DataSource(options));
+        return Promise.resolve(addTransactionalDataSource(new DataSource(options)));
       },
     }),
     MulterModule.register({
@@ -68,7 +72,10 @@ import { UploadsModule } from '@modules/upload/uploads.module';
     CommonServiceModule,
     AdminsModule,
     UploadsModule,
-
+    ModuleManagementModule,
+    PermissionMatrixModule,
+    ChangeHistoryModule,
+    DataAccessModule,
   ],
   controllers: [AppController],
   providers: [
@@ -84,12 +91,13 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     const secretKey = randomBytes(32).toString('hex');
     consumer
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       .apply(cookieParser(), session({ secret: secretKey, resave: false, saveUninitialized: false }))
       .forRoutes('*');
     // Initialize Passport
-    consumer.apply(passport.initialize()).forRoutes('*');
-    // Initialize Passport
-    consumer.apply(passport.initialize()).forRoutes('*');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+    consumer.apply((passport as any).initialize()).forRoutes('*');
+    consumer.apply(LoggerMiddleware).forRoutes('*');
     consumer.apply(LoggerMiddleware).forRoutes('*');
   }
 }
