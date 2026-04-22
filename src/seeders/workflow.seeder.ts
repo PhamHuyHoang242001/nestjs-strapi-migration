@@ -10,11 +10,13 @@ import { DataSource } from 'typeorm';
 export class WorkflowSeeder implements Seeder {
   constructor(private connection: DataSource) {}
 
-  async seed(): Promise<any> {
+  seed(): Promise<any> {
     console.log('TODO: seed BI Payment work-steps');
+    return Promise.resolve();
   }
 
-  async drop(): Promise<any> {
+  drop(): Promise<any> {
     console.log('TODO: drop BI Payment workflow seed data');
+    return Promise.resolve();
   }
 }

@@ -7,14 +7,16 @@ export class AuthSeeder implements Seeder {
   constructor(private connection: DataSource) {}
 
   private dataRef: number[] = [];
-  async seed(): Promise<any> {
+  seed(): Promise<any> {
     const dataConfig = [{ user_id: 1 }];
     for (const item of dataConfig) {
       this.dataRef.push(item.user_id);
     }
+    return Promise.resolve();
   }
 
-  async drop(): Promise<any> {
+  drop(): Promise<any> {
     console.log('drop');
+    return Promise.resolve();
   }
 }

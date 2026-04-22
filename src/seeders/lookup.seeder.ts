@@ -11,11 +11,13 @@ import { DataSource } from 'typeorm';
 export class LookupSeeder implements Seeder {
   constructor(private connection: DataSource) {}
 
-  async seed(): Promise<any> {
+  seed(): Promise<any> {
     console.log('TODO: seed tags/labels/categories for all domains');
+    return Promise.resolve();
   }
 
-  async drop(): Promise<any> {
+  drop(): Promise<any> {
     console.log('TODO: drop lookup seed data');
+    return Promise.resolve();
   }
 }

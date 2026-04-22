@@ -11,11 +11,13 @@ import { DataSource } from 'typeorm';
 export class OrgHierarchySeeder implements Seeder {
   constructor(private connection: DataSource) {}
 
-  async seed(): Promise<any> {
+  seed(): Promise<any> {
     console.log('TODO: seed BI Hub divisions/centers/departments/bicc-departments');
+    return Promise.resolve();
   }
 
-  async drop(): Promise<any> {
+  drop(): Promise<any> {
     console.log('TODO: drop BI Hub org hierarchy seed data');
+    return Promise.resolve();
   }
 }

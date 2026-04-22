@@ -4,28 +4,42 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { Seeder } from 'nestjs-seeder';
 import { DataSource } from 'typeorm';
-const flags = require('../../flags.json');
+import flags from '../../flags.json';
+
+/** Shape of each entry in flags.json */
+interface FlagEntry {
+  code: string;
+  image: string;
+}
+
+/** Shape of each country object returned by the country API */
+interface CountryApiItem {
+  id: number;
+  name: string;
+  iso2: string;
+  emoji: string;
+  phone_code: string;
+}
 
 @Injectable()
 export class SettingSeeder implements Seeder {
-  constructor(private connection: DataSource) { }
+  constructor(private connection: DataSource) {}
 
   private dataRef: number[] = [];
   async seed(): Promise<any> {
     console.log('table', this.connection.getMetadata(Settings).tableName);
     const arrDataInit = [];
-    const res = await axios.get(COUNTRY_API_PUBLIC_LIST_COUNTRY);
-    const map = new Map();
-    flags.forEach((ele) => map.set(ele.code.toLowerCase(), ele.image));
-    const values = res.data?.map((country) => {
-      return {
-        id: country.id,
-        name: country.name,
-        iso2: country.iso2,
-        emoji: country.emoji,
-        phone_code: country.phone_code,
-        flag: map.get(country.iso2.toLowerCase()),
-      };
+    const res = await axios.get<CountryApiItem[]>(COUNTRY_API_PUBLIC_LIST_COUNTRY);
+    const map = new Map<string, string>();
+    (flags as FlagEntry[]).forEach((ele: FlagEntry) => map.set(ele.code.toLowerCase(), ele.image));
+    const values = res.data?.map((country: CountryApiItem) => {
+      const id: number = country.id;
+      const name: string = country.name;
+      const iso2: string = country.iso2;
+      const emoji: string = country.emoji;
+      const phone_code: string = country.phone_code;
+      const flag: string | undefined = map.get(country.iso2.toLowerCase());
+      return { id, name, iso2, emoji, phone_code, flag };
     });
     const dataConfig = [
       {
@@ -81,10 +95,10 @@ export class SettingSeeder implements Seeder {
     }
 
     const pipeline = `SELECT * FROM ${this.connection.getMetadata(Settings).tableName} WHERE "id" = ANY($1) ;`;
-    const rs = await this.connection.query(pipeline, [this.dataRef]);
+    const rs = await this.connection.query<{ id: number }[]>(pipeline, [this.dataRef]);
 
     for (const item of dataConfig) {
-      if (!rs.find((u) => u.id == item.id)) arrDataInit.push(item);
+      if (!rs.find((u: { id: number }) => u.id == item.id)) arrDataInit.push(item);
     }
 
     if (!arrDataInit.length) return !0;

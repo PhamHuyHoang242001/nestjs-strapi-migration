@@ -7,7 +7,7 @@ import { DataSource } from 'typeorm';
 
 @Injectable()
 export class AdminSeeder implements Seeder {
-  constructor(private connection: DataSource) { }
+  constructor(private connection: DataSource) {}
 
   private dataRef: number[] = [];
   async seed(): Promise<any> {
@@ -28,9 +28,9 @@ export class AdminSeeder implements Seeder {
     }
 
     const pipeline = `SELECT * FROM ${this.connection.getMetadata(Admins).tableName} WHERE "id" = ANY($1) ;`;
-    const rs = await this.connection.query(pipeline, [this.dataRef]);
+    const rs = await this.connection.query<{ id: number }[]>(pipeline, [this.dataRef]);
     for (const item of dataConfig) {
-      if (!rs.find((u) => u.id == item.id)) arrDataInit.push(item);
+      if (!rs.find((u: { id: number }) => u.id == item.id)) arrDataInit.push(item);
     }
 
     if (!arrDataInit.length) return !0;
