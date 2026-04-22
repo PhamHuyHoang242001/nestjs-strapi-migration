@@ -37,7 +37,7 @@ export enum TEMPLATE_ID {
 
 export enum TEMPLATE_LIMIT {
   USER_FORGOT_PASSWORD = 5,
-  VERIFY_EMAIL = 5,
+  VERIFY_EMAIL = 6,
 }
 
 export enum SEND_MAIL_TEMPLATE {

@@ -1,6 +1,13 @@
 import { IsArray } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
+interface PageMetaInput {
+  page: number;
+  limit: number;
+  itemCount: number;
+  subTotal?: number;
+}
+
 export class PageMetaDto {
   @ApiProperty()
   readonly page: number;
@@ -23,7 +30,7 @@ export class PageMetaDto {
   @ApiProperty()
   readonly subTotal: number;
 
-  constructor({ page, limit, itemCount, subTotal = 0 }) {
+  constructor({ page, limit, itemCount, subTotal = 0 }: PageMetaInput) {
     this.page = page;
     this.limit = limit;
     this.itemCount = itemCount;

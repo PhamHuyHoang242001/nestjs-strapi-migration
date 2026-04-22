@@ -1,4 +1,4 @@
-import {Provider} from '@nestjs/common';
+import { Provider } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 
 export const CONFIG = 'ConfigProviderToken';

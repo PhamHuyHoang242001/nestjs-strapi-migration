@@ -11,5 +11,5 @@ export enum ERROR_CODE {
   B06 = 'B06',
   CP001 = 'CP001',
   CP002 = 'CP002',
-  M019 = 'M019'
+  M019 = 'M019',
 }

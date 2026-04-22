@@ -38,8 +38,10 @@ export const AWS_BUCKET: string = process.env.AWS_BUCKET ?? '';
 export const AWS_API_VERSION: string = process.env.AWS_API_VERSION ?? '';
 export const AWS_PATH: string = process.env.AWS_PATH ?? '';
 export const ENABLE_UPLOAD_EXCEL: string = process.env.ENABLE_UPLOAD_EXCEL ?? 'disable';
-export const LINK_STATIC: string = AWS_BUCKET && AWS_REGION ? `https://${AWS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/` : '';
-export const LINK_CDN: string = process.env.LINK_CDN ?? (process.env.CDN_BASE_URL ? `${process.env.CDN_BASE_URL}/` : '');
+export const LINK_STATIC: string =
+  AWS_BUCKET && AWS_REGION ? `https://${AWS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/` : '';
+export const LINK_CDN: string =
+  process.env.LINK_CDN ?? (process.env.CDN_BASE_URL ? `${process.env.CDN_BASE_URL}/` : '');
 
 // SMS
 export const SMS_ENDPOINT: string = process.env.SMS_ENDPOINT ?? process.env.SMS_ENPOINT ?? '';
@@ -107,7 +109,8 @@ export const FACEBOOK_GRAPH_API_ENDPOINT: string = process.env.FACEBOOK_GRAPH_AP
 // Payments
 export const STRIPE_SECRET_KEY: string = process.env.STRIPE_SECRET_KEY ?? '';
 export const STRIPE_PUBLISH_KEY: string = process.env.STRIPE_PUBLISH_KEY ?? '';
-export const BRAINTREE_ACCESS_TOKEN: string = process.env.PAYPAL_BRAINTREE_ACCESS_TOKEN ?? process.env.BRAINTREE_ACCESS_TOKEN ?? '';
+export const BRAINTREE_ACCESS_TOKEN: string =
+  process.env.PAYPAL_BRAINTREE_ACCESS_TOKEN ?? process.env.BRAINTREE_ACCESS_TOKEN ?? '';
 
 // Shipment defaults
 export const FANCHO_STREET_ADDRESS: string = process.env.FANCHO_STREET_ADDRESS ?? '';
@@ -139,7 +142,8 @@ export const USPS_ACCOUNT_NUMBER: string = process.env.USPS_ACCOUNT_NUMBER ?? ''
 export const USPS_TRACKING_BASE_URL: string = process.env.USPS_TRACKING_BASE_URL ?? '';
 
 // TaxCloud
-export const TAX_CLOUD_BASE_API: string = process.env.TAX_CLOUD_BASE_API ?? process.env.TAX_BASE_API ?? 'https://api.taxcloud.net/1.0/TaxCloud';
+export const TAX_CLOUD_BASE_API: string =
+  process.env.TAX_CLOUD_BASE_API ?? process.env.TAX_BASE_API ?? 'https://api.taxcloud.net/1.0/TaxCloud';
 export const TAX_CLOUD_API_KEY: string = process.env.TAX_CLOUD_API_KEY ?? '';
 export const TAX_CLOUD_API_LOGIN_ID: string = process.env.TAX_CLOUD_API_LOGIN_ID ?? '';
 export const TAX_CLOUD_TIC: string = process.env.TAX_CLOUD_TIC ?? '';

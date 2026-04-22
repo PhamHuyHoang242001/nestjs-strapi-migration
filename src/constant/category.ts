@@ -1,4 +1,4 @@
 export enum LEVEL_CATAGORY {
-    CATEGORY,
-    SUB_CATEGORY
+  CATEGORY,
+  SUB_CATEGORY,
 }

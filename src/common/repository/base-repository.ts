@@ -2,43 +2,44 @@ import { SortType } from '@common/enums';
 import { NOT_FOUND } from '@constant/error-messages';
 import { LIMIT_GET_ALL } from '@constant/index';
 import { NotFoundException } from '@nestjs/common';
-import * as _ from 'lodash';
 import { DataSource, FindOptionsWhere, In, Repository } from 'typeorm';
 import { EntityTarget } from 'typeorm/common/EntityTarget';
 import { ObjectLiteral } from 'typeorm/common/ObjectLiteral';
+
 export class BaseRepository<T extends ObjectLiteral> extends Repository<T> {
   constructor(type: EntityTarget<T>, dataSource: DataSource) {
     super(type, dataSource.createEntityManager());
   }
 
-  findOneByCondition(condition: {} | [], select?: string[]): Promise<T | undefined> {
-    // @ts-ignore
-    return this.findOne({ where: condition, select });
-    /**
-     * return this.findOneBy(condition);
-     */
+  findOneByCondition(
+    condition: Record<string, unknown> | Record<string, unknown>[],
+    select?: string[],
+  ): Promise<T | undefined> {
+    return this.findOne({
+      // @ts-expect-error - dynamic condition shape not fully typed
+      where: condition,
+      select: select as (keyof T)[],
+    });
   }
 
-  findOneByConditionSortCreatedAt(condition: Object): Promise<T | undefined> {
-    // @ts-ignore
+  findOneByConditionSortCreatedAt(condition: Record<string, unknown>): Promise<T | undefined> {
     return this.findOne({
-      // @ts-ignore
+      // @ts-expect-error - dynamic condition shape not fully typed
       where: condition,
-      // @ts-ignore
+      // @ts-expect-error - order field not in generic constraint
       order: { created_at: SortType.DESC },
     });
   }
 
   findByCondition(
-    condition: Object,
+    condition: Record<string, unknown>,
     order?: { field: string; type: SortType },
     offset?: number,
     limit?: number,
   ): Promise<T[] | undefined> {
-    const query = { where: condition };
+    const query: Record<string, unknown> = { where: condition };
     if (order) {
-      query['order'] = {};
-      query['order'][order.field] = order.type;
+      query['order'] = { [order.field]: order.type };
     }
     if (offset) {
       query['offset'] = offset;
@@ -46,20 +47,18 @@ export class BaseRepository<T extends ObjectLiteral> extends Repository<T> {
     if (limit) {
       query['limit'] = limit;
     }
-    // @ts-ignore
-    return this.find(query);
+    return this.find(query as Parameters<typeof this.find>[0]);
   }
 
   findByConditionWithDeleted(
-    condition: Object,
+    condition: Record<string, unknown>,
     order?: { field: string; type: SortType },
     offset?: number,
     limit?: number,
   ): Promise<T[] | undefined> {
-    const query = { where: condition };
+    const query: Record<string, unknown> = { where: condition };
     if (order) {
-      query['order'] = {};
-      query['order'][order.field] = order.type;
+      query['order'] = { [order.field]: order.type };
     }
     if (offset) {
       query['offset'] = offset;
@@ -68,26 +67,25 @@ export class BaseRepository<T extends ObjectLiteral> extends Repository<T> {
       query['limit'] = limit;
     }
     query['withDeleted'] = true;
-    // @ts-ignore
-    return this.find(query);
+    return this.find(query as Parameters<typeof this.find>[0]);
   }
 
-  findOneByConditionWithDeleted(condition: Object): Promise<T | undefined> {
+  findOneByConditionWithDeleted(condition: Record<string, unknown>): Promise<T | undefined> {
     return this.findOne({
-      // @ts-ignore
+      // @ts-expect-error - dynamic condition shape not fully typed
       where: condition,
       withDeleted: true,
-      // @ts-ignore
+      // @ts-expect-error - order field not in generic constraint
       order: { created_at: 'DESC' },
     });
   }
 
-  findOneByConditionWithDeletedSortCreatedAt(condition: Object): Promise<T | undefined> {
+  findOneByConditionWithDeletedSortCreatedAt(condition: Record<string, unknown>): Promise<T | undefined> {
     return this.findOne({
-      // @ts-ignore
+      // @ts-expect-error - dynamic condition shape not fully typed
       where: condition,
       withDeleted: true,
-      // @ts-ignore
+      // @ts-expect-error - order field not in generic constraint
       order: { created_at: SortType.DESC },
     });
   }
@@ -95,6 +93,7 @@ export class BaseRepository<T extends ObjectLiteral> extends Repository<T> {
   async updateOne(conditions: FindOptionsWhere<T>, data: Partial<T>): Promise<void> {
     await this.update(conditions, data);
   }
+
   async updateMany(conditions: FindOptionsWhere<T>, data: Partial<T>): Promise<void> {
     await this.update(conditions, data);
   }
@@ -104,61 +103,66 @@ export class BaseRepository<T extends ObjectLiteral> extends Repository<T> {
     if (!rs) throw new NotFoundException(NOT_FOUND);
     return rs;
   }
+
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   async findListByCondition(
     condition: FindOptionsWhere<T> | FindOptionsWhere<T>[],
     skip: number,
     take: number,
-    order?: any,
-    select?: string[],
-    relations?: string[],
+    order?: Record<string, unknown>,
+    _select?: string[],
+    _relations?: string[],
   ): Promise<Array<T | undefined>> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     return this.find({
       where: condition,
       skip,
       take,
-      order,
+      order: order as Parameters<typeof this.find>[0]['order'],
     });
   }
+
   createData(input: T): Promise<T> {
     return this.save(input);
   }
-  async countByConditions(conditions: { key: string; value: {} }[]) {
+
+  async countByConditions(conditions: { key: string; value: Record<string, unknown> }[]) {
     const query = this.createQueryBuilder(this.metadata.tableName).select(['count(id) as c']);
     for (const condition of conditions) {
       query.andWhere(condition.key, condition.value);
     }
-    const result = await query.getRawOne();
+    const result = await query.getRawOne<{ c: number }>();
     if (!result) {
       return 0;
     }
-    return result['c'];
+    return result.c;
   }
 
-  async countByConditionsWithDelete(conditions: { key: string; value: {} }[]) {
+  async countByConditionsWithDelete(conditions: { key: string; value: Record<string, unknown> }[]) {
     const query = this.createQueryBuilder(this.metadata.tableName).select(['count(id) as c']);
     for (const condition of conditions) {
       query.andWhere(condition.key, condition.value);
     }
     query.withDeleted();
-    const result = await query.getRawOne();
+    const result = await query.getRawOne<{ c: number }>();
     if (!result) {
       return 0;
     }
-    return result['c'];
+    return result.c;
   }
 
   async findListByIdsAndSelectField(input: number[], select?: string[], key: string = 'id') {
-    let result = [];
+    let result: T[] = [];
     const limit = LIMIT_GET_ALL;
-    let payload = _.cloneDeep(input);
+    let payload: number[] = [...input];
     payload = payload.filter((v, i) => payload.findIndex((u) => u === v) === i);
 
     while (true) {
       const rowQueue = payload.splice(0, limit);
       if (!rowQueue.length) break;
       const data = await this.find({
-        where: { [key]: In(rowQueue) } as any,
-        select,
+        where: { [key]: In(rowQueue) } as FindOptionsWhere<T>,
+        select: select as (keyof T)[],
       });
       if (!data?.length) break;
       result = result.concat(data);
@@ -173,7 +177,7 @@ export class BaseRepository<T extends ObjectLiteral> extends Repository<T> {
   ): Promise<Array<T | undefined>> {
     return this.find({
       where: condition,
-      select,
+      select: select as (keyof T)[],
     });
   }
 }

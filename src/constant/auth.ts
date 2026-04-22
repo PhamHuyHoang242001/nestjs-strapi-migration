@@ -20,7 +20,6 @@ export const TOKEN_TIME = {
 };
 
 export const CLIENT_TOKEN = [
-
   {
     client: USER_CLIENT.ADMIN,
     token: 'b2ZmaWNlcl9mYW5jaG86MXN1TEp2RVF0WnBVSFRuSUpQbCsrTUczQll0b2hidmNZa3J2TUtSTEVUamc=',

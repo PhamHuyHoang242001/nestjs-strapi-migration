@@ -6,30 +6,22 @@ import { ArgumentsHost, Catch, HttpException, HttpStatus, Logger } from '@nestjs
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Request, Response } from 'express';
 
-import i18n from '../service/i18n';
 import * as util from 'util';
 
 @Catch()
 export class AllExceptionsFilter extends BaseExceptionFilter {
-  // constructor(
-  //   @InjectPinoLogger(AllExceptionsFilter.name)
-  //   private readonly logger1: PinoLogger,
-  // ) {
-
-  // }
-
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
-  async catch(exception: any, host: ArgumentsHost) {
-    //HttpException
+  catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const request = ctx.getRequest<Request>();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { body } = request;
     const { query, method, url } = request;
-    const response = <any>ctx.getResponse<Response>();
+    const response = ctx.getResponse<Response>();
     const ignoreRoute = ['/api/v1/auth/login'];
 
-    const requestInfo = {
+    const requestInfo: Record<string, unknown> = {
       method,
       url,
       body,
@@ -39,32 +31,29 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     if (ignoreRoute.includes(url)) requestInfo.body = {};
 
     // Build a safe, serializable representation of the thrown value so logging
-    // cannot crash the filter. This helps diagnose cases where non-Error objects
-    // (for example `throw new Date()`) are thrown.
-    let safeException: any = {};
+    // cannot crash the filter.
+    let safeException: Record<string, unknown> = {};
     try {
       if (exception instanceof Error) {
         safeException.message = exception.message;
         safeException.stack = exception.stack;
-        // copy enumerable properties defensively
         for (const k of Object.keys(exception)) {
           try {
-            safeException[k] = (exception as any)[k];
-          } catch (e) {
+            safeException[k] = (exception as unknown as Record<string, unknown>)[k];
+          } catch {
             safeException[k] = '[unserializable]';
           }
         }
       } else if (exception && typeof exception === 'object') {
-        // shallow copy may still contain weird values; keep the raw object for inspect
         try {
-          safeException = { ...exception };
-        } catch (e) {
-          safeException = { message: String(exception) };
+          safeException = { ...(exception as Record<string, unknown>) };
+        } catch {
+          safeException = { message: util.inspect(exception) };
         }
       } else {
-        safeException = { message: String(exception) };
+        safeException = { message: util.inspect(exception) };
       }
-    } catch (e) {
+    } catch {
       safeException = { message: 'Unknown exception (failed to serialize)' };
     }
 
@@ -74,13 +63,16 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
       tag: logTag,
       url: url,
       exception: safeException,
-      // include a diagnostic string of the original thrown value
       thrownValueDebug: util.inspect(exception, { depth: 3 }),
-      thrownValueType: exception && exception.constructor ? String(exception.constructor) : typeof exception,
+      thrownValueType:
+        exception && typeof exception === 'object' && exception.constructor
+          ? String(exception.constructor)
+          : typeof exception,
       request: requestInfo,
     };
+    const exceptionObj = exception as Record<string, unknown> | undefined;
     const responseData = {
-      reason: exception?.response?.reason,
+      reason: (exceptionObj?.['response'] as Record<string, unknown> | undefined)?.['reason'],
       message: message,
       statusCode: status,
     };
@@ -88,76 +80,75 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     this.standardizeLogger(logData);
     return response.status(status).json(responseData);
   }
-  getStatusCode(exception) {
-    return exception instanceof HttpException
-      ? exception.getStatus()
-      : exception?.statusCode || HttpStatus.INTERNAL_SERVER_ERROR;
-  }
-  getMessageErrorHttpException(exception: HttpException) {
-    const exceptionObject: any = exception.getResponse();
-    let message = validateDatatype(exceptionObject.message, DATA_TYPE.STRING)
-      ? exceptionObject.message
-      : exceptionObject.message[0];
-    // Avoid translating here; return raw message (may be an error code or key)
-    try {
-      if (!exceptionObject.validation) message = message;
-    } catch (e) {
-      // swallow
+
+  getStatusCode(exception: unknown): number {
+    if (exception instanceof HttpException) {
+      return exception.getStatus();
     }
+    const exc = exception as Record<string, unknown> | undefined;
+    return (exc?.['statusCode'] as number) || HttpStatus.INTERNAL_SERVER_ERROR;
+  }
+
+  getMessageErrorHttpException(exception: HttpException): string {
+    const exceptionObject = exception.getResponse() as Record<string, unknown>;
+    const message = validateDatatype(exceptionObject['message'], DATA_TYPE.STRING)
+      ? (exceptionObject['message'] as string)
+      : (exceptionObject['message'] as string[])[0];
     return message;
   }
-  getMessageError(exception: any) {
+
+  getMessageError(exception: unknown): { message: string; logTag: string } {
     let logTag = 'NORMAL';
     let message = SYSTEM_ERROR;
     try {
-      // Log exception diagnostic to help identify thrown value types
       try {
         console.log('Exception diag ->', util.inspect(exception, { depth: 3 }));
-      } catch (e) {
-        console.log('Exception diag ->', String(exception));
+      } catch {
+        console.log('Exception diag ->', util.inspect(exception));
       }
       if (exception instanceof HttpException) {
         logTag = 'HttpException';
         message = this.getMessageErrorHttpException(exception);
       } else if (exception instanceof Error) {
         logTag = 'Error';
-        message = exception.message; //(1)
+        message = exception.message;
       } else {
         if (validateDatatype(exception, DATA_TYPE.OBJECT)) {
-          message = exception.message || message;
-          // keep as-is
+          const exc = exception as Record<string, unknown>;
+          message = (exc['message'] as string) || message;
         } else {
-          message = exception || message;
+          message = (exception as string) || message;
         }
       }
-    } catch (error) {
+    } catch {
       console.log('error');
     }
     return { message, logTag };
   }
-  standardizeLogger(logData) {
+
+  standardizeLogger(logData: Record<string, unknown>): void {
     try {
-      const payload: any = {
-        type: logData.tag,
+      const exc = (logData['exception'] as Record<string, unknown>) || {};
+      const payload: Record<string, unknown> = {
+        type: logData['tag'],
         date: new Date(),
-        apiPath: logData.url,
-        request: logData.request,
-        thrownValueDebug: logData.thrownValueDebug,
-        thrownValueType: logData.thrownValueType,
+        apiPath: logData['url'],
+        request: logData['request'],
+        thrownValueDebug: logData['thrownValueDebug'],
+        thrownValueType: logData['thrownValueType'],
+        exception: exc['stack'] || exc,
+        message: exc['message'] || (typeof exc === 'string' ? exc : undefined),
       };
-      const exc = logData.exception || {};
-      payload.exception = exc.stack || exc;
-      payload.message = exc.message || (typeof exc === 'string' ? exc : undefined);
 
       try {
         this.logger.error(JSON.stringify(payload));
-      } catch (err) {
+      } catch {
         this.logger.error(util.inspect(payload, { depth: 5 }));
       }
     } catch (err) {
       try {
         this.logger.error('Failed to log exception: ' + String(err));
-      } catch (e) {
+      } catch {
         // ignore
       }
     }

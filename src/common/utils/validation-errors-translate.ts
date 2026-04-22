@@ -1,5 +1,9 @@
-import {BadRequestException, ValidationError} from '@nestjs/common';
-import i18n from '../../service/i18n';
+import { BadRequestException, ValidationError } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const i18n = require('../../service/i18n') as {
+  default?: { __: (msg: string, replacements: Record<string, unknown>) => string };
+  __?: (msg: string, replacements: Record<string, unknown>) => string;
+};
 
 export const URL_LINK_INVALID = 'Link $property is invalid';
 export const NAME_INVALID = '$property is invalid';
@@ -121,15 +125,19 @@ for (let i = 0, len = classValidationPatterns.length; i < len; i++) {
   classValidationPatterns[i] = classValidationPatterns[i].replace('$', '\\$');
 }
 
+/** Extended ValidationError with extra tracking fields added during processing */
+interface ValidationErrorWithMeta extends ValidationError {
+  validationProperty?: string;
+}
+
 /**
  * The class-validator package does not support i18n and thus we will
  * translate the error messages ourselves.
  */
-
 export function validation_Errors_Translate(validationErrors: ValidationError[]) {
   const errors = validationErrors.map((error: ValidationError): string[] => {
-    let errorItem: any = error;
-    errorItem.validationProperty = error.property; // (1)
+    const errorItem = error as ValidationErrorWithMeta;
+    errorItem.validationProperty = error.property;
     const errosRecursive = recursiveSearch(errorItem, errorItem.validationProperty, '.');
     if (errorItem.constraints) {
       return parserErrors(errorItem);
@@ -140,67 +148,76 @@ export function validation_Errors_Translate(validationErrors: ValidationError[])
         return parserErrors(errorRecursive);
       }
     }
+    return [];
   });
 
-  const errorsFlattened = errors.reduce((data: string[], errors) => {
-    data.push(...errors);
+  const errorsFlattened = errors.reduce((data: string[], errs) => {
+    data.push(...errs);
     return data;
   }, []);
-  // errorsFlattened.map(u => message += (message ? ', ' : '') + u)
-  const message = errorsFlattened[0]; // fix return one message only
+  const message = errorsFlattened[0];
   return new BadRequestException({
     validation: true,
     message,
   });
 }
 
-function parserErrors(error): string[] {
-  return Object.keys(error.constraints).map((key: string): any => {
-    let match: string[] | null;
-    let constraint: string;
+function parserErrors(error: ValidationErrorWithMeta): string[] {
+  const constraints = error.constraints ?? {};
+  return Object.keys(constraints).map((key: string): string => {
+    let match: RegExpExecArray | null = null;
+    let constraint = '';
 
-    // Find the matching pattern.
     for (const validationPattern of classValidationPatterns) {
-      const pattern = validationPattern;
-      constraint = error.constraints[key].replace(error.property, '$property');
-      match = new RegExp(pattern, 'g').exec(constraint);
-      if (match) {
-        break;
-      }
+      constraint = constraints[key].replace(error.property ?? '', '$property');
+      match = new RegExp(validationPattern, 'g').exec(constraint);
+      if (match) break;
     }
 
-    // Replace the constraints values back to the $constraintX words.
     let msg = constraint;
-    const replacements = { property: error.validationProperty };
+    const replacements: Record<string, unknown> = { property: error.validationProperty };
     if (match) {
       for (let i = 1; i < match.length; i += 1) {
         msg = msg.replace(match[i], `$constraint${i}`);
         replacements[`constraint${i}`] = match[i];
       }
     }
-    const text = i18n.__(msg, replacements);
+    const i18nInstance = ((i18n as { default?: { __: (msg: string, replacements: Record<string, unknown>) => string } })
+      .default ?? i18n) as { __: (msg: string, replacements: Record<string, unknown>) => string };
+    const text = i18nInstance.__(msg, replacements);
     return text;
   });
 }
 
-const recursiveSearch = (obj, validationProperty, stringNested = '', results = []) => {
+const recursiveSearch = (
+  obj: ValidationErrorWithMeta,
+  validationProperty: string,
+  stringNested = '',
+  results: ValidationErrorWithMeta[] = [],
+): ValidationErrorWithMeta[] => {
   const r = results;
   const searchKey = 'constraints';
   Object.keys(obj).forEach((key) => {
-    const value = obj[key];
+    const value = (obj as unknown as Record<string, unknown>)[key];
     try {
       if (['children', 'constraints', 'property'].find((u) => u == key)) {
         if (key === searchKey) {
           obj.validationProperty = validationProperty;
           r.push(obj);
         } else if (Array.isArray(value)) {
-          for (let item of value) {
-            item.validationProperty = item.property || ''; // (1)
+          for (const item of value as ValidationErrorWithMeta[]) {
+            item.validationProperty = item.property || '';
             recursiveSearch(item, `${validationProperty}${stringNested}${item.validationProperty}`, stringNested, r);
           }
-        } else if (typeof value === 'object') {
-          value.validationProperty = value.validationProperty || value.property; // (1)
-          recursiveSearch(value, `${validationProperty}${stringNested}${value.validationProperty}`, stringNested, r);
+        } else if (typeof value === 'object' && value !== null) {
+          const child = value as ValidationErrorWithMeta;
+          child.validationProperty = child.validationProperty || child.property;
+          recursiveSearch(
+            child,
+            `${validationProperty}${stringNested}${child.validationProperty ?? ''}`,
+            stringNested,
+            r,
+          );
         }
       }
     } catch (error) {

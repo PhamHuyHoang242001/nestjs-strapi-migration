@@ -1,6 +1,6 @@
 import { i18nMsg } from '@common/utils';
 
-export function getMessage(key: string, params: {} = {}) {
+export function getMessage(key: string, params: Record<string, unknown> = {}) {
   return i18nMsg(key, params);
 }
 export const STATUS_CODE_DEFAULT = 200;

@@ -1,3 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
+/* eslint-disable @typescript-eslint/no-require-imports */
 import {
   CHARACTER_SEPARATE_SUB_INFO,
   DATA_INVALID,
@@ -74,7 +80,7 @@ export const i18nMsg = (message: string, payload?: object) => {
 export const i18nMsgByLanguage = (message: string, payload?: object) => {
   // translate message
   if (!message) return '';
-  let output = {};
+  const output = {};
   Object.values(LANGUAGE).forEach((lang) => {
     if (!payload) output[lang] = i18n.__({ phrase: message, locale: lang });
     else output[lang] = i18n.__({ phrase: message, locale: lang }, payload);
@@ -93,7 +99,7 @@ export const decryptToken = (input: string) => {
   let dataDecypt = decryptCryptoDecipher(token, ENCRYPT_KEY);
   if (dataDecypt) dataDecypt = JSON.parse(dataDecypt);
 
-  let value = {};
+  const value = {};
   MAPPING_ENCRYPT_TOKEN.forEach((u) => {
     value[u.fieldMapping] = dataDecypt[u.fieldName];
   });
@@ -163,7 +169,7 @@ function getFieldLength(field: any) {
 }
 export const validateFields = (requiredFields) => {
   try {
-    for (let objField of requiredFields) {
+    for (const objField of requiredFields) {
       const fieldLength = getFieldLength(objField.field);
 
       if (
@@ -173,7 +179,7 @@ export const validateFields = (requiredFields) => {
         (objField.maxLength && objField.field && fieldLength > objField.maxLength) ||
         (objField.regex && objField.field && !validateInput(objField.field, objField.regex))
       ) {
-        let output = Object.assign(
+        const output = Object.assign(
           { statusCode: 400, message: DATA_INVALID },
           {
             validation: true,
@@ -246,10 +252,10 @@ export const setDefaulSort = (data: any) => {
 };
 
 export const randomString = (length, charsSet) => {
-  let chars = charsSet;
+  const chars = charsSet;
   if (length <= 0 || !charsSet) return '';
 
-  let rnd = randomBytesCrypto(length),
+  const rnd = randomBytesCrypto(length),
     value = new Array(length),
     len = chars.length;
 
@@ -300,9 +306,9 @@ export const flatFields = (originalData, nested, fullKey?, key?) => {
   });
 };
 
-export const mapFieldValueExcel = (cell, dataType: DATA_TYPE) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const mapFieldValueExcel = (cell, _dataType: DATA_TYPE) => {
   let rs;
-  let default_value = 0;
   if (cell?.formulaType) {
     rs = cell?._value?.model?.result;
   } else if (cell?._value?.model?.value?.richText) rs = cell?.text;
@@ -311,7 +317,7 @@ export const mapFieldValueExcel = (cell, dataType: DATA_TYPE) => {
   return (rs || '').toString().trim();
 };
 
-export const encryptDevice = (domain: string, device: Object) => {
+export const encryptDevice = (domain: string, device: object) => {
   let value = domain;
   Object.values(MAPPING_ENCRYPT_DEVICEID).forEach((u) => (value += `_${device[u]}`));
   return encryptMD5(value);
@@ -344,7 +350,7 @@ export const standardizePagination = (
 ) => {
   const output = { currentPage, itemsPerPage, totalItems, itemCount, totalPages: 0 };
 
-  output.totalPages = Math.floor(output.totalItems / (output.itemsPerPage || 1)) + 1;
+  output.totalPages = Math.ceil(output.totalItems / (output.itemsPerPage || 1));
   return output;
 };
 export const execQueryPaignation = async (queryBuilder, page, limit) => {
@@ -510,14 +516,12 @@ export const removeSpaceByUnderScore = (str: string) => {
   return str.replace(/\s/g, '_');
 };
 
-
 export const formatPhoneNumberByCountryCode = (phoneNumber: string, country_iso: string) => {
   if (!phoneNumber || !country_iso) return phoneNumber;
   // Parse number with US country code and keep raw input
   const number = phoneUtil.parseAndKeepRawInput(phoneNumber, country_iso);
   return ['+', number.getCountryCode(), phoneNumber.slice(1, phoneNumber.length)].join('');
 };
-
 
 export const enumToArray = (e: any) => {
   return Object.keys(e)
@@ -530,5 +534,3 @@ export const enumToArray = (e: any) => {
 };
 
 export default common;
-
-

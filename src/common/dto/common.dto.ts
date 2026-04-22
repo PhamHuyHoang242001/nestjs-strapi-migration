@@ -3,23 +3,14 @@ import { EMAIL_INVALID } from '@constant/error-messages';
 import { MAX_STR_LENGTH, MAX_TEXT_LENGTH, MIN_STR_LENGTH, REGEX_EMAIL } from '@constant/validation';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class IdRefDto {
   @ApiProperty({ required: true })
   @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
-  @Transform((u) => u.value || undefined)
+  @Transform((u) => (u.value as number) || undefined)
   readonly id: number;
 }
 
@@ -28,7 +19,7 @@ export class RoleRefDto {
   @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
-  @Transform((u) => u.value || undefined)
+  @Transform((u) => (u.value as number) || undefined)
   role_id: number;
 }
 export class RoleRefOptionalDto {
@@ -36,7 +27,7 @@ export class RoleRefOptionalDto {
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
-  @Transform((u) => u.value || undefined)
+  @Transform((u) => (u.value as number) || undefined)
   readonly role_id: number;
 }
 
@@ -53,7 +44,7 @@ export class UserRefDto {
   @IsNotEmpty()
   @Type(() => Number)
   @IsNumber()
-  @Transform((u) => u.value || undefined)
+  @Transform((u) => (u.value as number) || undefined)
   readonly user_id: number;
 }
 export class UserRefOptionalDto {
@@ -61,7 +52,7 @@ export class UserRefOptionalDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  @Transform((u) => u.value || undefined)
+  @Transform((u) => (u.value as number) || undefined)
   readonly user_id: number;
 }
 
@@ -102,14 +93,15 @@ export class EmailOptionalDto {
   email: string;
 }
 
-
 export class BaseSearchDto {
   @ApiProperty({ required: false })
   @Type(() => String)
   @IsString()
   @IsOptional()
   @Trim()
-  @Transform((u) => (u.value ? u.value.replace(/[&\/\\#,+()$~%'":*?<>{}]/g, '') : u.value))
+  @Transform((u) =>
+    u.value ? (u.value as string).replace(/[&/\\#,+()$~%'":*?<>{}]/g, '') : (u.value as string | undefined),
+  )
   @MaxLength(250)
   keyword?: string;
 

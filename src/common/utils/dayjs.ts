@@ -7,4 +7,4 @@ dayjs.extend(utc);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(isSameOrAfter);
 
-export { dayjs as DayJS}
+export { dayjs as DayJS };

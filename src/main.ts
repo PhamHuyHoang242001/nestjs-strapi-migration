@@ -12,17 +12,11 @@ import { Config } from 'config';
 import * as path from 'path';
 import { initializeTransactionalContext, StorageDriver } from 'typeorm-transactional';
 import { AppModule } from './app.module';
-import { AllExceptionsFilter } from './filters';
 import i18n from './service/i18n';
 import * as bodyParser from 'body-parser';
 import { NODE_ENVIRONMENT } from './constant';
-// import { SessionModule } from '@nestjs/session';
-/**
- * process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
- * process.env.TZ = 'UTC-7';
- */
 
-async function initializeApp(app: INestApplication) {
+function initializeApp(app: INestApplication): void {
   app.enableCors({
     origin: '*',
     credentials: true,
@@ -31,7 +25,6 @@ async function initializeApp(app: INestApplication) {
   });
 
   app.setGlobalPrefix(BASE_URL);
-  // app.useGlobalFilters(new AllExceptionsFilter());
   // Interceptors
   app.useGlobalInterceptors(new TransformInterceptor());
 
@@ -56,7 +49,7 @@ async function initializeApp(app: INestApplication) {
   app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 }
 
-async function initializeMicroservice(app: INestApplication) {
+async function initializeMicroservice(app: INestApplication): Promise<void> {
   try {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.REDIS,
@@ -68,16 +61,17 @@ async function initializeMicroservice(app: INestApplication) {
 
     await app.startAllMicroservices();
   } catch (error) {
-    console.warn(`[Microservice] Redis microservice failed to start (non-fatal): ${error?.message}`);
+    const err = error as Error | undefined;
+    console.warn(`[Microservice] Redis microservice failed to start (non-fatal): ${err?.message}`);
   }
 }
-async function initializeSwagger(app: INestApplication) {
-  // Swagger
+
+function initializeSwagger(app: INestApplication): void {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup(SWAGGER_BASE_URL, app, swaggerDocument, customOptions);
 }
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   initializeTransactionalContext({ storageDriver: StorageDriver.AUTO });
   const appOptions = {
     cors: true,
@@ -88,37 +82,33 @@ async function bootstrap() {
 
   app.get<Config>(CONFIG);
 
-  await initializeApp(app);
+  initializeApp(app);
 
   // serve static files from /public so uploaded files are accessible
-  (app as NestExpressApplication).useStaticAssets(path.join(__dirname, '..', 'public'));
+  app.useStaticAssets(path.join(__dirname, '..', 'public'));
 
   await initializeMicroservice(app);
 
   if (NODE_ENV === NODE_ENVIRONMENT.DEV) {
     initializeSwagger(app);
   }
-  i18n.configure({
+
+  (i18n as unknown as { configure: (opts: Record<string, unknown>) => void }).configure({
     locales: ['en', 'vi'],
     defaultLocale: 'en',
     directory: path.join(__dirname, '../i18n'),
     updateFiles: false,
-    // autoReload: true,
-    // syncFiles: true,
   });
-  /**
-   *   Logger
-   *   app.useLogger(app.get(Logger));
-   */
 
   await app.listen(PORT);
   initConfigSystem();
   try {
     // do something
   } catch (error) {
-    console.error(`Failed to initialize, due to ${error}`);
+    console.error(`Failed to initialize, due to ${String(error)}`);
     process.exit(1);
   }
   console.log(`Application is running on: ${await app.getUrl()}`);
 }
-bootstrap();
+
+void bootstrap();

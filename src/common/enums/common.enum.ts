@@ -80,4 +80,3 @@ export enum OTP_STATUS {
   USED = 'used',
   EXPIRED = 'expired',
 }
-

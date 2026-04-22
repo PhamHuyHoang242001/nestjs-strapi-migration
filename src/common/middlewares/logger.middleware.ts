@@ -3,21 +3,32 @@ import { URL_NOT_FOUND } from '@constant/error-messages';
 import { CHARACTER_SEPARATE_SUB_INFO } from '@constant/index';
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
-import i18n from '../../service/i18n';
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const i18n = require('../../service/i18n') as {
+  default?: { setLocale: (lang: string) => void };
+  setLocale?: (lang: string) => void;
+};
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
   private logger = new Logger('HTTP');
 
-  async use(req: Request, res: Response, next: NextFunction) {
+  use(req: Request, res: Response, next: NextFunction) {
     const { method, originalUrl } = req;
     const ip = (req.headers['x-forwarded-for'] || req.ip || '').toString().replace('::ffff:', '');
-    const hostname = req.get('origin') ? `${req.get('origin')}/` : `${req.protocol}://${req.get('host')}/`;
-    const domain = hostname.split('://')[1].split(':')[0];
+    const origin = req.get('origin');
+    const host = req.get('host') || 'localhost';
+    const hostname = origin ? `${origin}/` : `${req.protocol || 'http'}://${host}/`;
+    const parts = hostname.split('://');
+    const domain = parts.length > 1 ? (parts[1] || 'localhost').split(':')[0] : 'localhost';
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const deviceHeader = req.headers.device;
+    const parsedDevice = typeof deviceHeader === 'string' && deviceHeader ? JSON.parse(deviceHeader) : (typeof deviceHeader === 'object' ? deviceHeader : {});
     req.headers.device = Object.assign(
       { browser: '' },
-      req.headers.device ? JSON.parse((req.headers.device || '').toString()) : '',
+      parsedDevice,
       {
         ip,
         userAgent: `${(req.headers['sec-ch-ua'] || '').toString().replace(/"/g, '')}${CHARACTER_SEPARATE_SUB_INFO}${
@@ -29,14 +40,15 @@ export class LoggerMiddleware implements NestMiddleware {
     req.headers.hostname = hostname;
     req.headers.domain = domain;
     req.headers.ip = ip;
-    // if (!req.headers['accept-language'])
     req.headers['accept-language'] = LANGUAGE.EN;
-    i18n.setLocale(req.headers['accept-language']);
+    const i18nInstance = (i18n.default ?? i18n) as { setLocale: (lang: string) => void };
+    i18nInstance.setLocale(req.headers['accept-language']);
 
     if (originalUrl.indexOf('/api/') == -1 && originalUrl.indexOf('/upload/') == -1) {
       return res.json({ error: 404, message: URL_NOT_FOUND });
     }
 
+    const body: unknown = req.body;
     console.log('log request...', originalUrl, 'language', req.headers['accept-language']);
 
     this.logger.log(
@@ -45,7 +57,7 @@ export class LoggerMiddleware implements NestMiddleware {
         url: originalUrl,
         IP: ip,
         header: { authorization: req.headers.authorization },
-        body: req.body,
+        body,
       }),
     );
     return next();

@@ -2,6 +2,7 @@ import { SortType } from '@common/enums';
 import { i18nMsg, toSnakeKey } from '@common/utils';
 import { BadRequestException, ExecutionContext, createParamDecorator } from '@nestjs/common';
 import { ApiQuery } from '@nestjs/swagger';
+import { Request } from 'express';
 
 export type SortParams = {
   sort_field: string;
@@ -19,8 +20,9 @@ export type SortInputParams = {
 };
 
 const sortType = [SortType.DESC, SortType.ASC];
+
 export function Sort(sortParams: SortInputParams) {
-  return (target, key, descriptor) => {
+  return (target: object, key: string | symbol, descriptorOrIndex: PropertyDescriptor | number) => {
     const propertyDescriptor = Object.getOwnPropertyDescriptor(target, key);
     if (propertyDescriptor) {
       ApiQuery({
@@ -44,22 +46,32 @@ export function Sort(sortParams: SortInputParams) {
       })(target, key, propertyDescriptor);
     }
 
-    return sortDecorator(sortParams)(target, key, descriptor);
+    // Support both parameter decorator (number) and method decorator (PropertyDescriptor)
+    if (typeof descriptorOrIndex === 'number') {
+      return sortDecorator(sortParams)(target, key, descriptorOrIndex);
+    }
   };
 }
 
-const sortDecorator = createParamDecorator((sortInput: any, ctx: ExecutionContext) => {
-  const sortParams = { sort_field: 'sort_field', sort_order: 'sort_order', ...sortInput };
+const sortDecorator = createParamDecorator((sortInput: SortInputParams, ctx: ExecutionContext) => {
+  const sortParams: SortInputParams & { sort_field: string; sort_order: string } = {
+    sort_field: 'sort_field',
+    sort_order: 'sort_order',
+    ...sortInput,
+  };
 
   if (!sortParams.sort_field) sortParams.sort_field = 'sort_field';
   if (!sortParams.sort_order) sortParams.sort_order = 'sort_order';
 
-  const request = ctx.switchToHttp().getRequest();
-  const sort_field: any = toSnakeKey(request.query[sortParams.sort_field] || sortParams.default?.sort_field || 'id');
-  const sort_order = (
-    request.query[sortParams.sort_order] ||
-    sortParams.default?.sort_order ||
-    SortType.DESC
+  const request = ctx.switchToHttp().getRequest<Request>();
+  const rawField = request.query[sortParams.sort_field];
+  const rawOrder = request.query[sortParams.sort_order];
+
+  const sort_field: string = toSnakeKey(
+    (typeof rawField === 'string' ? rawField : sortParams.default?.sort_field) || 'id',
+  ) as string;
+  const sort_order: string = (
+    (typeof rawOrder === 'string' ? rawOrder : sortParams.default?.sort_order) || SortType.DESC
   ).toUpperCase();
 
   if (!sortParams.allowedFields || (sort_field !== 'id' && !sortParams.allowedFields.includes(sort_field))) {
@@ -72,7 +84,7 @@ const sortDecorator = createParamDecorator((sortInput: any, ctx: ExecutionContex
     });
   }
 
-  if (!sortType.includes(sort_order)) {
+  if (!sortType.includes(sort_order as SortType)) {
     throw new BadRequestException({
       message: i18nMsg('$property must be one of the following values:$constraint1', {
         property: sortParams.sort_order,

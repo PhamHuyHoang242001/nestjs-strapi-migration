@@ -1,6 +1,7 @@
-import {PAGE_DEFAULT, PERPAGE_DEFAULT, PERPAGE_MAXIMUM} from '@constant/index';
-import {createParamDecorator, ExecutionContext} from '@nestjs/common';
-import {ApiQuery} from '@nestjs/swagger';
+import { PAGE_DEFAULT, PERPAGE_DEFAULT, PERPAGE_MAXIMUM } from '@constant/index';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { ApiQuery } from '@nestjs/swagger';
+import { Request } from 'express';
 
 export interface PaginationParams {
   page: number;
@@ -21,9 +22,10 @@ export const PaginationDecorator = createParamDecorator(
     if (!pagination.page) pagination.page = 'page';
     if (!pagination.limit) pagination.limit = 'limit';
 
-    const request = ctx.switchToHttp().getRequest();
-    const page = Math.max(request.query[pagination.page], PAGE_DEFAULT) || PAGE_DEFAULT;
-    const limit = Math.min(request.query[pagination.limit] || PERPAGE_DEFAULT, PERPAGE_MAXIMUM) || PERPAGE_DEFAULT;
+    const request = ctx.switchToHttp().getRequest<Request>();
+    const page = Math.max(Number(request.query[pagination.page]), PAGE_DEFAULT) || PAGE_DEFAULT;
+    const limit =
+      Math.min(Number(request.query[pagination.limit]) || PERPAGE_DEFAULT, PERPAGE_MAXIMUM) || PERPAGE_DEFAULT;
     return {
       skip: (page - 1) * limit,
       page,

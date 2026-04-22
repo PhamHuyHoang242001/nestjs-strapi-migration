@@ -1,5 +1,5 @@
-
-require('dotenv').config();
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+(require('dotenv') as { config: () => void }).config();
 
 export * from './country';
 export * from './data-default';

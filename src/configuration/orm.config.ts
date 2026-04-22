@@ -6,6 +6,7 @@ import { DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME } from './env.confi
 // __dirname-based paths are unreliable because NestJS CLI outputs to dist/src/ (not dist/).
 const projectRoot = process.cwd();
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const ormConfig: TypeOrmModuleOptions = {
   type: 'postgres',
   host: DB_HOST,

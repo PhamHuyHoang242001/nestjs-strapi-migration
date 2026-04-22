@@ -29,11 +29,11 @@ export const MAX_NUMBER = 99999999999;
 export const MIN_DECIMAL_LENGTH = 0;
 export const MAX_DECIMAL_LENGTH = 11;
 
-export const REGEX_PHONE = `^[0-9\+]{1,}[0-9\-]{6,19}$`;
+export const REGEX_PHONE = `^[0-9+]{1,}[0-9-]{6,19}$`;
 export const REGEX_ACCOUNT_NUMBER = `^[a-zA-Z0-9]{1,100}$`;
 
-export const REGEX_EMAIL = `^\\w+([\.-]?\\w+)*@\\w+([\.-]?\\w+)*(\\.\\w{2,6})+$`;
+export const REGEX_EMAIL = `^\\w+([.-]?\\w+)*@\\w+([.-]?\\w+)*(\\.\\w{2,6})+$`;
 export const REGEX_NAME = `^(?=.{1,255}$)`;
-export const REGEX_PASSWORD = /^(?=.*[a-zA-Z0-9])[a-zA-Z0-9\[\]~`!@#$%^&*()-_+={}|\;:"",./?]{5,40}$/;
+export const REGEX_PASSWORD = /^(?=.*[a-zA-Z0-9])[a-zA-Z0-9[\]~`!@#$%^&*()_+={}|;:"",./?-]{5,40}$/;
 export const REGEX_PRE_PHONE = '\\+';
 export const REGEX_PRE_BEAR = 'Bearer ';
