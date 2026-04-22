@@ -1,8 +1,6 @@
 import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Role } from '@modules/databases/role.entity';
-import { Users } from '@modules/databases/user.entity';
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 
 @Entity('change_history')
 export class ChangeHistory extends BaseSoftDeleteEntity {
@@ -17,18 +15,6 @@ export class ChangeHistory extends BaseSoftDeleteEntity {
 
   @Column({ nullable: true })
   public entity_name: string;
-
-  @Column({ nullable: true })
-  public role_id?: number;
-  @ManyToOne('Role', 'change_histories')
-  @JoinColumn({ name: 'role_id' })
-  public role_ref?: Role;
-
-  @Column({ nullable: true })
-  public user_id?: number;
-  @ManyToOne('Users', 'change_histories')
-  @JoinColumn({ name: 'user_id' })
-  public user_ref?: Users;
 
   @Column()
   public performed_by: string;

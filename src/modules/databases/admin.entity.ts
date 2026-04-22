@@ -5,7 +5,6 @@ import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
 @Entity('admins')
 export class Admins extends BaseSoftDeleteEntity {
-
   @Column({ nullable: true })
   public last_name: string;
 

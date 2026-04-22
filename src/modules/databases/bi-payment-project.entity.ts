@@ -1,5 +1,5 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { BiPaymentProgressStatus, BiPaymentProjectStatus, BiPaymentProgramType } from '@common/enums/bi-payment.enums';
+import { BiPaymentProjectStatus, BiPaymentProgramType } from '@common/enums/bi-payment.enums';
 import { Column, Entity, JoinTable, ManyToMany, OneToMany } from 'typeorm';
 import { BiPaymentCategory } from '@modules/databases/bi-payment-category.entity';
 import { BiPaymentProgram } from '@modules/databases/bi-payment-program.entity';

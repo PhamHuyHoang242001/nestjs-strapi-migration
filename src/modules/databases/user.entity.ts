@@ -1,10 +1,9 @@
 import { GENDER, USER_STATUS } from '@common/enums';
-import { ChangeHistory } from '@modules/databases/change-history.entity';
+import { DataAccess } from '@modules/databases/data-access.entity';
 import { Role } from '@modules/databases/role.entity';
-import { UserPermissionData } from '@modules/databases/user-permission-data.entity';
 import { UserRole } from '@modules/databases/user-role.entity';
 import { BaseSoftDeleteEntity } from '../../configuration/base-entity';
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 
 @Entity('users')
 export class Users extends BaseSoftDeleteEntity {
@@ -102,11 +101,8 @@ export class Users extends BaseSoftDeleteEntity {
   @OneToMany('UserRole', 'user')
   user_roles?: UserRole[];
 
-  @OneToMany('UserPermissionData', 'user')
-  user_permission_data?: UserPermissionData[];
-
-  @OneToMany('ChangeHistory', 'user_ref')
-  change_histories?: ChangeHistory[];
+  @ManyToMany('DataAccess', 'users')
+  data_access_rules?: DataAccess[];
 
   @OneToMany('Role', 'creator')
   created_roles?: Role[];

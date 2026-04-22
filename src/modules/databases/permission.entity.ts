@@ -1,15 +1,12 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Module } from '@modules/databases/module.entity';
-import { UserPermissionData } from '@modules/databases/user-permission-data.entity';
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
 @Entity()
 export class Permission extends BaseSoftDeleteEntity {
   @Column({ nullable: false })
   name: string;
-  /**
-   * synctax model_feature
-   */
+
   @Column({ nullable: false })
   code: string;
 
@@ -27,8 +24,4 @@ export class Permission extends BaseSoftDeleteEntity {
   @ManyToOne('Module', 'permissions')
   @JoinColumn({ name: 'module_id' })
   public module?: Module;
-
-  // Inverse relations
-  @OneToMany('UserPermissionData', 'permission')
-  user_permission_data?: UserPermissionData[];
 }

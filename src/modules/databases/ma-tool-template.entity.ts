@@ -6,7 +6,7 @@ import {
   MaToolUploadMethod,
   MaToolWorkstepType,
 } from '@common/enums/ma-tool.enums';
-import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 import { MaToolWorkspace } from './ma-tool-workspace.entity';
 import { MaToolSheetTemplate } from './ma-tool-sheet-template.entity';
 import { MaToolDocument } from './ma-tool-document.entity';

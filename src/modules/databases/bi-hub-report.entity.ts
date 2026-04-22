@@ -7,15 +7,7 @@ import {
   BiHubReportType,
 } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  JoinTable,
-  ManyToMany,
-  ManyToOne,
-  OneToMany,
-} from 'typeorm';
+import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 import { BiHubBiccDepartment } from './bi-hub-bicc-department.entity';
 import { BiHubCenter } from './bi-hub-center.entity';
 import { BiHubDepartment } from './bi-hub-department.entity';

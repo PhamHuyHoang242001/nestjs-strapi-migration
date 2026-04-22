@@ -1,13 +1,5 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  JoinTable,
-  ManyToMany,
-  ManyToOne,
-  OneToMany,
-} from 'typeorm';
+import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 import { BiDiagnosticCategory } from './bi-diagnostic-category.entity';
 import { BiDiagnosticFile } from './bi-diagnostic-file.entity';
 import { BiDiagnosticHistoryReport } from './bi-diagnostic-history-report.entity';

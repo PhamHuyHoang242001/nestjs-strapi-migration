@@ -1,8 +1,9 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Permission } from '@modules/databases/permission.entity';
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, OneToMany, Tree, TreeChildren, TreeParent } from 'typeorm';
 
 @Entity('modules')
+@Tree('materialized-path')
 export class Module extends BaseSoftDeleteEntity {
   @Column({ nullable: true })
   public path: string;
@@ -16,14 +17,10 @@ export class Module extends BaseSoftDeleteEntity {
   @Column({ default: true })
   public is_active: boolean;
 
-  @Column({ nullable: true })
-  public parent_id?: number;
-  @ManyToOne('Module', 'children')
-  @JoinColumn({ name: 'parent_id' })
+  @TreeParent()
   public parent?: Module;
 
-  // Inverse relations
-  @OneToMany('Module', 'parent')
+  @TreeChildren()
   children?: Module[];
 
   @OneToMany('Permission', 'module')
