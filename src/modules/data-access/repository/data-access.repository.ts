@@ -47,7 +47,7 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
       );
     }
 
-    const sortField = sortParams?.sort_field ? `da.${sortParams.sort_field}` : 'da.id';
+    const sortField = sortParams?.sort_field ? `da.${sortParams.sort_field}` : 'da.created_at';
     const sortOrder = sortParams?.sort_order || 'DESC';
     query.orderBy(sortField, sortOrder);
 

@@ -12,6 +12,39 @@ interface ModuleSeedItem {
   parent_id: number | null;
 }
 
+// ── Data Uploader ────────────────────────────────────────────────
+const DATA_UPLOADER: ModuleSeedItem[] = [
+  { id: 1, path: '/data-uploader', name: 'Data Uploader', table_name: null, is_active: true, parent_id: null },
+  { id: 2, path: '/data-uploader/workspace', name: 'Workspace', table_name: 'ma_tool_workspaces', is_active: true, parent_id: 1 },
+  { id: 3, path: '/data-uploader/workspace/template', name: 'Template', table_name: 'ma_tool_templates', is_active: true, parent_id: 2 },
+  { id: 4, path: '/data-uploader/workspace/template/document', name: 'Document', table_name: 'ma_tool_documents', is_active: true, parent_id: 3 },
+];
+
+// ── BI Hub ───────────────────────────────────────────────────────
+const BI_HUB: ModuleSeedItem[] = [
+  { id: 5, path: '/bi-hub', name: 'BI Hub', table_name: null, is_active: true, parent_id: null },
+  { id: 6, path: '/bi-hub/bicc-department', name: 'BICC Department', table_name: 'bi_hub_bicc_departments', is_active: true, parent_id: 5 },
+  { id: 7, path: '/bi-hub/bicc-department/bi-hub-reports', name: 'BI Hub Reports', table_name: 'bi_hub_reports', is_active: true, parent_id: 6 },
+  { id: 8, path: '/bi-hub/bicc-department/bi-diagnostic-category', name: 'BI Diagnostic Category', table_name: 'bi_diagnostic_categories', is_active: true, parent_id: 6 },
+  { id: 9, path: '/bi-hub/bicc-department/bi-diagnostic-category/bi-diagnostic-report', name: 'BI Diagnostic Report', table_name: 'bi_diagnostic_reports', is_active: true, parent_id: 8 },
+];
+
+// ── BI Payment — TEMPORARILY DISABLED ────────────────────────────
+// Uncomment when BI Payment modules are ready for seeding
+/*
+const BI_PAYMENT: ModuleSeedItem[] = [
+  { id: 10, path: '/bi-payment', name: 'BI Payment', table_name: null, is_active: true, parent_id: null },
+  { id: 11, path: '/bi-payment/bicc-department', name: 'BICC Department', table_name: null, is_active: true, parent_id: 10 },
+  { id: 12, path: '/bi-payment/bicc-department/project', name: 'Project', table_name: 'bi_payment_projects', is_active: true, parent_id: 11 },
+  { id: 13, path: '/bi-payment/bicc-department/project/program', name: 'Program', table_name: 'bi_payment_programs', is_active: true, parent_id: 12 },
+  { id: 14, path: '/bi-payment/bicc-department/project/program/workstep', name: 'Work Step', table_name: 'bi_payment_work_steps', is_active: true, parent_id: 13 },
+  { id: 15, path: '/bi-payment/bicc-department/project/program/template', name: 'Template', table_name: 'ma_tool_templates', is_active: true, parent_id: 13 },
+  { id: 16, path: '/bi-payment/bicc-department/project/program/document', name: 'Document', table_name: 'ma_tool_documents', is_active: true, parent_id: 13 },
+  { id: 17, path: '/bi-payment/bicc-department/project/program/checklist', name: 'Checklist', table_name: 'bi_payment_checklists', is_active: true, parent_id: 13 },
+  { id: 18, path: '/bi-payment/bicc-department/project/program/other-file', name: 'Other File', table_name: 'bi_payment_other_files', is_active: true, parent_id: 13 },
+];
+*/
+
 @Injectable()
 export class ModuleSeeder implements Seeder {
   constructor(private connection: DataSource) {}
@@ -20,134 +53,10 @@ export class ModuleSeeder implements Seeder {
 
   async seed(): Promise<void> {
     const dataConfig: ModuleSeedItem[] = [
-      // Data Uploader
-      { id: 1, path: '/data-uploader', name: 'Data Uploader', table_name: null, is_active: true, parent_id: null },
-      {
-        id: 2,
-        path: '/data-uploader/workspace',
-        name: 'Workspace',
-        table_name: 'ma_tool_workspaces',
-        is_active: true,
-        parent_id: 1,
-      },
-      {
-        id: 3,
-        path: '/data-uploader/workspace/template',
-        name: 'Template',
-        table_name: 'ma_tool_templates',
-        is_active: true,
-        parent_id: 2,
-      },
-      {
-        id: 4,
-        path: '/data-uploader/workspace/template/document',
-        name: 'Document',
-        table_name: 'ma_tool_documents',
-        is_active: true,
-        parent_id: 3,
-      },
-
-      // BI Hub
-      { id: 5, path: '/bi-hub', name: 'BI Hub', table_name: null, is_active: true, parent_id: null },
-      {
-        id: 6,
-        path: '/bi-hub/bicc-department',
-        name: 'BICC Department',
-        table_name: null,
-        is_active: true,
-        parent_id: 5,
-      },
-      {
-        id: 7,
-        path: '/bi-hub/bicc-department/bi-hub-reports',
-        name: 'BI Hub Reports',
-        table_name: 'bi_hub_reports',
-        is_active: true,
-        parent_id: 6,
-      },
-      {
-        id: 8,
-        path: '/bi-hub/bicc-department/bi-diagnostic-category',
-        name: 'BI Diagnostic Category',
-        table_name: 'bi_diagnostic_categories',
-        is_active: true,
-        parent_id: 6,
-      },
-      {
-        id: 9,
-        path: '/bi-hub/bicc-department/bi-diagnostic-category/bi-diagnostic-report',
-        name: 'BI Diagnostic Report',
-        table_name: 'bi_diagnostic_reports',
-        is_active: true,
-        parent_id: 8,
-      },
-
-      // BI Payment
-      { id: 10, path: '/bi-payment', name: 'BI Payment', table_name: null, is_active: true, parent_id: null },
-      {
-        id: 11,
-        path: '/bi-payment/bicc-department',
-        name: 'BICC Department',
-        table_name: null,
-        is_active: true,
-        parent_id: 10,
-      },
-      {
-        id: 12,
-        path: '/bi-payment/bicc-department/project',
-        name: 'Project',
-        table_name: 'bi_payment_projects',
-        is_active: true,
-        parent_id: 11,
-      },
-      {
-        id: 13,
-        path: '/bi-payment/bicc-department/project/program',
-        name: 'Program',
-        table_name: 'bi_payment_programs',
-        is_active: true,
-        parent_id: 12,
-      },
-      {
-        id: 14,
-        path: '/bi-payment/bicc-department/project/program/workstep',
-        name: 'Work Step',
-        table_name: 'bi_payment_work_steps',
-        is_active: true,
-        parent_id: 13,
-      },
-      {
-        id: 15,
-        path: '/bi-payment/bicc-department/project/program/template',
-        name: 'Template',
-        table_name: 'ma_tool_templates',
-        is_active: true,
-        parent_id: 13,
-      },
-      {
-        id: 16,
-        path: '/bi-payment/bicc-department/project/program/document',
-        name: 'Document',
-        table_name: 'ma_tool_documents',
-        is_active: true,
-        parent_id: 13,
-      },
-      {
-        id: 17,
-        path: '/bi-payment/bicc-department/project/program/checklist',
-        name: 'Checklist',
-        table_name: 'bi_payment_checklists',
-        is_active: true,
-        parent_id: 13,
-      },
-      {
-        id: 18,
-        path: '/bi-payment/bicc-department/project/program/other-file',
-        name: 'Other File',
-        table_name: 'bi_payment_other_files',
-        is_active: true,
-        parent_id: 13,
-      },
+      ...DATA_UPLOADER,
+      ...BI_HUB,
+      // BI Payment — temporarily disabled (uncomment when ready)
+      // ...BI_PAYMENT,
     ];
 
     this.dataRef = dataConfig.map((item) => item.id);

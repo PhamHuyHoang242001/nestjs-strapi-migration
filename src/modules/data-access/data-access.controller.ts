@@ -5,7 +5,9 @@ import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DataAccessService } from './data-access.service';
+import { CreateBulkDataAccessDto } from './dto/create-bulk-data-access.dto';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
+import { RemoveLinkDataAccessDto } from './dto/remove-link-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
 import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 
@@ -16,14 +18,14 @@ import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 export class DataAccessController {
   constructor(private readonly dataAccessService: DataAccessService) {}
 
-  @ApiOperation({ summary: 'Search data access rules (supports role/user/subject_type filters)' })
-  @Get('search')
-  search(
+  @ApiOperation({ summary: 'List data access rules flattened 1-1 (1 subject per row) with pagination' })
+  @Get('list')
+  list(
     @Query() query: SearchDataAccessDto,
     @Sort({ allowedFields: ['created_at', 'data_id', 'table_name', 'scope_type'] }) sortParams: SortParams,
     @PaginationDecorator() pagination: PaginationParams,
   ) {
-    return this.dataAccessService.search(query, sortParams, pagination);
+    return this.dataAccessService.list(query, sortParams, pagination);
   }
 
   @ApiOperation({ summary: 'Get data access rule details with relations' })
@@ -39,6 +41,13 @@ export class DataAccessController {
     return this.dataAccessService.create(body);
   }
 
+  @ApiOperation({ summary: 'Bulk create data access rules with hierarchy validation' })
+  @Post('create-bulk')
+  @HttpCode(200)
+  createBulk(@Body() body: CreateBulkDataAccessDto) {
+    return this.dataAccessService.createBulk(body);
+  }
+
   @ApiOperation({ summary: 'Update a data access rule (soft-delete + insert for audit trail)' })
   @Put('update/:id')
   update(@Param('id') id: number, @Body() body: UpdateDataAccessDto) {
@@ -49,6 +58,12 @@ export class DataAccessController {
   @Delete('delete/:id')
   delete(@Param('id') id: number) {
     return this.dataAccessService.delete(id);
+  }
+
+  @ApiOperation({ summary: 'Remove a specific subject (role/user) link from a rule' })
+  @Delete('remove-link/:ruleId')
+  removeLink(@Param('ruleId') ruleId: number, @Query() query: RemoveLinkDataAccessDto) {
+    return this.dataAccessService.removeLink(ruleId, query.subject_type, query.subject_id);
   }
 
   @ApiOperation({ summary: 'Get all data access rules for a specific user' })

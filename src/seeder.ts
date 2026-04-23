@@ -20,6 +20,7 @@ import { Settings } from '@modules/databases/setting.entity';
 import { SettingSeeder } from './seeders/setting.seeder';
 import { Admins } from '@modules/databases/admin.entity';
 import { AdminSeeder } from './seeders/admin.seeder';
+import { BusinessTableSampleSeeder } from './seeders/business-table-sample.seeder';
 
 seeder({
   imports: [
@@ -27,4 +28,15 @@ seeder({
     TypeOrmModule.forRoot(ormConfig),
     TypeOrmModule.forFeature([Module, Permission, Role, Users, UserRole, DataAccess, ChangeHistory, Settings, Admins]),
   ],
-}).run([ModuleSeeder, PermissionSeeder, UserSeeder, RoleSeeder, UserRoleSeeder, DataAccessSeeder, ChangeHistorySeeder, SettingSeeder, AdminSeeder]);
+}).run([
+  ModuleSeeder,
+  PermissionSeeder,
+  UserSeeder,
+  RoleSeeder,
+  UserRoleSeeder,
+  // BusinessTableSampleSeeder,
+  DataAccessSeeder,
+  ChangeHistorySeeder,
+  SettingSeeder,
+  AdminSeeder,
+]);
