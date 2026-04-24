@@ -18,11 +18,14 @@ import { CreateUserManagementDto } from './dto/create-user-management.dto';
 import { UpdateUserManagementDto } from './dto/update-user-management.dto';
 import { BulkAssignRoleDto, BulkUserActionDto } from './dto/bulk-user-action.dto';
 import { UserRole } from '@modules/databases/user-role.entity';
+import { Role } from '@modules/databases/role.entity';
 import { ChangeHistory } from '@modules/databases/change-history.entity';
 import { DataAccess } from '@modules/databases/data-access.entity';
 import { execQueryPaignation } from '@common/utils/common';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { SortParams } from '@common/decorators/sort.decorator';
+import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
+import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE } from '@common/enums';
 
 @Injectable()
 export class UsersService {
@@ -32,6 +35,7 @@ export class UsersService {
     private readonly tokenRepository: TokenRepository,
     private readonly authService: AuthService,
     private readonly dataSource: DataSource,
+    private readonly historyLogger: ChangeHistoryLogger,
   ) {}
 
   findUsingSocialId({ apple_id, google_id }: { apple_id?: string | null; google_id?: string | null }) {
@@ -245,6 +249,24 @@ export class UsersService {
       await userRoleRepo.save(roles);
     }
 
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.USER,
+      action_type: CHANGE_ACTION_TYPE.CREATE,
+      entity_id: String(savedUser.id),
+      entity_name: savedUser.username,
+      performed_by: 'system',
+      old_value: null,
+      new_value: {
+        username: userData.username,
+        full_name: userData.full_name,
+        email: userData.email,
+        department: userData.department,
+        roles: role_ids?.length
+          ? (await this.dataSource.getRepository(Role).find({ where: { id: In(role_ids) }, select: ['id', 'name'] })).map((r) => r.name)
+          : [],
+      },
+    }).catch(() => {});
+
     return { id: savedUser.id };
   }
 
@@ -258,11 +280,30 @@ export class UsersService {
       if (existing) throw new BadRequestException(`Username '${userData.username}' already exists`);
     }
 
+    // Capture old values before mutation for diff logging
+    const oldSnapshot: Record<string, unknown> = {};
+    const newSnapshot: Record<string, unknown> = {};
+    for (const key of Object.keys(userData) as (keyof typeof userData)[]) {
+      if (user[key as keyof typeof user] !== (userData as any)[key]) {
+        oldSnapshot[key] = user[key as keyof typeof user];
+        newSnapshot[key] = (userData as any)[key];
+      }
+    }
+
     Object.assign(user, userData);
     await this.userRepository.save(user);
 
     if (role_ids !== undefined) {
       const userRoleRepo = this.dataSource.getRepository(UserRole);
+      // Capture old role names before delete for diff
+      const oldRoleLinks = await userRoleRepo.findBy({ user_id: id });
+      const oldRoleIds = oldRoleLinks.map((ur) => ur.role_id);
+      const roleRepo = this.dataSource.getRepository(Role);
+      const oldRoleEntities = oldRoleIds.length ? await roleRepo.find({ where: { id: In(oldRoleIds) }, select: ['id', 'name'] }) : [];
+      const newRoleEntities = role_ids.length ? await roleRepo.find({ where: { id: In(role_ids) }, select: ['id', 'name'] }) : [];
+      oldSnapshot['roles'] = oldRoleEntities.map((r) => r.name);
+      newSnapshot['roles'] = newRoleEntities.map((r) => r.name);
+
       // Remove all existing roles then re-insert
       await userRoleRepo.delete({ user_id: id });
       if (role_ids.length) {
@@ -270,6 +311,16 @@ export class UsersService {
         await userRoleRepo.save(roles);
       }
     }
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.USER,
+      action_type: CHANGE_ACTION_TYPE.UPDATE,
+      entity_id: String(id),
+      entity_name: user.username,
+      performed_by: 'system',
+      old_value: Object.keys(oldSnapshot).length ? oldSnapshot : null,
+      new_value: Object.keys(newSnapshot).length ? newSnapshot : null,
+    }).catch(() => {});
 
     return { id };
   }
@@ -279,13 +330,35 @@ export class UsersService {
     const user = await this.userRepository.findOneByIdValid(id);
     user.is_active = !user.is_active;
     await this.userRepository.save(user);
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.USER,
+      action_type: user.is_active ? CHANGE_ACTION_TYPE.ACTIVATE : CHANGE_ACTION_TYPE.DEACTIVATE,
+      entity_id: String(id),
+      entity_name: user.username,
+      performed_by: 'system',
+      old_value: { is_active: !user.is_active },
+      new_value: { is_active: user.is_active },
+    }).catch(() => {});
+
     return { id, is_active: user.is_active };
   }
 
   /** Soft-delete a user (uses TypeORM soft delete from BaseSoftDeleteEntity). */
   async deleteAdmin(id: number) {
-    await this.userRepository.findOneByIdValid(id);
+    const user = await this.userRepository.findOneByIdValid(id);
     await this.userRepository.softDelete(id);
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.USER,
+      action_type: CHANGE_ACTION_TYPE.DELETE,
+      entity_id: String(id),
+      entity_name: user.username,
+      performed_by: 'system',
+      old_value: { username: user.username, full_name: user.full_name, email: user.email },
+      new_value: null,
+    }).catch(() => {});
+
     return { user_id: id };
   }
 
@@ -294,27 +367,84 @@ export class UsersService {
     const users = await this.userRepository.findBy({ id: In(dto.user_ids) });
     const updated = users.map((u) => ({ ...u, is_active: !u.is_active }));
     await this.userRepository.save(updated);
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.USER,
+      action_type: CHANGE_ACTION_TYPE.ACTIVATE,
+      entity_id: 'bulk',
+      entity_name: 'bulk toggle active',
+      performed_by: 'system',
+      old_value: null,
+      new_value: { user_ids: dto.user_ids, toggled: updated.length },
+    }).catch(() => {});
+
     return { toggled: updated.length };
   }
 
   /** Assign a role to multiple users, skipping existing assignments. */
   async bulkAssignRole(dto: BulkAssignRoleDto) {
     const userRoleRepo = this.dataSource.getRepository(UserRole);
+    const roleRepo = this.dataSource.getRepository(Role);
+    const role = await roleRepo.findOne({ where: { id: dto.role_id }, select: ['id', 'name'] });
+
+    // Capture old user list for this role
+    const oldLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
+    const oldUserIds = oldLinks.map((ur) => ur.user_id);
+    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+
     const existing = await userRoleRepo.findBy({ user_id: In(dto.user_ids), role_id: dto.role_id });
     const existingUserIds = new Set(existing.map((ur) => ur.user_id));
-
     const toInsert = dto.user_ids
       .filter((uid) => !existingUserIds.has(uid))
       .map((user_id) => userRoleRepo.create({ user_id, role_id: dto.role_id }));
-
     if (toInsert.length) await userRoleRepo.save(toInsert);
+
+    // Capture new user list after change
+    const newLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
+    const newUserIds = newLinks.map((ur) => ur.user_id);
+    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+      action_type: CHANGE_ACTION_TYPE.ASSIGN_USER,
+      entity_id: String(dto.role_id),
+      entity_name: role?.name || String(dto.role_id),
+      performed_by: 'system',
+      old_value: { users: oldUsers.map((u) => u.username) },
+      new_value: { users: newUsers.map((u) => u.username) },
+    }).catch(() => {});
+
     return { assigned: toInsert.length, skipped: existing.length };
   }
 
   /** Remove a specific role from multiple users. */
   async bulkRemoveRole(dto: BulkAssignRoleDto) {
     const userRoleRepo = this.dataSource.getRepository(UserRole);
+    const roleRepo = this.dataSource.getRepository(Role);
+    const role = await roleRepo.findOne({ where: { id: dto.role_id }, select: ['id', 'name'] });
+
+    // Capture old user list before delete
+    const oldLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
+    const oldUserIds = oldLinks.map((ur) => ur.user_id);
+    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+
     const result = await userRoleRepo.delete({ user_id: In(dto.user_ids), role_id: dto.role_id });
+
+    // Capture new user list after delete
+    const newLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
+    const newUserIds = newLinks.map((ur) => ur.user_id);
+    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+      action_type: CHANGE_ACTION_TYPE.REMOVE_USER,
+      entity_id: String(dto.role_id),
+      entity_name: role?.name || String(dto.role_id),
+      performed_by: 'system',
+      old_value: { users: oldUsers.map((u) => u.username) },
+      new_value: { users: newUsers.map((u) => u.username) },
+    }).catch(() => {});
+
     return { removed: result.affected ?? 0 };
   }
 }

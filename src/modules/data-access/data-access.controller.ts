@@ -1,5 +1,6 @@
 import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
 import { Sort, SortParams } from '@common/decorators/sort.decorator';
+import { UserScope } from '@common/decorators/user.decorator';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
@@ -37,33 +38,33 @@ export class DataAccessController {
   @ApiOperation({ summary: 'Create a new data access rule (must set role_id or user_id)' })
   @Post('create')
   @HttpCode(200)
-  create(@Body() body: CreateDataAccessDto) {
-    return this.dataAccessService.create(body);
+  create(@Body() body: CreateDataAccessDto, @UserScope() user: any) {
+    return this.dataAccessService.create(body, user?.username || 'system');
   }
 
   @ApiOperation({ summary: 'Bulk create data access rules with hierarchy validation' })
   @Post('create-bulk')
   @HttpCode(200)
-  createBulk(@Body() body: CreateBulkDataAccessDto) {
-    return this.dataAccessService.createBulk(body);
+  createBulk(@Body() body: CreateBulkDataAccessDto, @UserScope() user: any) {
+    return this.dataAccessService.createBulk(body, user?.username || 'system');
   }
 
   @ApiOperation({ summary: 'Update a data access rule (soft-delete + insert for audit trail)' })
   @Put('update/:id')
-  update(@Param('id') id: number, @Body() body: UpdateDataAccessDto) {
-    return this.dataAccessService.update(id, body);
+  update(@Param('id') id: number, @Body() body: UpdateDataAccessDto, @UserScope() user: any) {
+    return this.dataAccessService.update(id, body, user?.username || 'system');
   }
 
   @ApiOperation({ summary: 'Soft-delete a data access rule' })
   @Delete('delete/:id')
-  delete(@Param('id') id: number) {
-    return this.dataAccessService.delete(id);
+  delete(@Param('id') id: number, @UserScope() user: any) {
+    return this.dataAccessService.delete(id, user?.username || 'system');
   }
 
   @ApiOperation({ summary: 'Remove a specific subject (role/user) link from a rule' })
   @Delete('remove-link/:ruleId')
-  removeLink(@Param('ruleId') ruleId: number, @Query() query: RemoveLinkDataAccessDto) {
-    return this.dataAccessService.removeLink(ruleId, query.subject_type, query.subject_id);
+  removeLink(@Param('ruleId') ruleId: number, @Query() query: RemoveLinkDataAccessDto, @UserScope() user: any) {
+    return this.dataAccessService.removeLink(ruleId, query.subject_type, query.subject_id, user?.username || 'system');
   }
 
   @ApiOperation({ summary: 'Get all data access rules for a specific user' })

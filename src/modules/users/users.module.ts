@@ -16,12 +16,12 @@ import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { UsersManagementController } from './users-management.controller';
 import { TokenRepository } from '@modules/token/repository/token.repository';
 import { UserRole } from '@modules/databases/user-role.entity';
-import { ChangeHistory } from '@modules/databases/change-history.entity';
 import { DataAccess } from '@modules/databases/data-access.entity';
+import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Users, UserAddress, Admins, UserRole, ChangeHistory, DataAccess]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Users, UserAddress, Admins, UserRole, DataAccess]), AuthModule, ChangeHistoryModule],
   controllers: [UsersController, UsersManagementController],
   providers: [UsersService, UserRepository, RoleRepository, UserAddressRepository, AdminRepository, TokenRepository],
   exports: [UsersService, UserRepository, UserAddressRepository],

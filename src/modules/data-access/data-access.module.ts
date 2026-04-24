@@ -8,9 +8,10 @@ import { DataAccessService } from './data-access.service';
 import { HierarchyValidationService } from './hierarchy-validation.service';
 import { DataAccessRepository } from './repository/data-access.repository';
 import { ReportAccessRecordsController } from './report-access-records.controller';
+import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DataAccess, Permission])],
+  imports: [TypeOrmModule.forFeature([DataAccess, Permission]), ChangeHistoryModule],
   controllers: [DataAccessController, ReportAccessRecordsController],
   providers: [DataAccessService, DataAccessRepository, AdminRepository, HierarchyValidationService],
   exports: [DataAccessService, DataAccessRepository],

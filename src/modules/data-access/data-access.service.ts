@@ -1,6 +1,6 @@
 import { SortParams } from '@common/decorators/sort.decorator';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
-import { SCOPE_TYPE } from '@common/enums';
+import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE, SCOPE_TYPE } from '@common/enums';
 import { execQueryAll, execQueryPaignation } from '@common/utils/common';
 import { NOT_FOUND } from '@constant/error-messages';
 import { DataAccess } from '@modules/databases/data-access.entity';
@@ -17,6 +17,7 @@ import { SearchRecordsDto } from './dto/search-records.dto';
 import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 import { HierarchyValidationService } from './hierarchy-validation.service';
 import { DataAccessRepository } from './repository/data-access.repository';
+import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
 
 @Injectable()
 export class DataAccessService {
@@ -24,6 +25,7 @@ export class DataAccessService {
     private readonly dataAccessRepository: DataAccessRepository,
     private readonly connection: DataSource,
     private readonly hierarchyValidation: HierarchyValidationService,
+    private readonly historyLogger: ChangeHistoryLogger,
   ) {}
 
   // ── DataAccess CRUD ─────────────────────────────────────────────────────────
@@ -149,7 +151,7 @@ export class DataAccessService {
     return { ...record, record_info };
   }
 
-  async create(dto: CreateDataAccessDto) {
+  async create(dto: CreateDataAccessDto, performedBy = 'system') {
     if (!dto.role_ids?.length && !dto.user_ids?.length) {
       throw new BadRequestException('data_access_must_have_role_or_user');
     }
@@ -179,10 +181,26 @@ export class DataAccessService {
     });
 
     const saved = await this.dataAccessRepository.save(record);
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+      action_type: CHANGE_ACTION_TYPE.CREATE,
+      entity_id: String(saved.id),
+      entity_name: dto.table_name,
+      performed_by: performedBy,
+      old_value: null,
+      new_value: {
+        table_name: dto.table_name, data_id: dto.data_id, scope_type: dto.scope_type,
+        start_date: dto.start_date || null, end_date: dto.end_date || null,
+        roles: dto.role_ids?.length ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map((r: any) => r.name) : [],
+        users: dto.user_ids?.length ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map((u: any) => u.username) : [],
+      },
+    }).catch(() => {});
+
     return { id: saved.id };
   }
 
-  async createBulk(dto: CreateBulkDataAccessDto) {
+  async createBulk(dto: CreateBulkDataAccessDto, performedBy = 'system') {
     if (!dto.role_ids?.length && !dto.user_ids?.length) {
       throw new BadRequestException('data_access_must_have_role_or_user');
     }
@@ -219,6 +237,21 @@ export class DataAccessService {
       }
     });
 
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+      action_type: CHANGE_ACTION_TYPE.CREATE,
+      entity_id: savedIds.join(','),
+      entity_name: dto.table_name,
+      performed_by: performedBy,
+      old_value: null,
+      new_value: {
+        table_name: dto.table_name, data_ids: dto.data_ids, scope_type: dto.scope_type,
+        start_date: dto.start_date || null, end_date: dto.end_date || null,
+        roles: dto.role_ids?.length ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map((r: any) => r.name) : [],
+        users: dto.user_ids?.length ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map((u: any) => u.username) : [],
+      },
+    }).catch(() => {});
+
     return { ids: savedIds };
   }
 
@@ -226,12 +259,23 @@ export class DataAccessService {
    * Soft-delete+insert pattern for full audit trail.
    * data_id and table_name are immutable — carried over from old record.
    */
-  async update(id: number, dto: UpdateDataAccessDto) {
+  async update(id: number, dto: UpdateDataAccessDto, performedBy = 'system') {
     const old = await this.dataAccessRepository.findOne({
       where: { id },
       relations: ['users', 'roles', 'permissions'],
     });
     if (!old) throw new NotFoundException(NOT_FOUND);
+
+    // Capture old values with names before mutation
+    const oldValue = {
+      table_name: old.table_name,
+      data_id: old.data_id,
+      scope_type: old.scope_type,
+      roles: old.roles.map((r: any) => r.name),
+      users: old.users.map((u: any) => u.username),
+      start_date: old.start_date,
+      end_date: old.end_date,
+    };
 
     // Hierarchy validation for allow rules
     const newScopeType = dto.scope_type ?? old.scope_type;
@@ -264,12 +308,57 @@ export class DataAccessService {
       savedId = saved.id;
     });
 
+    // Resolve new role/user names for history
+    const newRoleNames = dto.role_ids?.length
+      ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map((r: any) => r.name)
+      : old.roles.map((r: any) => r.name);
+    const newUserNames = dto.user_ids?.length
+      ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map((u: any) => u.username)
+      : old.users.map((u: any) => u.username);
+    const newValue = {
+      scope_type: dto.scope_type ?? old.scope_type,
+      roles: newRoleNames,
+      users: newUserNames,
+      start_date: dto.start_date ?? old.start_date,
+      end_date: dto.end_date ?? old.end_date,
+    };
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+      action_type: CHANGE_ACTION_TYPE.UPDATE,
+      entity_id: String(id),
+      entity_name: old.table_name,
+      performed_by: performedBy,
+      old_value: oldValue,
+      new_value: newValue,
+    }).catch(() => {});
+
     return { id: savedId! };
   }
 
-  async delete(id: number) {
-    await this.dataAccessRepository.findOneByIdValid(id);
+  async delete(id: number, performedBy = 'system') {
+    const record = await this.dataAccessRepository.findOne({
+      where: { id },
+      relations: ['roles', 'users'],
+    });
+    if (!record) throw new NotFoundException(NOT_FOUND);
+
     await this.dataAccessRepository.softDelete({ id });
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+      action_type: CHANGE_ACTION_TYPE.DELETE,
+      entity_id: String(id),
+      entity_name: record.table_name,
+      performed_by: performedBy,
+      old_value: {
+        table_name: record.table_name, data_id: record.data_id, scope_type: record.scope_type,
+        roles: record.roles.map((r: any) => r.name),
+        users: record.users.map((u: any) => u.email || u.username),
+      },
+      new_value: null,
+    }).catch(() => {});
+
     return { id };
   }
 
@@ -278,7 +367,7 @@ export class DataAccessService {
    * Deletes the junction table row (data_access_roles or data_access_users).
    * If no subjects remain after removal, soft-deletes the entire rule.
    */
-  async removeLink(ruleId: number, subjectType: 'role' | 'user', subjectId: number) {
+  async removeLink(ruleId: number, subjectType: 'role' | 'user', subjectId: number, performedBy = 'system') {
     const record = await this.dataAccessRepository.findOne({
       where: { id: ruleId },
       relations: ['roles', 'users'],
@@ -302,6 +391,22 @@ export class DataAccessService {
       // No subjects left — soft-delete the rule itself
       await this.dataAccessRepository.softDelete({ id: ruleId });
     }
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+      action_type: CHANGE_ACTION_TYPE.DELETE,
+      entity_id: String(ruleId),
+      entity_name: record.table_name,
+      performed_by: performedBy,
+      old_value: {
+        table_name: record.table_name, data_id: record.data_id,
+        removed_subject_type: subjectType,
+        removed_subject_name: subjectType === 'role'
+          ? record.roles.find((r) => r.id === subjectId)?.name || String(subjectId)
+          : record.users.find((u) => u.id === subjectId)?.email || record.users.find((u) => u.id === subjectId)?.username || String(subjectId),
+      },
+      new_value: null,
+    }).catch(() => {});
 
     return { rule_id: ruleId, removed: { subject_type: subjectType, subject_id: subjectId } };
   }

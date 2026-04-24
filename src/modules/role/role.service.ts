@@ -17,15 +17,17 @@ import { CloneRoleDto } from './dto/clone-role.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleRepository } from './repository/role.repository';
+import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
+import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE } from '@common/enums';
 
 @Injectable()
 export class RoleService {
   constructor(
     private readonly roleRepository: RoleRepository,
     private readonly userRepository: UserRepository,
-
     private readonly permissionRepository: PermissionRepository,
     private readonly connection: DataSource,
+    private readonly historyLogger: ChangeHistoryLogger,
   ) {}
 
   async validateForm(data: CreateRoleDto) {
@@ -42,6 +44,19 @@ export class RoleService {
       permissions: permission.map((id) => ({ id }) as Permission),
       user_id,
     });
+    // Fetch permission codes for history log
+    const permCodes = permission.length
+      ? (await this.permissionRepository.findByIds(permission)).map((p) => p.code)
+      : [];
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE,
+      action_type: CHANGE_ACTION_TYPE.CREATE,
+      entity_id: String(rowCreated.id),
+      entity_name: data.name,
+      performed_by: 'system',
+      old_value: null,
+      new_value: { name: data.name, permissions: permCodes },
+    }).catch(() => {});
     return { id: rowCreated.id };
   }
   checkPermissionSelected(permission_selected: Permission[], permission: { id: number }) {
@@ -79,6 +94,20 @@ export class RoleService {
       permissions: sourceRole.permissions,
       user_id,
     });
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE,
+      action_type: CHANGE_ACTION_TYPE.CLONE,
+      entity_id: String(newRole.id),
+      entity_name: dto.name,
+      performed_by: 'system',
+      old_value: { source_role_id: id, source_role_name: sourceRole.name },
+      new_value: {
+        name: dto.name,
+        code: dto.code ?? null,
+        description: sourceRole.description,
+        permissions: sourceRole.permissions.map((p) => p.code),
+      },
+    }).catch(() => {});
     return { id: newRole.id };
   }
 
@@ -101,32 +130,65 @@ export class RoleService {
   }
 
   async assignUsers(roleId: number, dto: AssignUsersRoleDto) {
-    // Validate role exists
-    await this.roleRepository.findOneByIdValid(roleId);
-
+    const role = await this.roleRepository.findOneByIdValid(roleId);
     const userRoleRepo = this.connection.getRepository(UserRole);
-    // Find existing records for these user_ids + roleId
-    const existing = await userRoleRepo.find({
-      where: { role_id: roleId, user_id: In(dto.user_ids) },
-    });
-    const existingUserIds = existing.map((ur) => ur.user_id);
+
+    // Capture old user list before change
+    const oldLinks = await userRoleRepo.findBy({ role_id: roleId });
+    const oldUserIds = oldLinks.map((ur) => ur.user_id);
+    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
 
     // Insert only non-existing ones
+    const existing = await userRoleRepo.find({ where: { role_id: roleId, user_id: In(dto.user_ids) } });
+    const existingUserIds = existing.map((ur) => ur.user_id);
     const toInsert = dto.user_ids
       .filter((uid) => !existingUserIds.includes(uid))
       .map((uid) => userRoleRepo.create({ role_id: roleId, user_id: uid }));
-
     if (toInsert.length) await userRoleRepo.save(toInsert);
+
+    // Capture new user list after change
+    const newLinks = await userRoleRepo.findBy({ role_id: roleId });
+    const newUserIds = newLinks.map((ur) => ur.user_id);
+    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+      action_type: CHANGE_ACTION_TYPE.ASSIGN_USER,
+      entity_id: String(roleId),
+      entity_name: role.name,
+      performed_by: 'system',
+      old_value: { users: oldUsers.map((u) => u.username) },
+      new_value: { users: newUsers.map((u) => u.username) },
+    }).catch(() => {});
 
     return { added: toInsert.length, total: dto.user_ids.length };
   }
 
   async removeUsers(roleId: number, dto: AssignUsersRoleDto) {
-    // Validate role exists
-    await this.roleRepository.findOneByIdValid(roleId);
-
+    const role = await this.roleRepository.findOneByIdValid(roleId);
     const userRoleRepo = this.connection.getRepository(UserRole);
+
+    // Capture old user list before change
+    const oldLinks = await userRoleRepo.findBy({ role_id: roleId });
+    const oldUserIds = oldLinks.map((ur) => ur.user_id);
+    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+
     await userRoleRepo.delete({ role_id: roleId, user_id: In(dto.user_ids) });
+
+    // Capture new user list after change
+    const newLinks = await userRoleRepo.findBy({ role_id: roleId });
+    const newUserIds = newLinks.map((ur) => ur.user_id);
+    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+      action_type: CHANGE_ACTION_TYPE.REMOVE_USER,
+      entity_id: String(roleId),
+      entity_name: role.name,
+      performed_by: 'system',
+      old_value: { users: oldUsers.map((u) => u.username) },
+      new_value: { users: newUsers.map((u) => u.username) },
+    }).catch(() => {});
 
     return { removed: dto.user_ids.length };
   }
@@ -148,6 +210,9 @@ export class RoleService {
   async update(id: number, payload: UpdateRoleDto) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { permission, permission_ids, user_ids, screen: _screen, sub_screen: _sub_screen, ...data } = payload;
+
+    // Capture old record with permissions before update for change history
+    const oldRecord = await this.roleRepository.findOne({ where: { id }, relations: ['permissions'] });
 
     // permission_ids (new field) takes priority over permission (legacy CreateRoleDto field)
     const finalPermIds = permission_ids ?? (permission ? permission : undefined);
@@ -201,20 +266,62 @@ export class RoleService {
       }
     });
 
+    // Build history log with permission codes instead of IDs
+    const logNewValue: Record<string, any> = { ...data };
+    if (user_ids !== undefined) {
+      const userEntities = user_ids.length ? await this.userRepository.find({ where: { id: In(user_ids) }, select: ['id', 'username'] }) : [];
+      logNewValue.users = userEntities.map((u) => u.username);
+    }
+    if (finalPermIds !== undefined) {
+      const permEntities = finalPermIds.length ? await this.permissionRepository.findByIds(finalPermIds) : [];
+      logNewValue.permissions = permEntities.map((p) => p.code);
+    }
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE,
+      action_type: CHANGE_ACTION_TYPE.UPDATE,
+      entity_id: String(id),
+      entity_name: oldRecord?.name ?? String(id),
+      performed_by: 'system',
+      old_value: oldRecord
+        ? { name: oldRecord.name, code: oldRecord.code, description: oldRecord.description, status: oldRecord.status, permissions: (oldRecord.permissions || []).map((p) => p.code) }
+        : null,
+      new_value: logNewValue,
+    }).catch(() => {});
+
     return { id };
   }
 
   async setStatus(id: number, data: StatusDto) {
     const { status } = data;
     const rs = await this.roleRepository.findOneByIdValid(id);
-    if (rs.status != status) await this.roleRepository.updateOne({ id: rs.id }, { status });
+    if (rs.status != status) {
+      await this.roleRepository.updateOne({ id: rs.id }, { status });
+      this.historyLogger.log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE,
+        action_type: status === STATUS.ACTIVE ? CHANGE_ACTION_TYPE.ACTIVATE : CHANGE_ACTION_TYPE.DEACTIVATE,
+        entity_id: String(id),
+        entity_name: rs.name,
+        performed_by: 'system',
+        old_value: { is_active: rs.status },
+        new_value: { is_active: status },
+      }).catch(() => {});
+    }
     return { id, status };
   }
   async delete(id: number) {
-    await this.roleRepository.findOneByIdValid(id);
+    const roleToDelete = await this.roleRepository.findOneByIdValid(id);
     const rs = await this.userRepository.findOneByCondition({ role_id: id });
     if (rs) throw new BadRequestException(MODEL_ROLE_USING_CAN_NOT_DELETE);
     await this.roleRepository.softDelete({ id });
+    this.historyLogger.log({
+      entity_type: CHANGE_ENTITY_TYPE.ROLE,
+      action_type: CHANGE_ACTION_TYPE.DELETE,
+      entity_id: String(id),
+      entity_name: roleToDelete.name,
+      performed_by: 'system',
+      old_value: { name: roleToDelete.name, code: roleToDelete.code, description: roleToDelete.description },
+      new_value: null,
+    }).catch(() => {});
     return { id };
   }
 

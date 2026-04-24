@@ -21,15 +21,15 @@ export class ChangeHistoryService {
 
   async getStats() {
     const totalResult = await this.dataSource.query<{ total: number }[]>(
-      `SELECT COUNT(id)::int AS total FROM change_history WHERE deleted_at IS NULL`,
+      `SELECT COUNT(id)::int AS total FROM change_historys WHERE deleted_at IS NULL`,
     );
 
     const byEntityType = await this.dataSource.query<{ entity_type: string; count: number }[]>(
-      `SELECT entity_type, COUNT(id)::int AS count FROM change_history WHERE deleted_at IS NULL GROUP BY entity_type ORDER BY count DESC`,
+      `SELECT entity_type, COUNT(id)::int AS count FROM change_historys WHERE deleted_at IS NULL GROUP BY entity_type ORDER BY count DESC`,
     );
 
     const byActionType = await this.dataSource.query<{ action_type: string; count: number }[]>(
-      `SELECT action_type, COUNT(id)::int AS count FROM change_history WHERE deleted_at IS NULL GROUP BY action_type ORDER BY count DESC`,
+      `SELECT action_type, COUNT(id)::int AS count FROM change_historys WHERE deleted_at IS NULL GROUP BY action_type ORDER BY count DESC`,
     );
 
     return {
@@ -48,9 +48,9 @@ export class ChangeHistoryService {
   // Hard deletes all history records — intended for admin/dev use only
   async clear() {
     const count = await this.dataSource.query<{ total: number }[]>(
-      `SELECT COUNT(id)::int AS total FROM change_history WHERE deleted_at IS NULL`,
+      `SELECT COUNT(id)::int AS total FROM change_historys WHERE deleted_at IS NULL`,
     );
-    await this.dataSource.query(`DELETE FROM change_history`);
+    await this.dataSource.query(`DELETE FROM change_historys`);
     return { cleared: true, deleted_count: count[0]?.total ?? 0 };
   }
 }

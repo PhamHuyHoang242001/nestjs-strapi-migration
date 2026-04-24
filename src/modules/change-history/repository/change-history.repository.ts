@@ -21,9 +21,10 @@ export class ChangeHistoryRepository extends BaseRepository<ChangeHistory> {
     if (dto.date_from) query.andWhere('ch.created_at >= :df', { df: dto.date_from });
     if (dto.date_to) query.andWhere('ch.created_at <= :dt', { dt: dto.date_to });
     if (dto.search)
-      query.andWhere('(unaccent(ch.description) ILIKE unaccent(:s) OR unaccent(ch.entity_name) ILIKE unaccent(:s))', {
-        s: `%${dto.search}%`,
-      });
+      query.andWhere(
+        '(unaccent(ch.entity_name) ILIKE unaccent(:s) OR CAST(ch.entity_id AS TEXT) ILIKE :s OR unaccent(ch.performed_by) ILIKE unaccent(:s))',
+        { s: `%${dto.search}%` },
+      );
 
     if (sortParams?.sort_field) query.orderBy(`ch.${sortParams.sort_field}`, sortParams.sort_order);
     else query.orderBy('ch.created_at', 'DESC');

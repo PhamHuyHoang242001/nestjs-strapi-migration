@@ -8,9 +8,10 @@ import { RoleController } from './role.controller';
 import { RoleService } from './role.service';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { UserRepository } from '@modules/users/repository/users.repository';
+import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Role, UserRole])],
+  imports: [TypeOrmModule.forFeature([Role, UserRole]), ChangeHistoryModule],
   controllers: [RoleController],
   providers: [RoleService, RoleRepository, PermissionRepository, AdminRepository, UserRepository],
   exports: [RoleService, RoleRepository],
