@@ -1,6 +1,7 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
+import { PermissionDataAccess } from '@modules/databases/data-access.entity';
 import { Module } from '@modules/databases/module.entity';
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 
 @Entity()
 export class Permission extends BaseSoftDeleteEntity {
@@ -24,4 +25,7 @@ export class Permission extends BaseSoftDeleteEntity {
   @ManyToOne('Module', 'permissions')
   @JoinColumn({ name: 'module_id' })
   public module?: Module;
+
+  @OneToMany(() => PermissionDataAccess, (pda) => pda.permission)
+  permission_data_access?: PermissionDataAccess[];
 }

@@ -13,23 +13,26 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
 
   buildSearchQuery(dto: SearchDataAccessDto, sortParams?: SortParams): SelectQueryBuilder<DataAccess> {
     const query = this.createQueryBuilder('da')
-      .leftJoinAndSelect('da.roles', 'roles')
-      .leftJoinAndSelect('da.users', 'users')
-      .leftJoinAndSelect('da.permissions', 'permissions');
+      .leftJoinAndSelect('da.role_data_access', 'rda')
+      .leftJoinAndSelect('rda.role', 'role')
+      .leftJoinAndSelect('da.user_data_access', 'uda')
+      .leftJoinAndSelect('uda.user', 'user')
+      .leftJoinAndSelect('da.permission_data_access', 'pda')
+      .leftJoinAndSelect('pda.permission', 'permission');
 
     // subject_type filter: 'role' = has roles assigned, 'user' = has users assigned
     if (dto.subject_type === 'role') {
-      query.andWhere('roles.id IS NOT NULL');
+      query.andWhere('rda.id IS NOT NULL');
     } else if (dto.subject_type === 'user') {
-      query.andWhere('users.id IS NOT NULL');
+      query.andWhere('uda.id IS NOT NULL');
     }
 
     if (dto.role_id) {
-      query.andWhere('roles.id = :role_id', { role_id: dto.role_id });
+      query.andWhere('rda.role_id = :role_id', { role_id: dto.role_id });
     }
 
     if (dto.user_id) {
-      query.andWhere('users.id = :user_id', { user_id: dto.user_id });
+      query.andWhere('uda.user_id = :user_id', { user_id: dto.user_id });
     }
 
     if (dto.table_name) {
@@ -42,7 +45,7 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
 
     if (dto.search) {
       query.andWhere(
-        '(CAST(da.data_id AS TEXT) ILIKE :search OR unaccent(roles.name) ILIKE unaccent(:search) OR unaccent(users.full_name) ILIKE unaccent(:search))',
+        '(CAST(da.data_id AS TEXT) ILIKE :search OR unaccent(role.name) ILIKE unaccent(:search) OR unaccent(user.full_name) ILIKE unaccent(:search))',
         { search: `%${dto.search}%` },
       );
     }

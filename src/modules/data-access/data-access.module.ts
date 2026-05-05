@@ -1,4 +1,9 @@
-import { DataAccess } from '@modules/databases/data-access.entity';
+import {
+  DataAccess,
+  RoleDataAccess,
+  UserDataAccess,
+  PermissionDataAccess,
+} from '@modules/databases/data-access.entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { Module } from '@nestjs/common';
@@ -11,7 +16,10 @@ import { ReportAccessRecordsController } from './report-access-records.controlle
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DataAccess, Permission]), ChangeHistoryModule],
+  imports: [
+      TypeOrmModule.forFeature([DataAccess, RoleDataAccess, UserDataAccess, PermissionDataAccess, Permission]),
+      ChangeHistoryModule,
+    ],
   controllers: [DataAccessController, ReportAccessRecordsController],
   providers: [DataAccessService, DataAccessRepository, AdminRepository, HierarchyValidationService],
   exports: [DataAccessService, DataAccessRepository],

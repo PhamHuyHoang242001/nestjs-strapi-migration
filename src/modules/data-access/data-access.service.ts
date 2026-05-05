@@ -1,16 +1,17 @@
 import { SortParams } from '@common/decorators/sort.decorator';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE, SCOPE_TYPE } from '@common/enums';
-import { execQueryAll, execQueryPaignation } from '@common/utils/common';
 import { NOT_FOUND } from '@constant/error-messages';
-import { DataAccess } from '@modules/databases/data-access.entity';
-import { Permission } from '@modules/databases/permission.entity';
-import { Role } from '@modules/databases/role.entity';
-import { Users } from '@modules/databases/user.entity';
+import {
+  DataAccess,
+  RoleDataAccess,
+  UserDataAccess,
+  PermissionDataAccess,
+} from '@modules/databases/data-access.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { ALLOWED_TABLES, getNameColumn } from './constants/hierarchy-config';
-import { CreateBulkDataAccessDto } from './dto/create-bulk-data-access.dto';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
 import { SearchRecordsDto } from './dto/search-records.dto';
@@ -26,7 +27,39 @@ export class DataAccessService {
     private readonly connection: DataSource,
     private readonly hierarchyValidation: HierarchyValidationService,
     private readonly historyLogger: ChangeHistoryLogger,
+    @InjectRepository(RoleDataAccess)
+    private readonly roleDataAccessRepo: Repository<RoleDataAccess>,
+    @InjectRepository(UserDataAccess)
+    private readonly userDataAccessRepo: Repository<UserDataAccess>,
+    @InjectRepository(PermissionDataAccess)
+    private readonly permissionDataAccessRepo: Repository<PermissionDataAccess>,
   ) {}
+
+  // ── Junction helpers ────────────────────────────────────────────────────────
+
+  /** Insert junction rows for roles/users/permissions linked to a data_access record */
+  private async insertJunctions(
+    dataAccessId: number,
+    roleIds?: number[],
+    userIds?: number[],
+    permissionIds?: number[],
+  ) {
+    if (roleIds?.length) {
+      await this.roleDataAccessRepo.insert(
+        roleIds.map((role_id) => ({ role_id, data_access_id: dataAccessId })),
+      );
+    }
+    if (userIds?.length) {
+      await this.userDataAccessRepo.insert(
+        userIds.map((user_id) => ({ user_id, data_access_id: dataAccessId })),
+      );
+    }
+    if (permissionIds?.length) {
+      await this.permissionDataAccessRepo.insert(
+        permissionIds.map((permission_id) => ({ permission_id, data_access_id: dataAccessId })),
+      );
+    }
+  }
 
   // ── DataAccess CRUD ─────────────────────────────────────────────────────────
 
@@ -65,14 +98,14 @@ export class DataAccessService {
       whereClause += ` AND (CAST(da.data_id AS TEXT) ILIKE $${params.length} OR s.subject_name ILIKE $${params.length})`;
     }
 
-    // Flatten: UNION of roles and users per rule
+    // Flatten: UNION of roles and users per rule (filter soft-deleted junctions)
     const flattenCTE = `
       WITH flattened AS (
         SELECT da.id as rule_id, da.data_id, da.table_name, da.scope_type,
                da.start_date, da.end_date, da.created_at,
                'role' as subject_type, r.id as subject_id, r.name as subject_name
         FROM data_access da
-        JOIN data_access_roles dar ON dar.data_access_id = da.id
+        JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
         JOIN role r ON r.id = dar.role_id
         WHERE da.deleted_at IS NULL
         UNION ALL
@@ -81,19 +114,17 @@ export class DataAccessService {
                'user' as subject_type, u.id as subject_id,
                COALESCE(u.full_name, u.username) as subject_name
         FROM data_access da
-        JOIN data_access_users dau ON dau.data_access_id = da.id
+        JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
         JOIN users u ON u.id = dau.user_id
         WHERE da.deleted_at IS NULL
       )`;
 
     const sortField = sortParams?.sort_field || 'created_at';
     const sortOrder = sortParams?.sort_order || 'DESC';
-    // Validate sort field
     const allowedSortFields = ['created_at', 'data_id', 'table_name', 'scope_type'];
     const safeSortField = allowedSortFields.includes(sortField) ? sortField : 'created_at';
     const safeSortOrder = sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
-    // Replace da. prefix with s. for the WHERE clause on flattened CTE
     const flatWhere = whereClause.replace(/da\./g, 's.').replace('WHERE s.deleted_at IS NULL', 'WHERE 1=1');
 
     // Count
@@ -131,7 +162,11 @@ export class DataAccessService {
   async details(id: number) {
     const record = await this.dataAccessRepository.findOne({
       where: { id },
-      relations: ['roles', 'users', 'permissions'],
+      relations: [
+        'role_data_access', 'role_data_access.role',
+        'user_data_access', 'user_data_access.user',
+        'permission_data_access', 'permission_data_access.permission',
+      ],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
 
@@ -151,56 +186,12 @@ export class DataAccessService {
     return { ...record, record_info };
   }
 
+  /**
+   * Create or upsert data access rules.
+   * For each data_id: if a rule already exists for same data_id + table_name,
+   * update scope/dates and add new junction links. Otherwise create a new rule.
+   */
   async create(dto: CreateDataAccessDto, performedBy = 'system') {
-    if (!dto.role_ids?.length && !dto.user_ids?.length) {
-      throw new BadRequestException('data_access_must_have_role_or_user');
-    }
-
-    if (!ALLOWED_TABLES.has(dto.table_name)) {
-      throw new BadRequestException('table_not_allowed');
-    }
-
-    // Hierarchy validation — only for allow rules
-    if (dto.scope_type === SCOPE_TYPE.ALLOW) {
-      await this.hierarchyValidation.enforce([dto.data_id], dto.table_name, dto.user_ids || [], dto.role_ids || []);
-    }
-
-    const users: Users[] = dto.user_ids?.map((id) => ({ id }) as Users) || [];
-    const roles: Role[] = dto.role_ids?.map((id) => ({ id }) as Role) || [];
-    const permissions: Permission[] = dto.permission_ids?.map((id) => ({ id }) as Permission) || [];
-
-    const record = this.dataAccessRepository.create({
-      data_id: dto.data_id,
-      table_name: dto.table_name,
-      scope_type: dto.scope_type,
-      start_date: dto.start_date,
-      end_date: dto.end_date,
-      users,
-      roles,
-      permissions,
-    });
-
-    const saved = await this.dataAccessRepository.save(record);
-
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
-      action_type: CHANGE_ACTION_TYPE.CREATE,
-      entity_id: String(saved.id),
-      entity_name: dto.table_name,
-      performed_by: performedBy,
-      old_value: null,
-      new_value: {
-        table_name: dto.table_name, data_id: dto.data_id, scope_type: dto.scope_type,
-        start_date: dto.start_date || null, end_date: dto.end_date || null,
-        roles: dto.role_ids?.length ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map((r: any) => r.name) : [],
-        users: dto.user_ids?.length ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map((u: any) => u.username) : [],
-      },
-    }).catch(() => {});
-
-    return { id: saved.id };
-  }
-
-  async createBulk(dto: CreateBulkDataAccessDto, performedBy = 'system') {
     if (!dto.role_ids?.length && !dto.user_ids?.length) {
       throw new BadRequestException('data_access_must_have_role_or_user');
     }
@@ -215,64 +206,105 @@ export class DataAccessService {
     }
 
     const savedIds: number[] = [];
-    await this.connection.transaction(async (manager) => {
-      for (const dataId of dto.data_ids) {
-        // Fresh entity references per iteration to avoid TypeORM mutation leaks
-        const users: Users[] = dto.user_ids?.map((id) => ({ id }) as Users) || [];
-        const roles: Role[] = dto.role_ids?.map((id) => ({ id }) as Role) || [];
-        const permissions: Permission[] = dto.permission_ids?.map((id) => ({ id }) as Permission) || [];
 
+    for (const dataId of dto.data_ids) {
+      // Check for existing rule with same data_id + table_name
+      const existing = await this.dataAccessRepository.findOne({
+        where: { data_id: dataId, table_name: dto.table_name, deleted_at: IsNull() },
+        relations: ['role_data_access', 'user_data_access', 'permission_data_access'],
+      });
+
+      let savedId: number;
+
+      if (existing) {
+        // UPDATE existing rule — overwrite scope/dates
+        existing.scope_type = dto.scope_type;
+        existing.start_date = dto.start_date;
+        existing.end_date = dto.end_date;
+        await this.dataAccessRepository.save(existing);
+        savedId = existing.id;
+
+        // Add only new junction links (skip already linked ones)
+        const existingRoleIds = existing.role_data_access.map((rda) => rda.role_id);
+        const existingUserIds = existing.user_data_access.map((uda) => uda.user_id);
+        const existingPermIds = existing.permission_data_access.map((pda) => pda.permission_id);
+
+        const newRoleIds = dto.role_ids?.filter((id) => !existingRoleIds.includes(id));
+        const newUserIds = dto.user_ids?.filter((id) => !existingUserIds.includes(id));
+        const newPermIds = dto.permission_ids?.filter((id) => !existingPermIds.includes(id));
+
+        await this.insertJunctions(savedId, newRoleIds, newUserIds, newPermIds);
+      } else {
+        // CREATE new rule
         const record = this.dataAccessRepository.create({
           data_id: dataId,
           table_name: dto.table_name,
           scope_type: dto.scope_type,
           start_date: dto.start_date,
           end_date: dto.end_date,
-          users,
-          roles,
-          permissions,
         });
-        const saved = await manager.save(record);
-        savedIds.push(saved.id);
-      }
-    });
+        const saved = await this.dataAccessRepository.save(record);
+        savedId = saved.id;
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
-      action_type: CHANGE_ACTION_TYPE.CREATE,
-      entity_id: savedIds.join(','),
-      entity_name: dto.table_name,
-      performed_by: performedBy,
-      old_value: null,
-      new_value: {
-        table_name: dto.table_name, data_ids: dto.data_ids, scope_type: dto.scope_type,
-        start_date: dto.start_date || null, end_date: dto.end_date || null,
-        roles: dto.role_ids?.length ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map((r: any) => r.name) : [],
-        users: dto.user_ids?.length ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map((u: any) => u.username) : [],
-      },
-    }).catch(() => {});
+        await this.insertJunctions(savedId, dto.role_ids, dto.user_ids, dto.permission_ids);
+      }
+
+      savedIds.push(savedId);
+    }
+
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+        action_type: CHANGE_ACTION_TYPE.CREATE,
+        entity_id: savedIds.join(','),
+        entity_name: dto.table_name,
+        performed_by: performedBy,
+        old_value: null,
+        new_value: {
+          table_name: dto.table_name,
+          data_ids: dto.data_ids,
+          scope_type: dto.scope_type,
+          start_date: dto.start_date || null,
+          end_date: dto.end_date || null,
+          roles: dto.role_ids?.length
+            ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map(
+                (r: any) => r.name,
+              )
+            : [],
+          users: dto.user_ids?.length
+            ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map(
+                (u: any) => u.username,
+              )
+            : [],
+        },
+      })
+      .catch(() => {});
 
     return { ids: savedIds };
   }
 
   /**
-   * Soft-delete+insert pattern for full audit trail.
-   * data_id and table_name are immutable — carried over from old record.
+   * Update a data access rule by id.
+   * Updates scope/dates and replaces junction links.
    */
   async update(id: number, dto: UpdateDataAccessDto, performedBy = 'system') {
     const old = await this.dataAccessRepository.findOne({
       where: { id },
-      relations: ['users', 'roles', 'permissions'],
+      relations: [
+        'role_data_access', 'role_data_access.role',
+        'user_data_access', 'user_data_access.user',
+        'permission_data_access', 'permission_data_access.permission',
+      ],
     });
     if (!old) throw new NotFoundException(NOT_FOUND);
 
-    // Capture old values with names before mutation
+    // Capture old values for history
     const oldValue = {
       table_name: old.table_name,
       data_id: old.data_id,
       scope_type: old.scope_type,
-      roles: old.roles.map((r: any) => r.name),
-      users: old.users.map((u: any) => u.username),
+      roles: old.role_data_access.map((rda) => rda.role?.name),
+      users: old.user_data_access.map((uda) => uda.user?.username),
       start_date: old.start_date,
       end_date: old.end_date,
     };
@@ -280,133 +312,174 @@ export class DataAccessService {
     // Hierarchy validation for allow rules
     const newScopeType = dto.scope_type ?? old.scope_type;
     if (newScopeType === SCOPE_TYPE.ALLOW) {
-      const userIds = dto.user_ids ?? old.users.map((u) => u.id);
-      const roleIds = dto.role_ids ?? old.roles.map((r) => r.id);
+      const userIds = dto.user_ids ?? old.user_data_access.map((uda) => uda.user_id);
+      const roleIds = dto.role_ids ?? old.role_data_access.map((rda) => rda.role_id);
       await this.hierarchyValidation.enforce([old.data_id], old.table_name, userIds, roleIds);
     }
 
-    const users: Users[] = dto.user_ids?.map((uid) => ({ id: uid }) as Users) ?? old.users;
-    const roles: Role[] = dto.role_ids?.map((rid) => ({ id: rid }) as Role) ?? old.roles;
-    const permissions: Permission[] = dto.permission_ids?.map((pid) => ({ id: pid }) as Permission) ?? old.permissions;
-
-    let savedId: number;
     await this.connection.transaction(async (manager) => {
-      await manager.softDelete(DataAccess, { id });
+      // Update data_access fields
+      old.scope_type = dto.scope_type ?? old.scope_type;
+      old.start_date = dto.start_date ?? old.start_date;
+      old.end_date = dto.end_date ?? old.end_date;
+      await manager.save(old);
 
-      const newRecord = this.dataAccessRepository.create({
-        data_id: old.data_id,
-        table_name: old.table_name,
-        scope_type: dto.scope_type ?? old.scope_type,
-        start_date: dto.start_date ?? old.start_date,
-        end_date: dto.end_date ?? old.end_date,
-        users,
-        roles,
-        permissions,
-      });
+      // Replace role junctions if provided
+      if (dto.role_ids) {
+        await manager.delete(RoleDataAccess, { data_access_id: id });
+        if (dto.role_ids.length) {
+          await manager.insert(
+            RoleDataAccess,
+            dto.role_ids.map((role_id) => ({ role_id, data_access_id: id })),
+          );
+        }
+      }
 
-      const saved = await manager.save(newRecord);
-      savedId = saved.id;
+      // Replace user junctions if provided
+      if (dto.user_ids) {
+        await manager.delete(UserDataAccess, { data_access_id: id });
+        if (dto.user_ids.length) {
+          await manager.insert(
+            UserDataAccess,
+            dto.user_ids.map((user_id) => ({ user_id, data_access_id: id })),
+          );
+        }
+      }
+
+      // Replace permission junctions if provided
+      if (dto.permission_ids) {
+        await manager.delete(PermissionDataAccess, { data_access_id: id });
+        if (dto.permission_ids.length) {
+          await manager.insert(
+            PermissionDataAccess,
+            dto.permission_ids.map((permission_id) => ({ permission_id, data_access_id: id })),
+          );
+        }
+      }
     });
 
     // Resolve new role/user names for history
     const newRoleNames = dto.role_ids?.length
-      ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map((r: any) => r.name)
-      : old.roles.map((r: any) => r.name);
+      ? (await this.connection.query('SELECT name FROM role WHERE id = ANY($1)', [dto.role_ids])).map(
+          (r: any) => r.name,
+        )
+      : oldValue.roles;
     const newUserNames = dto.user_ids?.length
-      ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map((u: any) => u.username)
-      : old.users.map((u: any) => u.username);
-    const newValue = {
-      scope_type: dto.scope_type ?? old.scope_type,
-      roles: newRoleNames,
-      users: newUserNames,
-      start_date: dto.start_date ?? old.start_date,
-      end_date: dto.end_date ?? old.end_date,
-    };
+      ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map(
+          (u: any) => u.username,
+        )
+      : oldValue.users;
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
-      action_type: CHANGE_ACTION_TYPE.UPDATE,
-      entity_id: String(id),
-      entity_name: old.table_name,
-      performed_by: performedBy,
-      old_value: oldValue,
-      new_value: newValue,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+        action_type: CHANGE_ACTION_TYPE.UPDATE,
+        entity_id: String(id),
+        entity_name: old.table_name,
+        performed_by: performedBy,
+        old_value: oldValue,
+        new_value: {
+          scope_type: dto.scope_type ?? old.scope_type,
+          roles: newRoleNames,
+          users: newUserNames,
+          start_date: dto.start_date ?? old.start_date,
+          end_date: dto.end_date ?? old.end_date,
+        },
+      })
+      .catch(() => {});
 
-    return { id: savedId! };
+    return { id };
   }
 
   async delete(id: number, performedBy = 'system') {
     const record = await this.dataAccessRepository.findOne({
       where: { id },
-      relations: ['roles', 'users'],
+      relations: ['role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
 
-    await this.dataAccessRepository.softDelete({ id });
+    await this.connection.transaction(async (manager) => {
+      // Soft-delete junction records
+      await manager.softDelete(RoleDataAccess, { data_access_id: id });
+      await manager.softDelete(UserDataAccess, { data_access_id: id });
+      await manager.softDelete(PermissionDataAccess, { data_access_id: id });
+      // Soft-delete the rule itself
+      await manager.softDelete(DataAccess, { id });
+    });
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
-      action_type: CHANGE_ACTION_TYPE.DELETE,
-      entity_id: String(id),
-      entity_name: record.table_name,
-      performed_by: performedBy,
-      old_value: {
-        table_name: record.table_name, data_id: record.data_id, scope_type: record.scope_type,
-        roles: record.roles.map((r: any) => r.name),
-        users: record.users.map((u: any) => u.email || u.username),
-      },
-      new_value: null,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+        action_type: CHANGE_ACTION_TYPE.DELETE,
+        entity_id: String(id),
+        entity_name: record.table_name,
+        performed_by: performedBy,
+        old_value: {
+          table_name: record.table_name,
+          data_id: record.data_id,
+          scope_type: record.scope_type,
+          roles: record.role_data_access.map((rda) => rda.role?.name),
+          users: record.user_data_access.map((uda) => uda.user?.email || uda.user?.username),
+        },
+        new_value: null,
+      })
+      .catch(() => {});
 
     return { id };
   }
 
   /**
    * Remove a specific subject link from a rule.
-   * Deletes the junction table row (data_access_roles or data_access_users).
+   * Soft-deletes the junction row.
    * If no subjects remain after removal, soft-deletes the entire rule.
    */
   async removeLink(ruleId: number, subjectType: 'role' | 'user', subjectId: number, performedBy = 'system') {
     const record = await this.dataAccessRepository.findOne({
       where: { id: ruleId },
-      relations: ['roles', 'users'],
+      relations: ['role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
 
-    const junctionTable = subjectType === 'role' ? 'data_access_roles' : 'data_access_users';
-    const junctionColumn = subjectType === 'role' ? 'role_id' : 'user_id';
-
-    // Delete the specific junction row
-    await this.connection.query(
-      `DELETE FROM "${junctionTable}" WHERE data_access_id = $1 AND "${junctionColumn}" = $2`,
-      [ruleId, subjectId],
-    );
+    // Soft-delete the specific junction row
+    if (subjectType === 'role') {
+      await this.roleDataAccessRepo.softDelete({ data_access_id: ruleId, role_id: subjectId });
+    } else {
+      await this.userDataAccessRepo.softDelete({ data_access_id: ruleId, user_id: subjectId });
+    }
 
     // Check if any subjects remain
-    const remainingRoles = record.roles.filter((r) => !(subjectType === 'role' && r.id === subjectId)).length;
-    const remainingUsers = record.users.filter((u) => !(subjectType === 'user' && u.id === subjectId)).length;
+    const remainingRoles = record.role_data_access.filter(
+      (rda) => !(subjectType === 'role' && rda.role_id === subjectId),
+    ).length;
+    const remainingUsers = record.user_data_access.filter(
+      (uda) => !(subjectType === 'user' && uda.user_id === subjectId),
+    ).length;
 
     if (remainingRoles === 0 && remainingUsers === 0) {
-      // No subjects left — soft-delete the rule itself
       await this.dataAccessRepository.softDelete({ id: ruleId });
     }
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
-      action_type: CHANGE_ACTION_TYPE.DELETE,
-      entity_id: String(ruleId),
-      entity_name: record.table_name,
-      performed_by: performedBy,
-      old_value: {
-        table_name: record.table_name, data_id: record.data_id,
-        removed_subject_type: subjectType,
-        removed_subject_name: subjectType === 'role'
-          ? record.roles.find((r) => r.id === subjectId)?.name || String(subjectId)
-          : record.users.find((u) => u.id === subjectId)?.email || record.users.find((u) => u.id === subjectId)?.username || String(subjectId),
-      },
-      new_value: null,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+        action_type: CHANGE_ACTION_TYPE.DELETE,
+        entity_id: String(ruleId),
+        entity_name: record.table_name,
+        performed_by: performedBy,
+        old_value: {
+          table_name: record.table_name,
+          data_id: record.data_id,
+          removed_subject_type: subjectType,
+          removed_subject_name:
+            subjectType === 'role'
+              ? record.role_data_access.find((rda) => rda.role_id === subjectId)?.role?.name || String(subjectId)
+              : record.user_data_access.find((uda) => uda.user_id === subjectId)?.user?.email ||
+                record.user_data_access.find((uda) => uda.user_id === subjectId)?.user?.username ||
+                String(subjectId),
+        },
+        new_value: null,
+      })
+      .catch(() => {});
 
     return { rule_id: ruleId, removed: { subject_type: subjectType, subject_id: subjectId } };
   }
@@ -414,20 +487,28 @@ export class DataAccessService {
   async getByUser(userId: number) {
     return this.dataAccessRepository
       .createQueryBuilder('da')
-      .leftJoinAndSelect('da.users', 'users')
-      .leftJoinAndSelect('da.roles', 'roles')
-      .leftJoinAndSelect('da.permissions', 'permissions')
-      .where('users.id = :userId', { userId })
+      .leftJoinAndSelect('da.user_data_access', 'uda')
+      .leftJoinAndSelect('uda.user', 'user')
+      .leftJoinAndSelect('da.role_data_access', 'rda')
+      .leftJoinAndSelect('rda.role', 'role')
+      .leftJoinAndSelect('da.permission_data_access', 'pda')
+      .leftJoinAndSelect('pda.permission', 'permission')
+      .where('uda.user_id = :userId', { userId })
+      .andWhere('uda.deleted_at IS NULL')
       .getMany();
   }
 
   async getByRole(roleId: number) {
     return this.dataAccessRepository
       .createQueryBuilder('da')
-      .leftJoinAndSelect('da.users', 'users')
-      .leftJoinAndSelect('da.roles', 'roles')
-      .leftJoinAndSelect('da.permissions', 'permissions')
-      .where('roles.id = :roleId', { roleId })
+      .leftJoinAndSelect('da.user_data_access', 'uda')
+      .leftJoinAndSelect('uda.user', 'user')
+      .leftJoinAndSelect('da.role_data_access', 'rda')
+      .leftJoinAndSelect('rda.role', 'role')
+      .leftJoinAndSelect('da.permission_data_access', 'pda')
+      .leftJoinAndSelect('pda.permission', 'permission')
+      .where('rda.role_id = :roleId', { roleId })
+      .andWhere('rda.deleted_at IS NULL')
       .getMany();
   }
 

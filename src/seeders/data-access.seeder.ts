@@ -1,4 +1,4 @@
-import { DataAccess, DATA_ACCESS_ROLES, DATA_ACCESS_USERS, DATA_PERMISSIONS } from '@modules/databases/data-access.entity';
+import { DataAccess } from '@modules/databases/data-access.entity';
 import { Injectable } from '@nestjs/common';
 import { Seeder } from 'nestjs-seeder';
 import { DataSource } from 'typeorm';
@@ -59,13 +59,13 @@ export class DataAccessSeeder implements Seeder {
 
   private async seedDataAccessRoles(): Promise<void> {
     const existing = await this.connection.query<{ data_access_id: number; role_id: number }[]>(
-      `SELECT data_access_id, role_id FROM ${DATA_ACCESS_ROLES} WHERE data_access_id = ANY($1)`,
+      `SELECT data_access_id, role_id FROM data_access_roles WHERE data_access_id = ANY($1)`,
       [this.dataRef],
     );
     if (existing.length > 0) return;
 
     await this.connection.query(`
-      INSERT INTO ${DATA_ACCESS_ROLES} (data_access_id, role_id) VALUES
+      INSERT INTO data_access_roles (data_access_id, role_id) VALUES
       (1, 1), (1, 2), (1, 4),
       (2, 1), (2, 2),
       (3, 1), (4, 1), (5, 1),
@@ -76,35 +76,35 @@ export class DataAccessSeeder implements Seeder {
 
   private async seedDataAccessUsers(): Promise<void> {
     const existing = await this.connection.query<{ data_access_id: number; user_id: number }[]>(
-      `SELECT data_access_id, user_id FROM ${DATA_ACCESS_USERS} WHERE data_access_id = ANY($1)`,
+      `SELECT data_access_id, user_id FROM data_access_users WHERE data_access_id = ANY($1)`,
       [this.dataRef],
     );
     if (existing.length > 0) return;
 
     await this.connection.query(`
-      INSERT INTO ${DATA_ACCESS_USERS} (data_access_id, user_id) VALUES
+      INSERT INTO data_access_users (data_access_id, user_id) VALUES
       (9, 3), (10, 4), (11, 2), (12, 3)
     `);
   }
 
   private async seedDataPermissions(): Promise<void> {
     const existing = await this.connection.query<{ data_access_id: number; permission_id: number }[]>(
-      `SELECT data_access_id, permission_id FROM ${DATA_PERMISSIONS} WHERE data_access_id = ANY($1)`,
+      `SELECT data_access_id, permission_id FROM data_permissions WHERE data_access_id = ANY($1)`,
       [this.dataRef],
     );
     if (existing.length > 0) return;
 
     await this.connection.query(`
-      INSERT INTO ${DATA_PERMISSIONS} (data_access_id, permission_id) VALUES
+      INSERT INTO data_permissions (data_access_id, permission_id) VALUES
       (9, 23), (10, 14), (11, 12), (12, 13)
     `);
   }
 
   async drop(): Promise<any> {
     if (!this.dataRef.length) return;
-    await this.connection.query(`DELETE FROM ${DATA_PERMISSIONS} WHERE data_access_id = ANY($1)`, [this.dataRef]);
-    await this.connection.query(`DELETE FROM ${DATA_ACCESS_USERS} WHERE data_access_id = ANY($1)`, [this.dataRef]);
-    await this.connection.query(`DELETE FROM ${DATA_ACCESS_ROLES} WHERE data_access_id = ANY($1)`, [this.dataRef]);
+    await this.connection.query(`DELETE FROM data_permissions WHERE data_access_id = ANY($1)`, [this.dataRef]);
+    await this.connection.query(`DELETE FROM data_access_users WHERE data_access_id = ANY($1)`, [this.dataRef]);
+    await this.connection.query(`DELETE FROM data_access_roles WHERE data_access_id = ANY($1)`, [this.dataRef]);
     await this.connection
       .createQueryBuilder()
       .delete()

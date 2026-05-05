@@ -220,9 +220,12 @@ export class UsersService {
     const exceptions = await this.dataSource
       .getRepository(DataAccess)
       .createQueryBuilder('da')
-      .leftJoinAndSelect('da.users', 'users')
-      .leftJoinAndSelect('da.permissions', 'permissions')
-      .where('users.id = :userId', { userId: id })
+      .leftJoinAndSelect('da.user_data_access', 'uda')
+      .leftJoinAndSelect('uda.user', 'user')
+      .leftJoinAndSelect('da.permission_data_access', 'pda')
+      .leftJoinAndSelect('pda.permission', 'permission')
+      .where('uda.user_id = :userId', { userId: id })
+      .andWhere('uda.deleted_at IS NULL')
       .orderBy('da.id', 'DESC')
       .getMany();
 

@@ -1,9 +1,9 @@
 import { GENDER, USER_STATUS } from '@common/enums';
-import { DataAccess } from '@modules/databases/data-access.entity';
+import { UserDataAccess } from '@modules/databases/data-access.entity';
 import { Role } from '@modules/databases/role.entity';
 import { UserRole } from '@modules/databases/user-role.entity';
 import { BaseSoftDeleteEntity } from '../../configuration/base-entity';
-import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 
 @Entity('users')
 export class Users extends BaseSoftDeleteEntity {
@@ -101,8 +101,8 @@ export class Users extends BaseSoftDeleteEntity {
   @OneToMany('UserRole', 'user')
   user_roles?: UserRole[];
 
-  @ManyToMany('DataAccess', 'users')
-  data_access_rules?: DataAccess[];
+  @OneToMany(() => UserDataAccess, (uda) => uda.user)
+  user_data_access?: UserDataAccess[];
 
   @OneToMany('Role', 'creator')
   created_roles?: Role[];

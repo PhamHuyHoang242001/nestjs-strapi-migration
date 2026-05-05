@@ -1,6 +1,6 @@
 import { STATUS } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { DataAccess } from '@modules/databases/data-access.entity';
+import { RoleDataAccess } from '@modules/databases/data-access.entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { UserRole } from '@modules/databases/user-role.entity';
 import { Users } from '@modules/databases/user.entity';
@@ -48,6 +48,6 @@ export class Role extends BaseSoftDeleteEntity {
   @OneToMany('UserRole', 'role')
   user_roles?: UserRole[];
 
-  @ManyToMany('DataAccess', 'roles')
-  data_access_rules?: DataAccess[];
+  @OneToMany(() => RoleDataAccess, (rda) => rda.role)
+  role_data_access?: RoleDataAccess[];
 }

@@ -3,11 +3,7 @@ import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { Role } from '@modules/databases/role.entity';
 import { Users } from '@modules/databases/user.entity';
-import { Column, Entity, JoinTable, ManyToMany } from 'typeorm';
-
-export const DATA_PERMISSIONS = 'data_permissions';
-export const DATA_ACCESS_USERS = 'data_access_users';
-export const DATA_ACCESS_ROLES = 'data_access_roles';
+import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 
 @Entity('data_access')
 export class DataAccess extends BaseSoftDeleteEntity {
@@ -26,27 +22,63 @@ export class DataAccess extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'timestamp without time zone' })
   public end_date: Date;
 
-  @ManyToMany(() => Users, (user) => user.data_access_rules, { cascade: true })
-  @JoinTable({
-    name: DATA_ACCESS_USERS,
-    joinColumn: { name: 'data_access_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
-  })
-  users: Users[];
+  @OneToMany(() => UserDataAccess, (uda) => uda.data_access)
+  user_data_access: UserDataAccess[];
 
-  @ManyToMany(() => Role, (role) => role.data_access_rules, { cascade: true })
-  @JoinTable({
-    name: DATA_ACCESS_ROLES,
-    joinColumn: { name: 'data_access_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'role_id', referencedColumnName: 'id' },
-  })
-  roles: Role[];
+  @OneToMany(() => RoleDataAccess, (rda) => rda.data_access)
+  role_data_access: RoleDataAccess[];
 
-  @ManyToMany(() => Permission, { cascade: true })
-  @JoinTable({
-    name: DATA_PERMISSIONS,
-    joinColumn: { name: 'data_access_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'permission_id', referencedColumnName: 'id' },
-  })
-  permissions: Permission[];
+  @OneToMany(() => PermissionDataAccess, (pda) => pda.data_access)
+  permission_data_access: PermissionDataAccess[];
+}
+
+@Entity('data_access_users')
+export class UserDataAccess extends BaseSoftDeleteEntity {
+  @Column()
+  user_id: number;
+
+  @Column()
+  data_access_id: number;
+
+  @ManyToOne(() => Users, (u) => u.user_data_access)
+  @JoinColumn({ name: 'user_id' })
+  user: Users;
+
+  @ManyToOne(() => DataAccess, (da) => da.user_data_access)
+  @JoinColumn({ name: 'data_access_id' })
+  data_access: DataAccess;
+}
+
+@Entity('data_access_roles')
+export class RoleDataAccess extends BaseSoftDeleteEntity {
+  @Column()
+  role_id: number;
+
+  @Column()
+  data_access_id: number;
+
+  @ManyToOne(() => Role, (r) => r.role_data_access)
+  @JoinColumn({ name: 'role_id' })
+  role: Role;
+
+  @ManyToOne(() => DataAccess, (da) => da.role_data_access)
+  @JoinColumn({ name: 'data_access_id' })
+  data_access: DataAccess;
+}
+
+@Entity('data_permissions')
+export class PermissionDataAccess extends BaseSoftDeleteEntity {
+  @Column()
+  permission_id: number;
+
+  @Column()
+  data_access_id: number;
+
+  @ManyToOne(() => Permission, (p) => p.permission_data_access)
+  @JoinColumn({ name: 'permission_id' })
+  permission: Permission;
+
+  @ManyToOne(() => DataAccess, (da) => da.permission_data_access)
+  @JoinColumn({ name: 'data_access_id' })
+  data_access: DataAccess;
 }
