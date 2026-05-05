@@ -1,5 +1,6 @@
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { SortParams } from '@common/decorators/sort.decorator';
+import { PermissionCacheService } from '@common/authorization';
 import { StatusDto } from '@common/dto';
 import { SortType, STATUS } from '@common/enums';
 import { execQueryAll, execQueryPaignation } from '@common/utils';
@@ -28,6 +29,7 @@ export class RoleService {
     private readonly permissionRepository: PermissionRepository,
     private readonly connection: DataSource,
     private readonly historyLogger: ChangeHistoryLogger,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
 
   async validateForm(data: CreateRoleDto) {
@@ -48,15 +50,17 @@ export class RoleService {
     const permCodes = permission.length
       ? (await this.permissionRepository.findByIds(permission)).map((p) => p.code)
       : [];
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE,
-      action_type: CHANGE_ACTION_TYPE.CREATE,
-      entity_id: String(rowCreated.id),
-      entity_name: data.name,
-      performed_by: 'system',
-      old_value: null,
-      new_value: { name: data.name, permissions: permCodes },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE,
+        action_type: CHANGE_ACTION_TYPE.CREATE,
+        entity_id: String(rowCreated.id),
+        entity_name: data.name,
+        performed_by: 'system',
+        old_value: null,
+        new_value: { name: data.name, permissions: permCodes },
+      })
+      .catch(() => {});
     return { id: rowCreated.id };
   }
   checkPermissionSelected(permission_selected: Permission[], permission: { id: number }) {
@@ -94,20 +98,22 @@ export class RoleService {
       permissions: sourceRole.permissions,
       user_id,
     });
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE,
-      action_type: CHANGE_ACTION_TYPE.CLONE,
-      entity_id: String(newRole.id),
-      entity_name: dto.name,
-      performed_by: 'system',
-      old_value: { source_role_id: id, source_role_name: sourceRole.name },
-      new_value: {
-        name: dto.name,
-        code: dto.code ?? null,
-        description: sourceRole.description,
-        permissions: sourceRole.permissions.map((p) => p.code),
-      },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE,
+        action_type: CHANGE_ACTION_TYPE.CLONE,
+        entity_id: String(newRole.id),
+        entity_name: dto.name,
+        performed_by: 'system',
+        old_value: { source_role_id: id, source_role_name: sourceRole.name },
+        new_value: {
+          name: dto.name,
+          code: dto.code ?? null,
+          description: sourceRole.description,
+          permissions: sourceRole.permissions.map((p) => p.code),
+        },
+      })
+      .catch(() => {});
     return { id: newRole.id };
   }
 
@@ -136,7 +142,9 @@ export class RoleService {
     // Capture old user list before change
     const oldLinks = await userRoleRepo.findBy({ role_id: roleId });
     const oldUserIds = oldLinks.map((ur) => ur.user_id);
-    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+    const oldUsers = oldUserIds.length
+      ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] })
+      : [];
 
     // Insert only non-existing ones
     const existing = await userRoleRepo.find({ where: { role_id: roleId, user_id: In(dto.user_ids) } });
@@ -149,17 +157,25 @@ export class RoleService {
     // Capture new user list after change
     const newLinks = await userRoleRepo.findBy({ role_id: roleId });
     const newUserIds = newLinks.map((ur) => ur.user_id);
-    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+    const newUsers = newUserIds.length
+      ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] })
+      : [];
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
-      action_type: CHANGE_ACTION_TYPE.ASSIGN_USER,
-      entity_id: String(roleId),
-      entity_name: role.name,
-      performed_by: 'system',
-      old_value: { users: oldUsers.map((u) => u.username) },
-      new_value: { users: newUsers.map((u) => u.username) },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+        action_type: CHANGE_ACTION_TYPE.ASSIGN_USER,
+        entity_id: String(roleId),
+        entity_name: role.name,
+        performed_by: 'system',
+        old_value: { users: oldUsers.map((u) => u.username) },
+        new_value: { users: newUsers.map((u) => u.username) },
+      })
+      .catch(() => {});
+
+    toInsert.forEach((userRole) => {
+      void this.permissionCache.invalidateUser(userRole.user_id).catch(() => {});
+    });
 
     return { added: toInsert.length, total: dto.user_ids.length };
   }
@@ -171,24 +187,34 @@ export class RoleService {
     // Capture old user list before change
     const oldLinks = await userRoleRepo.findBy({ role_id: roleId });
     const oldUserIds = oldLinks.map((ur) => ur.user_id);
-    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+    const oldUsers = oldUserIds.length
+      ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] })
+      : [];
 
     await userRoleRepo.delete({ role_id: roleId, user_id: In(dto.user_ids) });
 
     // Capture new user list after change
     const newLinks = await userRoleRepo.findBy({ role_id: roleId });
     const newUserIds = newLinks.map((ur) => ur.user_id);
-    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+    const newUsers = newUserIds.length
+      ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] })
+      : [];
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
-      action_type: CHANGE_ACTION_TYPE.REMOVE_USER,
-      entity_id: String(roleId),
-      entity_name: role.name,
-      performed_by: 'system',
-      old_value: { users: oldUsers.map((u) => u.username) },
-      new_value: { users: newUsers.map((u) => u.username) },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+        action_type: CHANGE_ACTION_TYPE.REMOVE_USER,
+        entity_id: String(roleId),
+        entity_name: role.name,
+        performed_by: 'system',
+        old_value: { users: oldUsers.map((u) => u.username) },
+        new_value: { users: newUsers.map((u) => u.username) },
+      })
+      .catch(() => {});
+
+    dto.user_ids.forEach((userId) => {
+      void this.permissionCache.invalidateUser(userId).catch(() => {});
+    });
 
     return { removed: dto.user_ids.length };
   }
@@ -219,6 +245,11 @@ export class RoleService {
     const hasPermChange = finalPermIds !== undefined;
     const hasUserChange = user_ids !== undefined;
     const hasFieldChange = Object.keys(data).length > 0;
+    const oldAssignedUserIds = hasUserChange
+      ? (await this.connection.getRepository(UserRole).find({ where: { role_id: id }, select: ['user_id'] })).map(
+          (ur) => ur.user_id,
+        )
+      : [];
 
     // Validate permission IDs if provided
     if (hasPermChange && finalPermIds.length > 0) {
@@ -249,7 +280,10 @@ export class RoleService {
       if (hasPermChange) {
         await manager.createQueryBuilder().delete().from('roles_permissions').where('role_id = :id', { id }).execute();
         if (finalPermIds.length > 0) {
-          await manager.createQueryBuilder().insert().into('roles_permissions')
+          await manager
+            .createQueryBuilder()
+            .insert()
+            .into('roles_permissions')
             .values(finalPermIds.map((pid) => ({ role_id: id, permission_id: pid })))
             .execute();
         }
@@ -259,7 +293,10 @@ export class RoleService {
       if (hasUserChange) {
         await manager.createQueryBuilder().delete().from('user_roles').where('role_id = :id', { id }).execute();
         if (user_ids.length > 0) {
-          await manager.createQueryBuilder().insert().into('user_roles')
+          await manager
+            .createQueryBuilder()
+            .insert()
+            .into('user_roles')
             .values(user_ids.map((uid) => ({ role_id: id, user_id: uid })))
             .execute();
         }
@@ -269,24 +306,42 @@ export class RoleService {
     // Build history log with permission codes instead of IDs
     const logNewValue: Record<string, any> = { ...data };
     if (user_ids !== undefined) {
-      const userEntities = user_ids.length ? await this.userRepository.find({ where: { id: In(user_ids) }, select: ['id', 'username'] }) : [];
+      const userEntities = user_ids.length
+        ? await this.userRepository.find({ where: { id: In(user_ids) }, select: ['id', 'username'] })
+        : [];
       logNewValue.users = userEntities.map((u) => u.username);
     }
     if (finalPermIds !== undefined) {
       const permEntities = finalPermIds.length ? await this.permissionRepository.findByIds(finalPermIds) : [];
       logNewValue.permissions = permEntities.map((p) => p.code);
     }
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE,
-      action_type: CHANGE_ACTION_TYPE.UPDATE,
-      entity_id: String(id),
-      entity_name: oldRecord?.name ?? String(id),
-      performed_by: 'system',
-      old_value: oldRecord
-        ? { name: oldRecord.name, code: oldRecord.code, description: oldRecord.description, status: oldRecord.status, permissions: (oldRecord.permissions || []).map((p) => p.code) }
-        : null,
-      new_value: logNewValue,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE,
+        action_type: CHANGE_ACTION_TYPE.UPDATE,
+        entity_id: String(id),
+        entity_name: oldRecord?.name ?? String(id),
+        performed_by: 'system',
+        old_value: oldRecord
+          ? {
+              name: oldRecord.name,
+              code: oldRecord.code,
+              description: oldRecord.description,
+              status: oldRecord.status,
+              permissions: (oldRecord.permissions || []).map((p) => p.code),
+            }
+          : null,
+        new_value: logNewValue,
+      })
+      .catch(() => {});
+
+    if (hasPermChange) this.permissionCache.invalidateByRole(id).catch(() => {});
+    if (user_ids !== undefined) {
+      const affectedUserIds = new Set([...oldAssignedUserIds, ...user_ids]);
+      affectedUserIds.forEach((userId) => {
+        void this.permissionCache.invalidateUser(userId).catch(() => {});
+      });
+    }
 
     return { id };
   }
@@ -296,15 +351,18 @@ export class RoleService {
     const rs = await this.roleRepository.findOneByIdValid(id);
     if (rs.status != status) {
       await this.roleRepository.updateOne({ id: rs.id }, { status });
-      this.historyLogger.log({
-        entity_type: CHANGE_ENTITY_TYPE.ROLE,
-        action_type: status === STATUS.ACTIVE ? CHANGE_ACTION_TYPE.ACTIVATE : CHANGE_ACTION_TYPE.DEACTIVATE,
-        entity_id: String(id),
-        entity_name: rs.name,
-        performed_by: 'system',
-        old_value: { is_active: rs.status },
-        new_value: { is_active: status },
-      }).catch(() => {});
+      this.historyLogger
+        .log({
+          entity_type: CHANGE_ENTITY_TYPE.ROLE,
+          action_type: status === STATUS.ACTIVE ? CHANGE_ACTION_TYPE.ACTIVATE : CHANGE_ACTION_TYPE.DEACTIVATE,
+          entity_id: String(id),
+          entity_name: rs.name,
+          performed_by: 'system',
+          old_value: { is_active: rs.status },
+          new_value: { is_active: status },
+        })
+        .catch(() => {});
+      this.permissionCache.invalidateByRole(id).catch(() => {});
     }
     return { id, status };
   }
@@ -313,15 +371,18 @@ export class RoleService {
     const rs = await this.userRepository.findOneByCondition({ role_id: id });
     if (rs) throw new BadRequestException(MODEL_ROLE_USING_CAN_NOT_DELETE);
     await this.roleRepository.softDelete({ id });
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE,
-      action_type: CHANGE_ACTION_TYPE.DELETE,
-      entity_id: String(id),
-      entity_name: roleToDelete.name,
-      performed_by: 'system',
-      old_value: { name: roleToDelete.name, code: roleToDelete.code, description: roleToDelete.description },
-      new_value: null,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE,
+        action_type: CHANGE_ACTION_TYPE.DELETE,
+        entity_id: String(id),
+        entity_name: roleToDelete.name,
+        performed_by: 'system',
+        old_value: { name: roleToDelete.name, code: roleToDelete.code, description: roleToDelete.description },
+        new_value: null,
+      })
+      .catch(() => {});
+    this.permissionCache.invalidateByRole(id).catch(() => {});
     return { id };
   }
 

@@ -1,5 +1,6 @@
 import { SortParams } from '@common/decorators/sort.decorator';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
+import { PermissionCacheService } from '@common/authorization';
 import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE, SCOPE_TYPE } from '@common/enums';
 import { NOT_FOUND } from '@constant/error-messages';
 import {
@@ -27,6 +28,7 @@ export class DataAccessService {
     private readonly connection: DataSource,
     private readonly hierarchyValidation: HierarchyValidationService,
     private readonly historyLogger: ChangeHistoryLogger,
+    private readonly permissionCache: PermissionCacheService,
     @InjectRepository(RoleDataAccess)
     private readonly roleDataAccessRepo: Repository<RoleDataAccess>,
     @InjectRepository(UserDataAccess)
@@ -45,14 +47,10 @@ export class DataAccessService {
     permissionIds?: number[],
   ) {
     if (roleIds?.length) {
-      await this.roleDataAccessRepo.insert(
-        roleIds.map((role_id) => ({ role_id, data_access_id: dataAccessId })),
-      );
+      await this.roleDataAccessRepo.insert(roleIds.map((role_id) => ({ role_id, data_access_id: dataAccessId })));
     }
     if (userIds?.length) {
-      await this.userDataAccessRepo.insert(
-        userIds.map((user_id) => ({ user_id, data_access_id: dataAccessId })),
-      );
+      await this.userDataAccessRepo.insert(userIds.map((user_id) => ({ user_id, data_access_id: dataAccessId })));
     }
     if (permissionIds?.length) {
       await this.permissionDataAccessRepo.insert(
@@ -163,9 +161,12 @@ export class DataAccessService {
     const record = await this.dataAccessRepository.findOne({
       where: { id },
       relations: [
-        'role_data_access', 'role_data_access.role',
-        'user_data_access', 'user_data_access.user',
-        'permission_data_access', 'permission_data_access.permission',
+        'role_data_access',
+        'role_data_access.role',
+        'user_data_access',
+        'user_data_access.user',
+        'permission_data_access',
+        'permission_data_access.permission',
       ],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
@@ -280,6 +281,8 @@ export class DataAccessService {
       })
       .catch(() => {});
 
+    this.permissionCache.invalidateByTable(dto.table_name).catch(() => {});
+
     return { ids: savedIds };
   }
 
@@ -291,9 +294,12 @@ export class DataAccessService {
     const old = await this.dataAccessRepository.findOne({
       where: { id },
       relations: [
-        'role_data_access', 'role_data_access.role',
-        'user_data_access', 'user_data_access.user',
-        'permission_data_access', 'permission_data_access.permission',
+        'role_data_access',
+        'role_data_access.role',
+        'user_data_access',
+        'user_data_access.user',
+        'permission_data_access',
+        'permission_data_access.permission',
       ],
     });
     if (!old) throw new NotFoundException(NOT_FOUND);
@@ -388,6 +394,8 @@ export class DataAccessService {
       })
       .catch(() => {});
 
+    this.permissionCache.invalidateByTable(old.table_name).catch(() => {});
+
     return { id };
   }
 
@@ -424,6 +432,8 @@ export class DataAccessService {
         new_value: null,
       })
       .catch(() => {});
+
+    this.permissionCache.invalidateByTable(record.table_name).catch(() => {});
 
     return { id };
   }
@@ -480,6 +490,8 @@ export class DataAccessService {
         new_value: null,
       })
       .catch(() => {});
+
+    this.permissionCache.invalidateByTable(record.table_name).catch(() => {});
 
     return { rule_id: ruleId, removed: { subject_type: subjectType, subject_id: subjectId } };
   }

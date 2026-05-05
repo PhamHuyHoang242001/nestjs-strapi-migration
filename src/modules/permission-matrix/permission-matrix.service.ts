@@ -5,6 +5,7 @@ import { PermissionRepository } from '@modules/permission/repository/permission.
 import { RoleRepository } from '@modules/role/repository/role.repository';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { STATUS } from '@common/enums';
+import { PermissionCacheService } from '@common/authorization';
 import { DataSource } from 'typeorm';
 import { UpdatePermissionMatrixDto } from './dto/update-permission-matrix.dto';
 
@@ -30,6 +31,7 @@ export class PermissionMatrixService {
     private readonly permissionRepository: PermissionRepository,
     private readonly moduleRepository: ModuleManagementRepository,
     private readonly connection: DataSource,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
 
   /**
@@ -129,6 +131,8 @@ export class PermissionMatrixService {
           .execute();
       }
     });
+
+    this.permissionCache.invalidateByRole(roleId).catch(() => {});
 
     return { id: roleId };
   }

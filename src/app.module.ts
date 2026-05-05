@@ -30,6 +30,7 @@ import { ModuleManagementModule } from '@modules/module/module-management.module
 import { PermissionMatrixModule } from '@modules/permission-matrix/permission-matrix.module';
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 import { DataAccessModule } from '@modules/data-access/data-access.module';
+import { AuthorizationModule } from '@common/authorization';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -76,6 +77,7 @@ import { DataAccessModule } from '@modules/data-access/data-access.module';
     PermissionMatrixModule,
     ChangeHistoryModule,
     DataAccessModule,
+    AuthorizationModule,
   ],
   controllers: [AppController],
   providers: [

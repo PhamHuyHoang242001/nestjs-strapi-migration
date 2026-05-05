@@ -10,6 +10,7 @@ export interface RequestInfo {
   domain?: string;
   host?: string;
   url?: string;
+  accessibleDataIds?: number[];
   [key: string]: unknown;
 }
 
