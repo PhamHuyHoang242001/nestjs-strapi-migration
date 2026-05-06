@@ -1,4 +1,5 @@
 export * from './authorization.module';
+export * from './constants/authorization.constant';
 export * from './decorators/require-data-access.decorator';
 export * from './decorators/require-permission.decorator';
 export * from './guards/permission.guard';

@@ -101,6 +101,11 @@ export const TWITTER_ACCESS_TOKEN: string = process.env.TWITTER_ACCESS_TOKEN ?? 
 export const TWITTER_ACCESS_TOKEN_SECRET: string = process.env.TWITTER_ACCESS_TOKEN_SECRET ?? '';
 export const TWITTER_API_ENDPOINT: string = process.env.TWITTER_API_ENDPOINT ?? '';
 
+// Redis
+export const REDIS_URI: string = process.env.REDIS_URI;
+export const REDIS_REPORT_EXPIRE_TIME: number = Number(process.env.REDIS_REPORT_EXPIRE_TIME);
+export const REDIS_CACHE_PERMISSION_EXPIRE_TIME: number = Number(process.env.REDIS_CACHE_PERMISSION_EXPIRE_TIME);
+
 // Facebook
 export const FACEBOOK_APP_ID: string = process.env.FACEBOOK_APP_ID ?? '';
 export const FACEBOOK_APP_SECRET: string = process.env.FACEBOOK_APP_SECRET ?? '';

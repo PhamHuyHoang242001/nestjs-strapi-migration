@@ -1,145 +1,59 @@
+import { STATUS } from '@common/enums';
+import { SCOPE_TYPE } from '@common/enums';
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-
-const GET_USER_PERMISSIONS_SQL = `
-WITH role_permissions AS (
-  SELECT DISTINCT p.code
-  FROM user_roles ur
-  JOIN role r ON r.id = ur.role_id
-    AND r.status = 'active'
-    AND r.deleted_at IS NULL
-  JOIN roles_permissions rp ON rp.role_id = r.id
-  JOIN permission p ON p.id = rp.permission_id
-    AND p.is_active = true
-    AND p.deleted_at IS NULL
-  WHERE ur.user_id = $1
-    AND ur.deleted_at IS NULL
-),
-exception_user_permissions AS (
-  SELECT DISTINCT p.code
-  FROM data_access_users dau
-  JOIN data_access da ON da.id = dau.data_access_id
-    AND da.scope_type = 'allow'
-    AND da.deleted_at IS NULL
-    AND (da.start_date IS NULL OR da.start_date <= NOW())
-    AND (da.end_date IS NULL OR da.end_date >= NOW())
-  JOIN data_permissions dp ON dp.data_access_id = da.id
-    AND dp.deleted_at IS NULL
-  JOIN permission p ON p.id = dp.permission_id
-    AND p.is_active = true
-    AND p.deleted_at IS NULL
-  WHERE dau.user_id = $1
-    AND dau.deleted_at IS NULL
-)
-SELECT code FROM role_permissions
-UNION
-SELECT code FROM exception_user_permissions
-`;
-
-const GET_ACCESSIBLE_RECORDS_SQL = `
-WITH user_role_ids AS (
-  SELECT ur.role_id
-  FROM user_roles ur
-  JOIN role r ON r.id = ur.role_id
-    AND r.status = 'active'
-    AND r.deleted_at IS NULL
-  WHERE ur.user_id = $1
-    AND ur.deleted_at IS NULL
-),
-allow_via_role AS (
-  SELECT da.data_id
-  FROM data_access_roles dar
-  JOIN data_access da ON da.id = dar.data_access_id
-    AND da.table_name = $2
-    AND da.scope_type = 'allow'
-    AND da.deleted_at IS NULL
-    AND (da.start_date IS NULL OR da.start_date <= NOW())
-    AND (da.end_date IS NULL OR da.end_date >= NOW())
-  WHERE dar.role_id IN (SELECT role_id FROM user_role_ids)
-    AND dar.deleted_at IS NULL
-    AND (
-      $3::text IS NULL
-      OR NOT EXISTS (
-        SELECT 1 FROM data_permissions dp2
-        WHERE dp2.data_access_id = da.id AND dp2.deleted_at IS NULL
-      )
-      OR EXISTS (
-        SELECT 1 FROM data_permissions dp
-        JOIN permission p ON p.id = dp.permission_id AND p.code = $3
-        WHERE dp.data_access_id = da.id AND dp.deleted_at IS NULL
-      )
-    )
-),
-allow_via_user AS (
-  SELECT da.data_id
-  FROM data_access_users dau
-  JOIN data_access da ON da.id = dau.data_access_id
-    AND da.table_name = $2
-    AND da.scope_type = 'allow'
-    AND da.deleted_at IS NULL
-    AND (da.start_date IS NULL OR da.start_date <= NOW())
-    AND (da.end_date IS NULL OR da.end_date >= NOW())
-  WHERE dau.user_id = $1
-    AND dau.deleted_at IS NULL
-    AND (
-      $3::text IS NULL
-      OR NOT EXISTS (
-        SELECT 1 FROM data_permissions dp2
-        WHERE dp2.data_access_id = da.id AND dp2.deleted_at IS NULL
-      )
-      OR EXISTS (
-        SELECT 1 FROM data_permissions dp
-        JOIN permission p ON p.id = dp.permission_id AND p.code = $3
-        WHERE dp.data_access_id = da.id AND dp.deleted_at IS NULL
-      )
-    )
-),
-deny_via_role AS (
-  SELECT da.data_id
-  FROM data_access_roles dar
-  JOIN data_access da ON da.id = dar.data_access_id
-    AND da.table_name = $2
-    AND da.scope_type = 'deny'
-    AND da.deleted_at IS NULL
-    AND (da.start_date IS NULL OR da.start_date <= NOW())
-    AND (da.end_date IS NULL OR da.end_date >= NOW())
-  WHERE dar.role_id IN (SELECT role_id FROM user_role_ids)
-    AND dar.deleted_at IS NULL
-),
-deny_via_user AS (
-  SELECT da.data_id
-  FROM data_access_users dau
-  JOIN data_access da ON da.id = dau.data_access_id
-    AND da.table_name = $2
-    AND da.scope_type = 'deny'
-    AND da.deleted_at IS NULL
-    AND (da.start_date IS NULL OR da.start_date <= NOW())
-    AND (da.end_date IS NULL OR da.end_date >= NOW())
-  WHERE dau.user_id = $1
-    AND dau.deleted_at IS NULL
-),
-all_allowed AS (
-  SELECT data_id FROM allow_via_role
-  UNION
-  SELECT data_id FROM allow_via_user
-),
-all_denied AS (
-  SELECT data_id FROM deny_via_role
-  UNION
-  SELECT data_id FROM deny_via_user
-)
-SELECT data_id FROM all_allowed
-EXCEPT
-SELECT data_id FROM all_denied
-`;
+import { InjectRepository } from '@nestjs/typeorm';
+import { RoleDataAccess, UserDataAccess } from '@modules/databases/data-access.entity';
+import { UserRole } from '@modules/databases/user-role.entity';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class PermissionQueryService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectRepository(UserRole)
+    private readonly userRoleRepo: Repository<UserRole>,
+    @InjectRepository(UserDataAccess)
+    private readonly userDataAccessRepo: Repository<UserDataAccess>,
+    @InjectRepository(RoleDataAccess)
+    private readonly roleDataAccessRepo: Repository<RoleDataAccess>,
+  ) {}
 
   async getUserPermissions(userId: number): Promise<string[]> {
-    const rows = await this.dataSource.query<{ code: string }[]>(GET_USER_PERMISSIONS_SQL, [userId]);
-    return rows.map((row) => row.code);
+    // Role-based permissions: user_roles → role (active) → roles_permissions → permission (active)
+    const rolePerms = await this.userRoleRepo
+      .createQueryBuilder('ur')
+      .innerJoin('ur.role', 'r')
+      .innerJoin('r.permissions', 'p')
+      .select('p.code', 'code')
+      .where('ur.user_id = :userId', { userId })
+      .andWhere('ur.deleted_at IS NULL')
+      .andWhere('r.status = :status', { status: STATUS.ACTIVE })
+      .andWhere('r.deleted_at IS NULL')
+      .andWhere('p.is_active = true')
+      .andWhere('p.deleted_at IS NULL')
+      .getRawMany<{ code: string }>();
+
+    // Exception permissions: data_access_users → data_access (allow, in date range) → data_permissions → permission (active)
+    const exceptionPerms = await this.userDataAccessRepo
+      .createQueryBuilder('dau')
+      .innerJoin('dau.data_access', 'da')
+      .innerJoin('da.permission_data_access', 'dp')
+      .innerJoin('dp.permission', 'p')
+      .select('p.code', 'code')
+      .where('dau.user_id = :userId', { userId })
+      .andWhere('dau.deleted_at IS NULL')
+      .andWhere('da.scope_type = :scopeType', { scopeType: SCOPE_TYPE.ALLOW })
+      .andWhere('da.deleted_at IS NULL')
+      .andWhere('(da.start_date IS NULL OR da.start_date <= NOW())')
+      .andWhere('(da.end_date IS NULL OR da.end_date >= NOW())')
+      .andWhere('dp.deleted_at IS NULL')
+      .andWhere('p.is_active = true')
+      .andWhere('p.deleted_at IS NULL')
+      .getRawMany<{ code: string }>();
+
+    const codes = new Set<string>();
+    for (const row of rolePerms) codes.add(row.code);
+    for (const row of exceptionPerms) codes.add(row.code);
+    return [...codes];
   }
 
   async hasPermission(userId: number, code: string): Promise<boolean> {
@@ -148,19 +62,110 @@ export class PermissionQueryService {
   }
 
   async getAccessibleRecords(userId: number, tableName: string, permissionCode?: string): Promise<number[]> {
-    const rows = await this.dataSource.query<{ data_id: number | string }[]>(GET_ACCESSIBLE_RECORDS_SQL, [
-      userId,
-      tableName,
-      permissionCode ?? null,
+    // Step 1: Get user's active role IDs
+    const roleIdRows = await this.userRoleRepo
+      .createQueryBuilder('ur')
+      .innerJoin('ur.role', 'r')
+      .select('ur.role_id', 'role_id')
+      .where('ur.user_id = :userId', { userId })
+      .andWhere('ur.deleted_at IS NULL')
+      .andWhere('r.status = :status', { status: STATUS.ACTIVE })
+      .andWhere('r.deleted_at IS NULL')
+      .getRawMany<{ role_id: number }>();
+    const roleIds = roleIdRows.map((r) => r.role_id);
+
+    // Step 2: Run allow & deny queries in parallel
+    const [allowViaRole, allowViaUser, denyViaRole, denyViaUser] = await Promise.all([
+      roleIds.length
+        ? this.queryDataIds(
+            this.roleDataAccessRepo,
+            'dar',
+            'dar.role_id IN (:...roleIds)',
+            { roleIds },
+            tableName,
+            SCOPE_TYPE.ALLOW,
+            permissionCode,
+          )
+        : ([] as number[]),
+      this.queryDataIds(
+        this.userDataAccessRepo,
+        'dau',
+        'dau.user_id = :userId',
+        { userId },
+        tableName,
+        SCOPE_TYPE.ALLOW,
+        permissionCode,
+      ),
+      roleIds.length
+        ? this.queryDataIds(
+            this.roleDataAccessRepo,
+            'dar',
+            'dar.role_id IN (:...roleIds)',
+            { roleIds },
+            tableName,
+            SCOPE_TYPE.DENY,
+            permissionCode,
+          )
+        : ([] as number[]),
+      this.queryDataIds(
+        this.userDataAccessRepo,
+        'dau',
+        'dau.user_id = :userId',
+        { userId },
+        tableName,
+        SCOPE_TYPE.DENY,
+        permissionCode,
+      ),
     ]);
-    return rows.map((row) => Number(row.data_id));
+
+    // Step 3: (allow_role ∪ allow_user) \ (deny_role ∪ deny_user)
+    const allowed = new Set([...allowViaRole, ...allowViaUser]);
+    for (const id of denyViaRole) allowed.delete(id);
+    for (const id of denyViaUser) allowed.delete(id);
+    return [...allowed];
   }
 
   async getUserIdsByRole(roleId: number): Promise<number[]> {
-    const rows = await this.dataSource.query<{ user_id: number | string }[]>(
-      'SELECT user_id FROM user_roles WHERE role_id = $1 AND deleted_at IS NULL',
-      [roleId],
-    );
+    const rows = await this.userRoleRepo
+      .createQueryBuilder('ur')
+      .select('ur.user_id', 'user_id')
+      .where('ur.role_id = :roleId', { roleId })
+      .andWhere('ur.deleted_at IS NULL')
+      .getRawMany<{ user_id: number | string }>();
     return rows.map((row) => Number(row.user_id));
+  }
+
+  /** Shared query: get data_ids from data_access filtered by scope, table, and optional permission code */
+  private async queryDataIds(
+    repo: Repository<RoleDataAccess> | Repository<UserDataAccess>,
+    alias: string,
+    ownerCondition: string,
+    ownerParams: Record<string, unknown>,
+    tableName: string,
+    scopeType: SCOPE_TYPE,
+    permissionCode?: string,
+  ): Promise<number[]> {
+    const qb = (repo as Repository<RoleDataAccess | UserDataAccess>)
+      .createQueryBuilder(alias)
+      .innerJoin(`${alias}.data_access`, 'da')
+      .select('da.data_id', 'data_id')
+      .where(ownerCondition, ownerParams)
+      .andWhere(`${alias}.deleted_at IS NULL`)
+      .andWhere('da.table_name = :tableName', { tableName })
+      .andWhere('da.scope_type = :scopeType', { scopeType })
+      .andWhere('da.deleted_at IS NULL')
+      .andWhere('(da.start_date IS NULL OR da.start_date <= NOW())')
+      .andWhere('(da.end_date IS NULL OR da.end_date >= NOW())');
+
+    // Permission code filter: only include rules that explicitly have matching permission
+    if (permissionCode) {
+      qb.andWhere(
+        'EXISTS (SELECT 1 FROM data_permissions dp JOIN permission p ON p.id = dp.permission_id AND p.code = :permCode WHERE dp.data_access_id = da.id AND dp.deleted_at IS NULL)',
+        { permCode: permissionCode },
+      );
+    }
+
+    const rows = await qb.getRawMany<{ data_id: number | string }>();
+    return rows.map((row) => Number(row.data_id));
   }
 }
