@@ -1,7 +1,7 @@
 import { SCOPE_TYPE } from '@common/enums';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class CreateDataAccessDto {
   @ApiProperty({ description: 'IDs of records to control access on', type: [Number], example: [1, 2, 3] })
@@ -11,10 +11,11 @@ export class CreateDataAccessDto {
   @Type(() => Number)
   data_ids: number[];
 
-  @ApiProperty({ description: 'Table containing the controlled record', example: 'bi_hub_reports' })
-  @IsString()
+  @ApiProperty({ description: 'Module ID that owns the controlled records', example: 1 })
+  @IsInt()
   @IsNotEmpty()
-  table_name: string;
+  @Type(() => Number)
+  module_id: number;
 
   @ApiProperty({ description: 'Access scope: allow or deny', enum: SCOPE_TYPE, example: SCOPE_TYPE.ALLOW })
   @IsEnum(SCOPE_TYPE)

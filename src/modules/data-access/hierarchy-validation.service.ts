@@ -84,9 +84,10 @@ export class HierarchyValidationService {
 
     const existingRules: { data_id: number }[] = await this.connection.query(
       `SELECT DISTINCT da.data_id FROM data_access da
+       JOIN modules m ON m.id = da.module_id
        LEFT JOIN data_access_users dau ON da.id = dau.data_access_id
        LEFT JOIN data_access_roles dar ON da.id = dar.data_access_id
-       WHERE da.table_name = ${tableParam}
+       WHERE m.table_name = ${tableParam}
          AND da.data_id IN (${parentPlaceholders})
          AND da.scope_type = 'allow'
          AND da.deleted_at IS NULL

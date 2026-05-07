@@ -9,10 +9,11 @@ export class SearchDataAccessDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by table name (partial match)' })
+  @ApiPropertyOptional({ description: 'Filter by module ID' })
   @IsOptional()
-  @IsString()
-  table_name?: string;
+  @IsInt()
+  @Type(() => Number)
+  module_id?: number;
 
   @ApiPropertyOptional({ description: 'Filter by scope type', enum: SCOPE_TYPE })
   @IsOptional()

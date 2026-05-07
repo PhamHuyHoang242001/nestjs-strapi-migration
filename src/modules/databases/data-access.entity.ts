@@ -1,5 +1,6 @@
 import { SCOPE_TYPE } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
+import { Module } from '@modules/databases/module.entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { Role } from '@modules/databases/role.entity';
 import { Users } from '@modules/databases/user.entity';
@@ -11,7 +12,11 @@ export class DataAccess extends BaseSoftDeleteEntity {
   public data_id: number;
 
   @Column()
-  public table_name: string;
+  public module_id: number;
+
+  @ManyToOne('Module', 'data_access_rules')
+  @JoinColumn({ name: 'module_id' })
+  public module?: Module;
 
   @Column({ enum: SCOPE_TYPE })
   public scope_type: SCOPE_TYPE;

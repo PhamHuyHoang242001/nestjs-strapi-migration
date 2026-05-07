@@ -13,6 +13,7 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
 
   buildSearchQuery(dto: SearchDataAccessDto, sortParams?: SortParams): SelectQueryBuilder<DataAccess> {
     const query = this.createQueryBuilder('da')
+      .leftJoinAndSelect('da.module', 'module')
       .leftJoinAndSelect('da.role_data_access', 'rda')
       .leftJoinAndSelect('rda.role', 'role')
       .leftJoinAndSelect('da.user_data_access', 'uda')
@@ -35,8 +36,8 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
       query.andWhere('uda.user_id = :user_id', { user_id: dto.user_id });
     }
 
-    if (dto.table_name) {
-      query.andWhere('da.table_name ILIKE :table_name', { table_name: `%${dto.table_name}%` });
+    if (dto.module_id) {
+      query.andWhere('da.module_id = :module_id', { module_id: dto.module_id });
     }
 
     if (dto.scope_type) {

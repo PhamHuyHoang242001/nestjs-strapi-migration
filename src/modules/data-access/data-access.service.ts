@@ -9,6 +9,7 @@ import {
   UserDataAccess,
   PermissionDataAccess,
 } from '@modules/databases/data-access.entity';
+import { Module as ModuleEntity } from '@modules/databases/module.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, Repository } from 'typeorm';
@@ -29,6 +30,8 @@ export class DataAccessService {
     private readonly hierarchyValidation: HierarchyValidationService,
     private readonly historyLogger: ChangeHistoryLogger,
     private readonly permissionCache: PermissionCacheService,
+    @InjectRepository(ModuleEntity)
+    private readonly moduleRepo: Repository<ModuleEntity>,
     @InjectRepository(RoleDataAccess)
     private readonly roleDataAccessRepo: Repository<RoleDataAccess>,
     @InjectRepository(UserDataAccess)
@@ -70,9 +73,9 @@ export class DataAccessService {
     const params: any[] = [];
     let whereClause = 'WHERE da.deleted_at IS NULL';
 
-    if (dto.table_name) {
-      params.push(`%${dto.table_name}%`);
-      whereClause += ` AND da.table_name ILIKE $${params.length}`;
+    if (dto.module_id) {
+      params.push(dto.module_id);
+      whereClause += ` AND da.module_id = $${params.length}`;
     }
     if (dto.scope_type) {
       params.push(dto.scope_type);
@@ -96,22 +99,26 @@ export class DataAccessService {
       whereClause += ` AND (CAST(da.data_id AS TEXT) ILIKE $${params.length} OR s.subject_name ILIKE $${params.length})`;
     }
 
-    // Flatten: UNION of roles and users per rule (filter soft-deleted junctions)
+    // Flatten: UNION of roles and users per rule, join modules for table_name & path
     const flattenCTE = `
       WITH flattened AS (
-        SELECT da.id as rule_id, da.data_id, da.table_name, da.scope_type,
-               da.start_date, da.end_date, da.created_at,
+        SELECT da.id as rule_id, da.data_id, da.module_id,
+               m.table_name, m.path as module_path, m.name as module_name,
+               da.scope_type, da.start_date, da.end_date, da.created_at,
                'role' as subject_type, r.id as subject_id, r.name as subject_name
         FROM data_access da
+        JOIN modules m ON m.id = da.module_id
         JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
         JOIN role r ON r.id = dar.role_id
         WHERE da.deleted_at IS NULL
         UNION ALL
-        SELECT da.id as rule_id, da.data_id, da.table_name, da.scope_type,
-               da.start_date, da.end_date, da.created_at,
+        SELECT da.id as rule_id, da.data_id, da.module_id,
+               m.table_name, m.path as module_path, m.name as module_name,
+               da.scope_type, da.start_date, da.end_date, da.created_at,
                'user' as subject_type, u.id as subject_id,
                COALESCE(u.full_name, u.username) as subject_name
         FROM data_access da
+        JOIN modules m ON m.id = da.module_id
         JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
         JOIN users u ON u.id = dau.user_id
         WHERE da.deleted_at IS NULL
@@ -119,7 +126,7 @@ export class DataAccessService {
 
     const sortField = sortParams?.sort_field || 'created_at';
     const sortOrder = sortParams?.sort_order || 'DESC';
-    const allowedSortFields = ['created_at', 'data_id', 'table_name', 'scope_type'];
+    const allowedSortFields = ['created_at', 'data_id', 'table_name', 'scope_type', 'module_id'];
     const safeSortField = allowedSortFields.includes(sortField) ? sortField : 'created_at';
     const safeSortOrder = sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
@@ -135,8 +142,8 @@ export class DataAccessService {
     const offset = (page - 1) * limit;
     const dataParams = [...params, limit, offset];
     const dataQuery = `${flattenCTE}
-      SELECT s.rule_id, s.data_id, s.table_name, s.scope_type,
-             s.start_date, s.end_date, s.created_at,
+      SELECT s.rule_id, s.data_id, s.module_id, s.table_name, s.module_path, s.module_name,
+             s.scope_type, s.start_date, s.end_date, s.created_at,
              s.subject_type, s.subject_id, s.subject_name
       FROM flattened s
       ${flatWhere}
@@ -161,6 +168,7 @@ export class DataAccessService {
     const record = await this.dataAccessRepository.findOne({
       where: { id },
       relations: [
+        'module',
         'role_data_access',
         'role_data_access.role',
         'user_data_access',
@@ -172,11 +180,12 @@ export class DataAccessService {
     if (!record) throw new NotFoundException(NOT_FOUND);
 
     // Fetch the referenced record info from the target table
+    const tableName = record.module?.table_name;
     let record_info: { id: number; display_name: string } | null = null;
-    if (ALLOWED_TABLES.has(record.table_name)) {
-      const nameCol = getNameColumn(record.table_name);
+    if (tableName && ALLOWED_TABLES.has(tableName)) {
+      const nameCol = getNameColumn(tableName);
       const rows: { id: number; display_name: string }[] = await this.connection.query(
-        `SELECT id, "${nameCol}" as display_name FROM "${record.table_name}" WHERE id = $1 AND deleted_at IS NULL`,
+        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = $1 AND deleted_at IS NULL`,
         [record.data_id],
       );
       if (rows.length > 0) {
@@ -192,26 +201,34 @@ export class DataAccessService {
    * For each data_id: if a rule already exists for same data_id + table_name,
    * update scope/dates and add new junction links. Otherwise create a new rule.
    */
+  /** Resolve module by ID and validate its table_name is allowed */
+  private async resolveModule(moduleId: number): Promise<ModuleEntity> {
+    const mod = await this.moduleRepo.findOne({ where: { id: moduleId } });
+    if (!mod) throw new NotFoundException('module_not_found');
+    if (!mod.table_name || !ALLOWED_TABLES.has(mod.table_name)) {
+      throw new BadRequestException('table_not_allowed');
+    }
+    return mod;
+  }
+
   async create(dto: CreateDataAccessDto, performedBy = 'system') {
     if (!dto.role_ids?.length && !dto.user_ids?.length) {
       throw new BadRequestException('data_access_must_have_role_or_user');
     }
 
-    if (!ALLOWED_TABLES.has(dto.table_name)) {
-      throw new BadRequestException('table_not_allowed');
-    }
+    const mod = await this.resolveModule(dto.module_id);
 
     // Hierarchy validation — only for allow rules
     if (dto.scope_type === SCOPE_TYPE.ALLOW) {
-      await this.hierarchyValidation.enforce(dto.data_ids, dto.table_name, dto.user_ids || [], dto.role_ids || []);
+      await this.hierarchyValidation.enforce(dto.data_ids, mod.table_name, dto.user_ids || [], dto.role_ids || []);
     }
 
     const savedIds: number[] = [];
 
     for (const dataId of dto.data_ids) {
-      // Check for existing rule with same data_id + table_name
+      // Check for existing rule with same data_id + module_id
       const existing = await this.dataAccessRepository.findOne({
-        where: { data_id: dataId, table_name: dto.table_name, deleted_at: IsNull() },
+        where: { data_id: dataId, module_id: dto.module_id, deleted_at: IsNull() },
         relations: ['role_data_access', 'user_data_access', 'permission_data_access'],
       });
 
@@ -239,7 +256,7 @@ export class DataAccessService {
         // CREATE new rule
         const record = this.dataAccessRepository.create({
           data_id: dataId,
-          table_name: dto.table_name,
+          module_id: dto.module_id,
           scope_type: dto.scope_type,
           start_date: dto.start_date,
           end_date: dto.end_date,
@@ -258,11 +275,12 @@ export class DataAccessService {
         entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
         action_type: CHANGE_ACTION_TYPE.CREATE,
         entity_id: savedIds.join(','),
-        entity_name: dto.table_name,
+        entity_name: mod.table_name,
         performed_by: performedBy,
         old_value: null,
         new_value: {
-          table_name: dto.table_name,
+          module_id: dto.module_id,
+          table_name: mod.table_name,
           data_ids: dto.data_ids,
           scope_type: dto.scope_type,
           start_date: dto.start_date || null,
@@ -281,7 +299,7 @@ export class DataAccessService {
       })
       .catch(() => {});
 
-    this.permissionCache.invalidateByTable(dto.table_name).catch(() => {});
+    this.permissionCache.invalidateByTable(mod.table_name).catch(() => {});
 
     return { ids: savedIds };
   }
@@ -294,6 +312,7 @@ export class DataAccessService {
     const old = await this.dataAccessRepository.findOne({
       where: { id },
       relations: [
+        'module',
         'role_data_access',
         'role_data_access.role',
         'user_data_access',
@@ -304,9 +323,12 @@ export class DataAccessService {
     });
     if (!old) throw new NotFoundException(NOT_FOUND);
 
+    const tableName = old.module?.table_name;
+
     // Capture old values for history
     const oldValue = {
-      table_name: old.table_name,
+      module_id: old.module_id,
+      table_name: tableName,
       data_id: old.data_id,
       scope_type: old.scope_type,
       roles: old.role_data_access.map((rda) => rda.role?.name),
@@ -317,10 +339,10 @@ export class DataAccessService {
 
     // Hierarchy validation for allow rules
     const newScopeType = dto.scope_type ?? old.scope_type;
-    if (newScopeType === SCOPE_TYPE.ALLOW) {
+    if (newScopeType === SCOPE_TYPE.ALLOW && tableName) {
       const userIds = dto.user_ids ?? old.user_data_access.map((uda) => uda.user_id);
       const roleIds = dto.role_ids ?? old.role_data_access.map((rda) => rda.role_id);
-      await this.hierarchyValidation.enforce([old.data_id], old.table_name, userIds, roleIds);
+      await this.hierarchyValidation.enforce([old.data_id], tableName, userIds, roleIds);
     }
 
     await this.connection.transaction(async (manager) => {
@@ -381,7 +403,7 @@ export class DataAccessService {
         entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
         action_type: CHANGE_ACTION_TYPE.UPDATE,
         entity_id: String(id),
-        entity_name: old.table_name,
+        entity_name: tableName || String(old.module_id),
         performed_by: performedBy,
         old_value: oldValue,
         new_value: {
@@ -394,7 +416,9 @@ export class DataAccessService {
       })
       .catch(() => {});
 
-    this.permissionCache.invalidateByTable(old.table_name).catch(() => {});
+    if (tableName) {
+      this.permissionCache.invalidateByTable(tableName).catch(() => {});
+    }
 
     return { id };
   }
@@ -402,9 +426,11 @@ export class DataAccessService {
   async delete(id: number, performedBy = 'system') {
     const record = await this.dataAccessRepository.findOne({
       where: { id },
-      relations: ['role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
+      relations: ['module', 'role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
+
+    const tableName = record.module?.table_name;
 
     await this.connection.transaction(async (manager) => {
       // Soft-delete junction records
@@ -420,10 +446,11 @@ export class DataAccessService {
         entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
         action_type: CHANGE_ACTION_TYPE.DELETE,
         entity_id: String(id),
-        entity_name: record.table_name,
+        entity_name: tableName || String(record.module_id),
         performed_by: performedBy,
         old_value: {
-          table_name: record.table_name,
+          module_id: record.module_id,
+          table_name: tableName,
           data_id: record.data_id,
           scope_type: record.scope_type,
           roles: record.role_data_access.map((rda) => rda.role?.name),
@@ -433,7 +460,9 @@ export class DataAccessService {
       })
       .catch(() => {});
 
-    this.permissionCache.invalidateByTable(record.table_name).catch(() => {});
+    if (tableName) {
+      this.permissionCache.invalidateByTable(tableName).catch(() => {});
+    }
 
     return { id };
   }
@@ -446,9 +475,11 @@ export class DataAccessService {
   async removeLink(ruleId: number, subjectType: 'role' | 'user', subjectId: number, performedBy = 'system') {
     const record = await this.dataAccessRepository.findOne({
       where: { id: ruleId },
-      relations: ['role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
+      relations: ['module', 'role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
+
+    const tableName = record.module?.table_name;
 
     // Soft-delete the specific junction row
     if (subjectType === 'role') {
@@ -474,10 +505,11 @@ export class DataAccessService {
         entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
         action_type: CHANGE_ACTION_TYPE.DELETE,
         entity_id: String(ruleId),
-        entity_name: record.table_name,
+        entity_name: tableName || String(record.module_id),
         performed_by: performedBy,
         old_value: {
-          table_name: record.table_name,
+          module_id: record.module_id,
+          table_name: tableName,
           data_id: record.data_id,
           removed_subject_type: subjectType,
           removed_subject_name:
@@ -491,7 +523,9 @@ export class DataAccessService {
       })
       .catch(() => {});
 
-    this.permissionCache.invalidateByTable(record.table_name).catch(() => {});
+    if (tableName) {
+      this.permissionCache.invalidateByTable(tableName).catch(() => {});
+    }
 
     return { rule_id: ruleId, removed: { subject_type: subjectType, subject_id: subjectId } };
   }
@@ -499,6 +533,7 @@ export class DataAccessService {
   async getByUser(userId: number) {
     return this.dataAccessRepository
       .createQueryBuilder('da')
+      .leftJoinAndSelect('da.module', 'module')
       .leftJoinAndSelect('da.user_data_access', 'uda')
       .leftJoinAndSelect('uda.user', 'user')
       .leftJoinAndSelect('da.role_data_access', 'rda')
@@ -513,6 +548,7 @@ export class DataAccessService {
   async getByRole(roleId: number) {
     return this.dataAccessRepository
       .createQueryBuilder('da')
+      .leftJoinAndSelect('da.module', 'module')
       .leftJoinAndSelect('da.user_data_access', 'uda')
       .leftJoinAndSelect('uda.user', 'user')
       .leftJoinAndSelect('da.role_data_access', 'rda')

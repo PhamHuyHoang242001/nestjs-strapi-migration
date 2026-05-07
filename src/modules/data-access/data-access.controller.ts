@@ -22,7 +22,7 @@ export class DataAccessController {
   @Get('list')
   list(
     @Query() query: SearchDataAccessDto,
-    @Sort({ allowedFields: ['created_at', 'data_id', 'table_name', 'scope_type'] }) sortParams: SortParams,
+    @Sort({ allowedFields: ['created_at', 'data_id', 'table_name', 'scope_type', 'module_id'] }) sortParams: SortParams,
     @PaginationDecorator() pagination: PaginationParams,
   ) {
     return this.dataAccessService.list(query, sortParams, pagination);

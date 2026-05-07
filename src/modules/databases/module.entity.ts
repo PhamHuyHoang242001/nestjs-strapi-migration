@@ -1,4 +1,5 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
+import { DataAccess } from '@modules/databases/data-access.entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { Column, Entity, OneToMany, Tree, TreeChildren, TreeParent } from 'typeorm';
 
@@ -25,4 +26,7 @@ export class Module extends BaseSoftDeleteEntity {
 
   @OneToMany('Permission', 'module')
   permissions?: Permission[];
+
+  @OneToMany('DataAccess', 'module')
+  data_access_rules?: DataAccess[];
 }
