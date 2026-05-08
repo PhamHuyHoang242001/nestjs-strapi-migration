@@ -30,6 +30,7 @@ import { ModuleManagementModule } from '@modules/module/module-management.module
 import { PermissionMatrixModule } from '@modules/permission-matrix/permission-matrix.module';
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 import { DataAccessModule } from '@modules/data-access/data-access.module';
+import { BiccDepartmentModule } from '@modules/bicc-department/bicc-department.module';
 import { AuthorizationModule } from '@common/authorization';
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { AuthorizationModule } from '@common/authorization';
     PermissionMatrixModule,
     ChangeHistoryModule,
     DataAccessModule,
+    BiccDepartmentModule,
     AuthorizationModule,
   ],
   controllers: [AppController],
