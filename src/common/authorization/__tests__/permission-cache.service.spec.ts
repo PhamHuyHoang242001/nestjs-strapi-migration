@@ -1,8 +1,8 @@
 import { PermissionCacheService } from '../services/permission-cache.service';
 import { PermissionQueryService } from '../services/permission-query.service';
-import { RedisAdapter } from '@common/infrastructure /redis.adapter';
+import { RedisAdapter } from '@common/infrastructure/redis.adapter';
 
-jest.mock('@common/infrastructure /redis.adapter');
+jest.mock('@common/infrastructure/redis.adapter');
 
 describe('PermissionCacheService', () => {
   const queryService = {

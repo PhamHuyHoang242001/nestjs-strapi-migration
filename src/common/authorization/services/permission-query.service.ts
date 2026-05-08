@@ -32,12 +32,11 @@ export class PermissionQueryService {
       .andWhere('p.deleted_at IS NULL')
       .getRawMany<{ code: string }>();
 
-    // Exception permissions: data_access_users → data_access (allow, in date range) → data_permissions → permission (active)
+    // Exception permissions: data_access_users → permission (allow, in date range)
     const exceptionPerms = await this.userDataAccessRepo
       .createQueryBuilder('dau')
       .innerJoin('dau.data_access', 'da')
-      .innerJoin('da.permission_data_access', 'dp')
-      .innerJoin('dp.permission', 'p')
+      .innerJoin('dau.permission', 'p')
       .select('p.code', 'code')
       .where('dau.user_id = :userId', { userId })
       .andWhere('dau.deleted_at IS NULL')
@@ -45,11 +44,13 @@ export class PermissionQueryService {
       .andWhere('da.deleted_at IS NULL')
       .andWhere('(da.start_date IS NULL OR da.start_date <= NOW())')
       .andWhere('(da.end_date IS NULL OR da.end_date >= NOW())')
-      .andWhere('dp.deleted_at IS NULL')
       .andWhere('p.is_active = true')
       .andWhere('p.deleted_at IS NULL')
       .getRawMany<{ code: string }>();
 
+    // DENY is NOT subtracted at API level — it only affects record-level access
+    // via getAccessibleRecords(). Subtracting here would globally block the
+    // permission even for records that are not denied.
     const codes = new Set<string>();
     for (const row of rolePerms) codes.add(row.code);
     for (const row of exceptionPerms) codes.add(row.code);
@@ -158,12 +159,28 @@ export class PermissionQueryService {
       .andWhere('(da.start_date IS NULL OR da.start_date <= NOW())')
       .andWhere('(da.end_date IS NULL OR da.end_date >= NOW())');
 
-    // Permission code filter: only include rules that explicitly have matching permission
+    // Permission code filter: users get permissions from data_access_users;
+    // roles get permissions from roles_permissions.
     if (permissionCode) {
-      qb.andWhere(
-        'EXISTS (SELECT 1 FROM data_permissions dp JOIN permission p ON p.id = dp.permission_id AND p.code = :permCode WHERE dp.data_access_id = da.id AND dp.deleted_at IS NULL)',
-        { permCode: permissionCode },
-      );
+      if (alias === 'dau') {
+        qb.innerJoin(`${alias}.permission`, 'p_filter')
+          .andWhere('p_filter.code = :permCode', { permCode: permissionCode })
+          .andWhere('p_filter.is_active = true')
+          .andWhere('p_filter.deleted_at IS NULL');
+      } else {
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1
+            FROM roles_permissions rp
+            JOIN permission p ON p.id = rp.permission_id
+            WHERE rp.role_id = ${alias}.role_id
+              AND p.code = :permCode
+              AND p.is_active = true
+              AND p.deleted_at IS NULL
+          )`,
+          { permCode: permissionCode },
+        );
+      }
     }
 
     const rows = await qb.getRawMany<{ data_id: number | string }>();

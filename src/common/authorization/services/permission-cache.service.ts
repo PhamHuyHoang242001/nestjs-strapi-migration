@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisAdapter } from '@common/infrastructure /redis.adapter';
+import { RedisAdapter } from '@common/infrastructure/redis.adapter';
 import {
   DATA_ACCESS_CACHE_TTL,
   PERMISSION_CACHE_TTL,

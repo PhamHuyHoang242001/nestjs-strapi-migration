@@ -11,3 +11,4 @@ export * from './ma-tool.enums';
 export * from './winnovate.enums';
 export * from './ux-common.enums';
 export * from './mtpq.enums';
+export * from './data-access-table.enum';
