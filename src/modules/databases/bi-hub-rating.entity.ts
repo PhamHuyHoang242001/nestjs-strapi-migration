@@ -1,7 +1,7 @@
 import { BiHubRatingStatus, BiHubTagType } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { BiHubReport } from './bi-hub-report.entity';
+import { BiHubDescriptiveReport } from './bi-hub-descriptive-report.entity';
 
 // Star rating submitted by a user for a BI Hub report
 @Entity('bi_hub_ratings')
@@ -28,9 +28,9 @@ export class BiHubRating extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: true })
   public bi_hub_report_id: number;
 
-  @ManyToOne(() => BiHubReport, (r) => r.ratings)
+  @ManyToOne(() => BiHubDescriptiveReport, (r) => r.ratings)
   @JoinColumn({ name: 'bi_hub_report_id' })
-  public bi_hub_report: BiHubReport;
+  public bi_hub_report: BiHubDescriptiveReport;
 
   // Optional link to a history snapshot
   @Column({ type: 'int', nullable: true })

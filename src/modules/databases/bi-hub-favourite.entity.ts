@@ -1,6 +1,6 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { BiHubReport } from './bi-hub-report.entity';
+import { BiHubDescriptiveReport } from './bi-hub-descriptive-report.entity';
 
 // User favourite bookmark for a BI Hub report
 @Entity('bi_hub_favourites')
@@ -13,7 +13,7 @@ export class BiHubFavourite extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: false })
   public bi_hub_report_id: number;
 
-  @ManyToOne(() => BiHubReport, (r) => r.favourites)
+  @ManyToOne(() => BiHubDescriptiveReport, (r) => r.favourites)
   @JoinColumn({ name: 'bi_hub_report_id' })
-  public bi_hub_report: BiHubReport;
+  public bi_hub_report: BiHubDescriptiveReport;
 }

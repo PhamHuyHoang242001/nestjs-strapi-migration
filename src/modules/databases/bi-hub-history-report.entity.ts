@@ -1,6 +1,6 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { BiHubReport } from './bi-hub-report.entity';
+import { BiHubDescriptiveReport } from './bi-hub-descriptive-report.entity';
 
 // Audit history snapshot of a BI Hub report — tracks CRUD actions
 @Entity('bi_hub_history_reports')
@@ -18,7 +18,7 @@ export class BiHubHistoryReport extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: false })
   public report_id: number;
 
-  @ManyToOne(() => BiHubReport, (r) => r.history_reports)
+  @ManyToOne(() => BiHubDescriptiveReport, (r) => r.history_reports)
   @JoinColumn({ name: 'report_id' })
-  public report: BiHubReport;
+  public report: BiHubDescriptiveReport;
 }

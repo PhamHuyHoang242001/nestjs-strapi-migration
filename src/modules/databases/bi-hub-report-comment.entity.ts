@@ -1,7 +1,7 @@
 import { BiHubReportCommentStatus } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { BiHubReport } from './bi-hub-report.entity';
+import { BiHubDescriptiveReport } from './bi-hub-descriptive-report.entity';
 
 // Comment left by a user on a BI Hub report or history snapshot
 @Entity('bi_hub_report_comments')
@@ -25,9 +25,9 @@ export class BiHubReportComment extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: false })
   public bi_hub_report_id: number;
 
-  @ManyToOne(() => BiHubReport, (r) => r.comments)
+  @ManyToOne(() => BiHubDescriptiveReport, (r) => r.comments)
   @JoinColumn({ name: 'bi_hub_report_id' })
-  public bi_hub_report: BiHubReport;
+  public bi_hub_report: BiHubDescriptiveReport;
 
   // Optional link to a history snapshot
   @Column({ type: 'int', nullable: true })
