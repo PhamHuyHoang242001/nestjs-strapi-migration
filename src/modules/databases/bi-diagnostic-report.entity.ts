@@ -63,7 +63,7 @@ export class BIHubDiagnosticReport extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: true })
   bicc_department_id: number;
 
-  @ManyToOne(() => BiHubBiccDepartment, (d) => d.diagnostic_reports)
+  @ManyToOne(() => BiHubBiccDepartment, (d) => d.bi_hub_diagnostic_reports)
   @JoinColumn({ name: 'bicc_department_id' })
   bicc_department: BiHubBiccDepartment;
 
