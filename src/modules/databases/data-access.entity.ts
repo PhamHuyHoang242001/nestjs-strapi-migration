@@ -33,8 +33,6 @@ export class DataAccess extends BaseSoftDeleteEntity {
   @OneToMany(() => RoleDataAccess, (rda) => rda.data_access)
   role_data_access: RoleDataAccess[];
 
-  @OneToMany(() => PermissionDataAccess, (pda) => pda.data_access)
-  permission_data_access: PermissionDataAccess[];
 }
 
 @Entity('data_access_users')
@@ -45,6 +43,9 @@ export class UserDataAccess extends BaseSoftDeleteEntity {
   @Column()
   data_access_id: number;
 
+  @Column()
+  permission_id: number;
+
   @ManyToOne(() => Users, (u) => u.user_data_access)
   @JoinColumn({ name: 'user_id' })
   user: Users;
@@ -52,6 +53,10 @@ export class UserDataAccess extends BaseSoftDeleteEntity {
   @ManyToOne(() => DataAccess, (da) => da.user_data_access)
   @JoinColumn({ name: 'data_access_id' })
   data_access: DataAccess;
+
+  @ManyToOne(() => Permission)
+  @JoinColumn({ name: 'permission_id' })
+  permission: Permission;
 }
 
 @Entity('data_access_roles')
@@ -67,23 +72,6 @@ export class RoleDataAccess extends BaseSoftDeleteEntity {
   role: Role;
 
   @ManyToOne(() => DataAccess, (da) => da.role_data_access)
-  @JoinColumn({ name: 'data_access_id' })
-  data_access: DataAccess;
-}
-
-@Entity('data_permissions')
-export class PermissionDataAccess extends BaseSoftDeleteEntity {
-  @Column()
-  permission_id: number;
-
-  @Column()
-  data_access_id: number;
-
-  @ManyToOne(() => Permission, (p) => p.permission_data_access)
-  @JoinColumn({ name: 'permission_id' })
-  permission: Permission;
-
-  @ManyToOne(() => DataAccess, (da) => da.permission_data_access)
   @JoinColumn({ name: 'data_access_id' })
   data_access: DataAccess;
 }

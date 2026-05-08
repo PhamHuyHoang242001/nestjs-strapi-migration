@@ -38,16 +38,9 @@ export class AddAuthorizationIndexes2605050944 implements MigrationInterface {
       ON data_access_users (user_id)
       WHERE deleted_at IS NULL
     `);
-
-    await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS idx_data_permissions_da
-      ON data_permissions (data_access_id)
-      WHERE deleted_at IS NULL
-    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query('DROP INDEX IF EXISTS idx_data_permissions_da');
     await queryRunner.query('DROP INDEX IF EXISTS idx_data_access_users_user');
     await queryRunner.query('DROP INDEX IF EXISTS idx_data_access_roles_role');
     await queryRunner.query('DROP INDEX IF EXISTS idx_data_access_table_scope_time');
