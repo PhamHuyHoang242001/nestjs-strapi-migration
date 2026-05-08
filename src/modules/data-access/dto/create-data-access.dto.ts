@@ -1,7 +1,21 @@
 import { SCOPE_TYPE } from '@common/enums';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional } from 'class-validator';
+import { ArrayMinSize, IsArray, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, ValidateNested } from 'class-validator';
+
+export class UserPermissionDto {
+  @ApiProperty({ description: 'User ID', example: 1 })
+  @IsInt()
+  @Type(() => Number)
+  user_id: number;
+
+  @ApiProperty({ description: 'Permission IDs for this user', type: [Number], example: [1, 2] })
+  @IsArray()
+  @IsInt({ each: true })
+  @ArrayMinSize(1)
+  @Type(() => Number)
+  permission_ids: number[];
+}
 
 export class CreateDataAccessDto {
   @ApiProperty({ description: 'IDs of records to control access on', type: [Number], example: [1, 2, 3] })
@@ -22,12 +36,15 @@ export class CreateDataAccessDto {
   @IsNotEmpty()
   scope_type: SCOPE_TYPE;
 
-  @ApiPropertyOptional({ description: 'User IDs for user-specific exception rules', type: [Number], example: [1, 2] })
+  @ApiPropertyOptional({
+    description: 'User-permission pairs for user-specific exception rules',
+    type: [UserPermissionDto],
+  })
   @IsOptional()
   @IsArray()
-  @IsInt({ each: true })
-  @Type(() => Number)
-  user_ids?: number[];
+  @ValidateNested({ each: true })
+  @Type(() => UserPermissionDto)
+  user_permissions?: UserPermissionDto[];
 
   @ApiPropertyOptional({ description: 'Role IDs for role-based rules', type: [Number], example: [1, 3] })
   @IsOptional()
@@ -36,18 +53,13 @@ export class CreateDataAccessDto {
   @Type(() => Number)
   role_ids?: number[];
 
-  @ApiPropertyOptional({ description: 'Permission IDs for M:N junction', type: [Number], example: [1, 2] })
-  @IsOptional()
-  @IsArray()
-  @IsInt({ each: true })
-  @Type(() => Number)
-  permission_ids?: number[];
-
   @ApiPropertyOptional({ description: 'Rule effective start date', example: '2024-01-01T00:00:00Z' })
   @IsOptional()
+  @IsDateString()
   start_date?: Date;
 
   @ApiPropertyOptional({ description: 'Rule effective end date', example: '2024-12-31T23:59:59Z' })
   @IsOptional()
+  @IsDateString()
   end_date?: Date;
 }

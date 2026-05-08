@@ -18,8 +18,7 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
       .leftJoinAndSelect('rda.role', 'role')
       .leftJoinAndSelect('da.user_data_access', 'uda')
       .leftJoinAndSelect('uda.user', 'user')
-      .leftJoinAndSelect('da.permission_data_access', 'pda')
-      .leftJoinAndSelect('pda.permission', 'permission');
+      .leftJoinAndSelect('uda.permission', 'permission');
 
     // subject_type filter: 'role' = has roles assigned, 'user' = has users assigned
     if (dto.subject_type === 'role') {

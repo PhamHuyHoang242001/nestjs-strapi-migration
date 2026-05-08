@@ -6,6 +6,7 @@ import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DataAccessService } from './data-access.service';
+import { CreateBulkDataAccessDto } from './dto/create-bulk-data-access.dto';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { RemoveLinkDataAccessDto } from './dto/remove-link-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
@@ -34,10 +35,17 @@ export class DataAccessController {
     return this.dataAccessService.details(id);
   }
 
-  @ApiOperation({ summary: 'Create/upsert data access rules (supports multiple data_ids)' })
+  @ApiOperation({ summary: 'Create data access rules (supports multiple data_ids)' })
   @Post('create')
   @HttpCode(200)
   create(@Body() body: CreateDataAccessDto, @UserScope() user: any) {
+    return this.dataAccessService.create(body, user?.username || 'system');
+  }
+
+  @ApiOperation({ summary: 'Create data access rules in bulk' })
+  @Post('create-bulk')
+  @HttpCode(200)
+  createBulk(@Body() body: CreateBulkDataAccessDto, @UserScope() user: any) {
     return this.dataAccessService.create(body, user?.username || 'system');
   }
 

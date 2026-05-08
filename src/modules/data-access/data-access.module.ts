@@ -1,9 +1,4 @@
-import {
-  DataAccess,
-  RoleDataAccess,
-  UserDataAccess,
-  PermissionDataAccess,
-} from '@modules/databases/data-access.entity';
+import { DataAccess, RoleDataAccess, UserDataAccess } from '@modules/databases/data-access.entity';
 import { Module as ModuleEntity } from '@modules/databases/module.entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
@@ -18,7 +13,7 @@ import { ChangeHistoryModule } from '@modules/change-history/change-history.modu
 
 @Module({
   imports: [
-      TypeOrmModule.forFeature([DataAccess, RoleDataAccess, UserDataAccess, PermissionDataAccess, Permission, ModuleEntity]),
+      TypeOrmModule.forFeature([DataAccess, RoleDataAccess, UserDataAccess, Permission, ModuleEntity]),
       ChangeHistoryModule,
     ],
   controllers: [DataAccessController, ReportAccessRecordsController],

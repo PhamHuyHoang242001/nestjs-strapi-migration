@@ -3,16 +3,11 @@ import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { PermissionCacheService } from '@common/authorization';
 import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE, SCOPE_TYPE } from '@common/enums';
 import { NOT_FOUND } from '@constant/error-messages';
-import {
-  DataAccess,
-  RoleDataAccess,
-  UserDataAccess,
-  PermissionDataAccess,
-} from '@modules/databases/data-access.entity';
+import { DataAccess, RoleDataAccess, UserDataAccess } from '@modules/databases/data-access.entity';
 import { Module as ModuleEntity } from '@modules/databases/module.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ALLOWED_TABLES, getNameColumn } from './constants/hierarchy-config';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
@@ -36,8 +31,6 @@ export class DataAccessService {
     private readonly roleDataAccessRepo: Repository<RoleDataAccess>,
     @InjectRepository(UserDataAccess)
     private readonly userDataAccessRepo: Repository<UserDataAccess>,
-    @InjectRepository(PermissionDataAccess)
-    private readonly permissionDataAccessRepo: Repository<PermissionDataAccess>,
   ) {}
 
   // ── Junction helpers ────────────────────────────────────────────────────────
@@ -46,19 +39,20 @@ export class DataAccessService {
   private async insertJunctions(
     dataAccessId: number,
     roleIds?: number[],
-    userIds?: number[],
-    permissionIds?: number[],
+    userPermissions?: { user_id: number; permission_ids: number[] }[],
   ) {
     if (roleIds?.length) {
       await this.roleDataAccessRepo.insert(roleIds.map((role_id) => ({ role_id, data_access_id: dataAccessId })));
     }
-    if (userIds?.length) {
-      await this.userDataAccessRepo.insert(userIds.map((user_id) => ({ user_id, data_access_id: dataAccessId })));
-    }
-    if (permissionIds?.length) {
-      await this.permissionDataAccessRepo.insert(
-        permissionIds.map((permission_id) => ({ permission_id, data_access_id: dataAccessId })),
+    if (userPermissions?.length) {
+      const rows = userPermissions.flatMap((userPermission) =>
+        userPermission.permission_ids.map((permission_id) => ({
+          user_id: userPermission.user_id,
+          data_access_id: dataAccessId,
+          permission_id,
+        })),
       );
+      if (rows.length) await this.userDataAccessRepo.insert(rows);
     }
   }
 
@@ -100,12 +94,14 @@ export class DataAccessService {
     }
 
     // Flatten: UNION of roles and users per rule, join modules for table_name & path
+    // User branch aggregates permissions per (rule_id, user) to avoid duplicate rows
     const flattenCTE = `
       WITH flattened AS (
         SELECT da.id as rule_id, da.data_id, da.module_id,
                m.table_name, m.path as module_path, m.name as module_name,
                da.scope_type, da.start_date, da.end_date, da.created_at,
-               'role' as subject_type, r.id as subject_id, r.name as subject_name
+               'role' as subject_type, r.id as subject_id, r.name as subject_name,
+               NULL::jsonb as permissions
         FROM data_access da
         JOIN modules m ON m.id = da.module_id
         JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
@@ -116,12 +112,16 @@ export class DataAccessService {
                m.table_name, m.path as module_path, m.name as module_name,
                da.scope_type, da.start_date, da.end_date, da.created_at,
                'user' as subject_type, u.id as subject_id,
-               COALESCE(u.full_name, u.username) as subject_name
+               COALESCE(u.full_name, u.username) as subject_name,
+               json_agg(json_build_object('id', p.id, 'name', p.name))::jsonb as permissions
         FROM data_access da
         JOIN modules m ON m.id = da.module_id
         JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
         JOIN users u ON u.id = dau.user_id
+        JOIN permission p ON p.id = dau.permission_id AND p.deleted_at IS NULL
         WHERE da.deleted_at IS NULL
+        GROUP BY da.id, da.data_id, da.module_id, m.table_name, m.path, m.name,
+                 da.scope_type, da.start_date, da.end_date, da.created_at, u.id, u.full_name, u.username
       )`;
 
     const sortField = sortParams?.sort_field || 'created_at';
@@ -144,7 +144,7 @@ export class DataAccessService {
     const dataQuery = `${flattenCTE}
       SELECT s.rule_id, s.data_id, s.module_id, s.table_name, s.module_path, s.module_name,
              s.scope_type, s.start_date, s.end_date, s.created_at,
-             s.subject_type, s.subject_id, s.subject_name
+             s.subject_type, s.subject_id, s.subject_name, s.permissions
       FROM flattened s
       ${flatWhere}
       ORDER BY s.${safeSortField} ${safeSortOrder}, s.rule_id DESC
@@ -173,8 +173,7 @@ export class DataAccessService {
         'role_data_access.role',
         'user_data_access',
         'user_data_access.user',
-        'permission_data_access',
-        'permission_data_access.permission',
+        'user_data_access.permission',
       ],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
@@ -196,11 +195,6 @@ export class DataAccessService {
     return { ...record, record_info };
   }
 
-  /**
-   * Create or upsert data access rules.
-   * For each data_id: if a rule already exists for same data_id + table_name,
-   * update scope/dates and add new junction links. Otherwise create a new rule.
-   */
   /** Resolve module by ID and validate its table_name is allowed */
   private async resolveModule(moduleId: number): Promise<ModuleEntity> {
     const mod = await this.moduleRepo.findOne({ where: { id: moduleId } });
@@ -212,63 +206,62 @@ export class DataAccessService {
   }
 
   async create(dto: CreateDataAccessDto, performedBy = 'system') {
-    if (!dto.role_ids?.length && !dto.user_ids?.length) {
+    if (!dto.role_ids?.length && !dto.user_permissions?.length) {
       throw new BadRequestException('data_access_must_have_role_or_user');
     }
 
+    // Validate no duplicate user_id in user_permissions
+    if (dto.user_permissions?.length) {
+      const userIdSet = new Set(dto.user_permissions.map((up) => up.user_id));
+      if (userIdSet.size !== dto.user_permissions.length) {
+        throw new BadRequestException('duplicate_user_id_in_user_permissions');
+      }
+    }
+
     const mod = await this.resolveModule(dto.module_id);
+    const userIds = dto.user_permissions?.map((userPermission) => userPermission.user_id) || [];
 
     // Hierarchy validation — only for allow rules
     if (dto.scope_type === SCOPE_TYPE.ALLOW) {
-      await this.hierarchyValidation.enforce(dto.data_ids, mod.table_name, dto.user_ids || [], dto.role_ids || []);
+      await this.hierarchyValidation.enforce(dto.data_ids, mod.table_name, userIds, dto.role_ids || []);
     }
 
     const savedIds: number[] = [];
 
-    for (const dataId of dto.data_ids) {
-      // Check for existing rule with same data_id + module_id
-      const existing = await this.dataAccessRepository.findOne({
-        where: { data_id: dataId, module_id: dto.module_id, deleted_at: IsNull() },
-        relations: ['role_data_access', 'user_data_access', 'permission_data_access'],
-      });
-
-      let savedId: number;
-
-      if (existing) {
-        // UPDATE existing rule — overwrite scope/dates
-        existing.scope_type = dto.scope_type;
-        existing.start_date = dto.start_date;
-        existing.end_date = dto.end_date;
-        await this.dataAccessRepository.save(existing);
-        savedId = existing.id;
-
-        // Add only new junction links (skip already linked ones)
-        const existingRoleIds = existing.role_data_access.map((rda) => rda.role_id);
-        const existingUserIds = existing.user_data_access.map((uda) => uda.user_id);
-        const existingPermIds = existing.permission_data_access.map((pda) => pda.permission_id);
-
-        const newRoleIds = dto.role_ids?.filter((id) => !existingRoleIds.includes(id));
-        const newUserIds = dto.user_ids?.filter((id) => !existingUserIds.includes(id));
-        const newPermIds = dto.permission_ids?.filter((id) => !existingPermIds.includes(id));
-
-        await this.insertJunctions(savedId, newRoleIds, newUserIds, newPermIds);
-      } else {
-        // CREATE new rule
-        const record = this.dataAccessRepository.create({
+    // Wrap the entire creation loop in a transaction
+    await this.connection.transaction(async (manager) => {
+      for (const dataId of dto.data_ids) {
+        const record = manager.create(DataAccess, {
           data_id: dataId,
           module_id: dto.module_id,
           scope_type: dto.scope_type,
           start_date: dto.start_date,
           end_date: dto.end_date,
         });
-        const saved = await this.dataAccessRepository.save(record);
-        savedId = saved.id;
+        const saved = await manager.save(record);
+        savedIds.push(saved.id);
 
-        await this.insertJunctions(savedId, dto.role_ids, dto.user_ids, dto.permission_ids);
+        // Insert role junctions
+        if (dto.role_ids?.length) {
+          await manager.insert(
+            RoleDataAccess,
+            dto.role_ids.map((role_id) => ({ role_id, data_access_id: saved.id })),
+          );
+        }
+
+        // Insert user-permission junctions
+        if (dto.user_permissions?.length) {
+          const rows = dto.user_permissions.flatMap((userPermission) =>
+            userPermission.permission_ids.map((permission_id) => ({
+              user_id: userPermission.user_id,
+              data_access_id: saved.id,
+              permission_id,
+            })),
+          );
+          if (rows.length) await manager.insert(UserDataAccess, rows);
+        }
       }
-
-      savedIds.push(savedId);
-    }
+    });
 
     this.historyLogger
       .log({
@@ -290,16 +283,18 @@ export class DataAccessService {
                 (r: any) => r.name,
               )
             : [],
-          users: dto.user_ids?.length
-            ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map(
-                (u: any) => u.username,
-              )
-            : [],
+          user_permissions: dto.user_permissions || [],
         },
       })
       .catch(() => {});
 
     this.permissionCache.invalidateByTable(mod.table_name).catch(() => {});
+
+    // Invalidate permission cache for affected users
+    const affectedUserIds = dto.user_permissions?.map((up) => up.user_id) || [];
+    for (const uid of affectedUserIds) {
+      this.permissionCache.invalidateUser(uid).catch(() => {});
+    }
 
     return { ids: savedIds };
   }
@@ -309,6 +304,14 @@ export class DataAccessService {
    * Updates scope/dates and replaces junction links.
    */
   async update(id: number, dto: UpdateDataAccessDto, performedBy = 'system') {
+    // Validate no duplicate user_id in user_permissions
+    if (dto.user_permissions?.length) {
+      const userIdSet = new Set(dto.user_permissions.map((up) => up.user_id));
+      if (userIdSet.size !== dto.user_permissions.length) {
+        throw new BadRequestException('duplicate_user_id_in_user_permissions');
+      }
+    }
+
     const old = await this.dataAccessRepository.findOne({
       where: { id },
       relations: [
@@ -317,8 +320,7 @@ export class DataAccessService {
         'role_data_access.role',
         'user_data_access',
         'user_data_access.user',
-        'permission_data_access',
-        'permission_data_access.permission',
+        'user_data_access.permission',
       ],
     });
     if (!old) throw new NotFoundException(NOT_FOUND);
@@ -332,7 +334,12 @@ export class DataAccessService {
       data_id: old.data_id,
       scope_type: old.scope_type,
       roles: old.role_data_access.map((rda) => rda.role?.name),
-      users: old.user_data_access.map((uda) => uda.user?.username),
+      user_permissions: old.user_data_access.map((uda) => ({
+        user_id: uda.user_id,
+        username: uda.user?.username,
+        permission_id: uda.permission_id,
+        permission_name: uda.permission?.name,
+      })),
       start_date: old.start_date,
       end_date: old.end_date,
     };
@@ -340,7 +347,9 @@ export class DataAccessService {
     // Hierarchy validation for allow rules
     const newScopeType = dto.scope_type ?? old.scope_type;
     if (newScopeType === SCOPE_TYPE.ALLOW && tableName) {
-      const userIds = dto.user_ids ?? old.user_data_access.map((uda) => uda.user_id);
+      const userIds = dto.user_permissions
+        ? dto.user_permissions.map((userPermission) => userPermission.user_id)
+        : old.user_data_access.map((uda) => uda.user_id);
       const roleIds = dto.role_ids ?? old.role_data_access.map((rda) => rda.role_id);
       await this.hierarchyValidation.enforce([old.data_id], tableName, userIds, roleIds);
     }
@@ -363,25 +372,18 @@ export class DataAccessService {
         }
       }
 
-      // Replace user junctions if provided
-      if (dto.user_ids) {
+      // Replace user-permission junctions if provided
+      if (dto.user_permissions) {
         await manager.delete(UserDataAccess, { data_access_id: id });
-        if (dto.user_ids.length) {
-          await manager.insert(
-            UserDataAccess,
-            dto.user_ids.map((user_id) => ({ user_id, data_access_id: id })),
-          );
-        }
-      }
-
-      // Replace permission junctions if provided
-      if (dto.permission_ids) {
-        await manager.delete(PermissionDataAccess, { data_access_id: id });
-        if (dto.permission_ids.length) {
-          await manager.insert(
-            PermissionDataAccess,
-            dto.permission_ids.map((permission_id) => ({ permission_id, data_access_id: id })),
-          );
+        const rows = dto.user_permissions.flatMap((userPermission) =>
+          userPermission.permission_ids.map((permission_id) => ({
+            user_id: userPermission.user_id,
+            data_access_id: id,
+            permission_id,
+          })),
+        );
+        if (rows.length) {
+          await manager.insert(UserDataAccess, rows);
         }
       }
     });
@@ -392,11 +394,7 @@ export class DataAccessService {
           (r: any) => r.name,
         )
       : oldValue.roles;
-    const newUserNames = dto.user_ids?.length
-      ? (await this.connection.query('SELECT username FROM users WHERE id = ANY($1)', [dto.user_ids])).map(
-          (u: any) => u.username,
-        )
-      : oldValue.users;
+    const newUserPermissions = dto.user_permissions ?? oldValue.user_permissions;
 
     this.historyLogger
       .log({
@@ -409,7 +407,7 @@ export class DataAccessService {
         new_value: {
           scope_type: dto.scope_type ?? old.scope_type,
           roles: newRoleNames,
-          users: newUserNames,
+          user_permissions: newUserPermissions,
           start_date: dto.start_date ?? old.start_date,
           end_date: dto.end_date ?? old.end_date,
         },
@@ -418,6 +416,14 @@ export class DataAccessService {
 
     if (tableName) {
       this.permissionCache.invalidateByTable(tableName).catch(() => {});
+    }
+
+    // Invalidate permission cache for both old and new affected users
+    const oldUserIds = old.user_data_access.map((uda) => uda.user_id);
+    const newUserIds = dto.user_permissions?.map((up) => up.user_id) || [];
+    const allAffectedUserIds = new Set([...oldUserIds, ...newUserIds]);
+    for (const uid of allAffectedUserIds) {
+      this.permissionCache.invalidateUser(uid).catch(() => {});
     }
 
     return { id };
@@ -436,7 +442,6 @@ export class DataAccessService {
       // Soft-delete junction records
       await manager.softDelete(RoleDataAccess, { data_access_id: id });
       await manager.softDelete(UserDataAccess, { data_access_id: id });
-      await manager.softDelete(PermissionDataAccess, { data_access_id: id });
       // Soft-delete the rule itself
       await manager.softDelete(DataAccess, { id });
     });
@@ -464,6 +469,11 @@ export class DataAccessService {
       this.permissionCache.invalidateByTable(tableName).catch(() => {});
     }
 
+    // Invalidate permission cache for affected users
+    for (const uda of record.user_data_access) {
+      this.permissionCache.invalidateUser(uda.user_id).catch(() => {});
+    }
+
     return { id };
   }
 
@@ -475,7 +485,14 @@ export class DataAccessService {
   async removeLink(ruleId: number, subjectType: 'role' | 'user', subjectId: number, performedBy = 'system') {
     const record = await this.dataAccessRepository.findOne({
       where: { id: ruleId },
-      relations: ['module', 'role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
+      relations: [
+        'module',
+        'role_data_access',
+        'role_data_access.role',
+        'user_data_access',
+        'user_data_access.user',
+        'user_data_access.permission',
+      ],
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
 
@@ -488,13 +505,16 @@ export class DataAccessService {
       await this.userDataAccessRepo.softDelete({ data_access_id: ruleId, user_id: subjectId });
     }
 
-    // Check if any subjects remain
+    // Check if any subjects remain — use distinct user_ids (multiple rows per user due to permission_id)
     const remainingRoles = record.role_data_access.filter(
       (rda) => !(subjectType === 'role' && rda.role_id === subjectId),
     ).length;
-    const remainingUsers = record.user_data_access.filter(
-      (uda) => !(subjectType === 'user' && uda.user_id === subjectId),
-    ).length;
+    const remainingUserIds = new Set(
+      record.user_data_access
+        .filter((uda) => !(subjectType === 'user' && uda.user_id === subjectId))
+        .map((uda) => uda.user_id),
+    );
+    const remainingUsers = remainingUserIds.size;
 
     if (remainingRoles === 0 && remainingUsers === 0) {
       await this.dataAccessRepository.softDelete({ id: ruleId });
@@ -518,6 +538,13 @@ export class DataAccessService {
               : record.user_data_access.find((uda) => uda.user_id === subjectId)?.user?.email ||
                 record.user_data_access.find((uda) => uda.user_id === subjectId)?.user?.username ||
                 String(subjectId),
+          // Include permission details for user removals
+          removed_permissions:
+            subjectType === 'user'
+              ? record.user_data_access
+                  .filter((uda) => uda.user_id === subjectId)
+                  .map((uda) => ({ permission_id: uda.permission_id, permission_name: uda.permission?.name }))
+              : undefined,
         },
         new_value: null,
       })
@@ -525,6 +552,11 @@ export class DataAccessService {
 
     if (tableName) {
       this.permissionCache.invalidateByTable(tableName).catch(() => {});
+    }
+
+    // Invalidate permission cache for the removed subject if it's a user
+    if (subjectType === 'user') {
+      this.permissionCache.invalidateUser(subjectId).catch(() => {});
     }
 
     return { rule_id: ruleId, removed: { subject_type: subjectType, subject_id: subjectId } };
@@ -536,10 +568,9 @@ export class DataAccessService {
       .leftJoinAndSelect('da.module', 'module')
       .leftJoinAndSelect('da.user_data_access', 'uda')
       .leftJoinAndSelect('uda.user', 'user')
+      .leftJoinAndSelect('uda.permission', 'permission')
       .leftJoinAndSelect('da.role_data_access', 'rda')
       .leftJoinAndSelect('rda.role', 'role')
-      .leftJoinAndSelect('da.permission_data_access', 'pda')
-      .leftJoinAndSelect('pda.permission', 'permission')
       .where('uda.user_id = :userId', { userId })
       .andWhere('uda.deleted_at IS NULL')
       .getMany();
@@ -551,10 +582,9 @@ export class DataAccessService {
       .leftJoinAndSelect('da.module', 'module')
       .leftJoinAndSelect('da.user_data_access', 'uda')
       .leftJoinAndSelect('uda.user', 'user')
+      .leftJoinAndSelect('uda.permission', 'permission')
       .leftJoinAndSelect('da.role_data_access', 'rda')
       .leftJoinAndSelect('rda.role', 'role')
-      .leftJoinAndSelect('da.permission_data_access', 'pda')
-      .leftJoinAndSelect('pda.permission', 'permission')
       .where('rda.role_id = :roleId', { roleId })
       .andWhere('rda.deleted_at IS NULL')
       .getMany();

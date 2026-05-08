@@ -1,7 +1,8 @@
 import { SCOPE_TYPE } from '@common/enums';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsEnum, IsInt, IsOptional } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsInt, IsOptional, ValidateNested } from 'class-validator';
+import { UserPermissionDto } from './create-data-access.dto';
 
 /**
  * Mutable fields for updating a data access rule.
@@ -16,18 +17,23 @@ export class UpdateDataAccessDto {
 
   @ApiPropertyOptional({ description: 'Rule effective start date', example: '2024-01-01T00:00:00Z' })
   @IsOptional()
+  @IsDateString()
   start_date?: Date;
 
   @ApiPropertyOptional({ description: 'Rule effective end date', example: '2024-12-31T23:59:59Z' })
   @IsOptional()
+  @IsDateString()
   end_date?: Date;
 
-  @ApiPropertyOptional({ description: 'User IDs (replaces existing)', type: [Number], example: [1, 2] })
+  @ApiPropertyOptional({
+    description: 'User-permission pairs (replaces existing user links)',
+    type: [UserPermissionDto],
+  })
   @IsOptional()
   @IsArray()
-  @IsInt({ each: true })
-  @Type(() => Number)
-  user_ids?: number[];
+  @ValidateNested({ each: true })
+  @Type(() => UserPermissionDto)
+  user_permissions?: UserPermissionDto[];
 
   @ApiPropertyOptional({ description: 'Role IDs (replaces existing)', type: [Number], example: [1, 3] })
   @IsOptional()
@@ -36,10 +42,4 @@ export class UpdateDataAccessDto {
   @Type(() => Number)
   role_ids?: number[];
 
-  @ApiPropertyOptional({ description: 'Permission IDs for M:N junction (data_permissions)', type: [Number] })
-  @IsOptional()
-  @IsArray()
-  @IsInt({ each: true })
-  @Type(() => Number)
-  permission_ids?: number[];
 }
