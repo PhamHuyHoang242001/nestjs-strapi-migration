@@ -31,14 +31,13 @@ export class BiHubDiagnosticReportWriteService {
         icon: dto.icon,
         is_sensitive: dto.isSensitive,
         bicc_department_id: dto.biccDepartment,
-        department_id: dto.department,
-        center_id: dto.center,
-        division_id: dto.division,
         txt_diagnostic_scope: dto.scopes,
         is_deleted: false,
         version: 0,
         total_view: 0,
-        diagnostic_report_status: 'active' as any,
+        status: 'active' as any,
+        created_by_admin_id: userId,
+        updated_by_admin_id: userId,
       });
       const saved = await manager.save(report);
 
@@ -82,9 +81,7 @@ export class BiHubDiagnosticReportWriteService {
       if (dto.isSensitive !== undefined) updateData.is_sensitive = dto.isSensitive;
       if (dto.scopes !== undefined) updateData.txt_diagnostic_scope = dto.scopes;
       if (dto.biccDepartment !== undefined) updateData.bicc_department_id = dto.biccDepartment;
-      if (dto.division !== undefined) updateData.division_id = dto.division;
-      if (dto.center !== undefined) updateData.center_id = dto.center;
-      if (dto.department !== undefined) updateData.department_id = dto.department;
+      updateData.updated_by_admin_id = userId;
 
       if (Object.keys(updateData).length) await manager.update(BIHubDiagnosticReport, id, updateData);
 
@@ -138,9 +135,6 @@ export class BiHubDiagnosticReportWriteService {
       .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'file', 'file.lastest_version = true')
       .leftJoinAndSelect('report.labels', 'label')
       .leftJoinAndSelect('report.bicc_department', 'bicc')
-      .leftJoinAndSelect('report.division', 'division')
-      .leftJoinAndSelect('report.center', 'center')
-      .leftJoinAndSelect('report.department', 'department')
       .where('report.deleted_at IS NULL')
       .andWhere('report.is_deleted = :isDeleted', { isDeleted: query.isDeleted === 'true' });
 
@@ -169,7 +163,7 @@ export class BiHubDiagnosticReportWriteService {
     return reports.map((item) => ({
       ...item,
       bicc_name: item.bicc_department?.name,
-      bu_name: `${item.division?.name}_${item.center?.name}_${item.department?.name}`,
+      bu_name: item.bu_name,
       labels: item.labels?.map((l) => l.name).join(','),
       scopes: item.txt_diagnostic_scope,
     }));

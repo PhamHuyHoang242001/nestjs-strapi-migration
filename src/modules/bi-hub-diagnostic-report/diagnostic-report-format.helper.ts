@@ -14,7 +14,7 @@ export const HISTORY_SORT_MAP: Record<string, string> = {
   name: 'name',
 };
 
-// Transform report entity to FE response shape (matches Strapi formatDiagnosticReport)
+// Transform report entity to FE response shape
 export function formatReport(report: BIHubDiagnosticReport): Record<string, any> {
   const file = report.bi_hub_diagnostic_files?.[0] || null;
   const result: Record<string, any> = {
@@ -22,10 +22,10 @@ export function formatReport(report: BIHubDiagnosticReport): Record<string, any>
     name: report.name,
     summary: report.summary,
     diagnostic_scopes: report.txt_diagnostic_scope,
-    bu_name: report.bu_name || `${report.division?.name}_${report.center?.name}_${report.department?.name}`,
+    bu_name: report.bu_name,
     file: file ? { url: file.file_url, type: file.type } : null,
     labels: report.labels,
-    diagnostic_report_status: report.diagnostic_report_status,
+    status: report.status,
     total_view: report.total_view,
     code: report.code,
     icon: report.icon,
@@ -38,10 +38,6 @@ export function formatReport(report: BIHubDiagnosticReport): Record<string, any>
   };
 
   if (report.bicc_department) result.bicc_department = report.bicc_department;
-  if (report.division) result.division = report.division;
-  if (report.center) result.center = report.center;
-  if (report.department) result.department = report.department;
-  if (report.scopes) result.scopes = report.scopes;
 
   return result;
 }

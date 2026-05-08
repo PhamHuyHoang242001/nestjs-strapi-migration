@@ -1,7 +1,6 @@
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { BiHubDiagnosticFile } from '@modules/databases/bi-diagnostic-file.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
-import { BiHubDiagnosticScope } from '@modules/databases/bi-diagnostic-scope.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BiHubDiagnosticReportUserController } from './bi-hub-diagnostic-report-user.controller';
@@ -19,7 +18,6 @@ import { UserRepository } from '@modules/users/repository/users.repository';
       BIHubDiagnosticReport,
       BiHubDiagnosticFile,
       BIHubDiagnosticHistoryReport,
-      BiHubDiagnosticScope,
     ]),
   ],
   controllers: [

@@ -37,9 +37,6 @@ export class BiHubDiagnosticReportService {
       .createQueryBuilder('report')
       .leftJoinAndSelect('report.labels', 'label')
       .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'file', 'file.lastest_version = true')
-      .leftJoinAndSelect('report.division', 'division')
-      .leftJoinAndSelect('report.center', 'center')
-      .leftJoinAndSelect('report.department', 'department')
       .where('report.deleted_at IS NULL')
       .andWhere('report.is_deleted = false');
 
@@ -61,7 +58,7 @@ export class BiHubDiagnosticReportService {
       if (ids.length) qb.andWhere('label.id IN (:...labelIds)', { labelIds: ids });
     }
     if (query.reportStatus) {
-      qb.andWhere('report.diagnostic_report_status = :status', { status: query.reportStatus });
+      qb.andWhere('report.status = :status', { status: query.reportStatus });
     }
 
     const sortCol = REPORT_SORT_MAP[query.sortField || 'createdAt'] || 'created_at';
@@ -85,7 +82,7 @@ export class BiHubDiagnosticReportService {
 
     const report = await this.reportRepo.findOne({
       where: { id, is_deleted: false },
-      relations: ['labels', 'bi_hub_diagnostic_files', 'scopes', 'bicc_department', 'division', 'center', 'department'],
+      relations: ['labels', 'bi_hub_diagnostic_files', 'bicc_department'],
     });
     if (!report) throw new NotFoundException('Report not found');
 

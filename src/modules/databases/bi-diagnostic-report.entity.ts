@@ -1,107 +1,84 @@
-import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import { Entity, Column, OneToMany, ManyToMany, JoinTable, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseAuthorAdminSoftDeleteColumn } from '@configuration/base-entity/base-author-admin-soft-delete-column.entity';
+import { BiHubLabel } from './bi-hub-label.entity';
 import { BiHubDiagnosticFile } from './bi-diagnostic-file.entity';
 import { BIHubDiagnosticHistoryReport } from './bi-diagnostic-history-report.entity';
-import { BiHubDiagnosticScope } from './bi-diagnostic-scope.entity';
 import { BiHubBiccDepartment } from './bi-hub-bicc-department.entity';
-import { BiHubCenter } from './bi-hub-center.entity';
-import { BiHubDepartment } from './bi-hub-department.entity';
-import { BiHubDivision } from './bi-hub-division.entity';
-import { BiHubLabel } from './bi-hub-label.entity';
-
+export const DIAGNOSTIC_REPORT_PIC = 'diagnostic_reports_pics';
+export const DIAGNOSTIC_REPORT_SUPPORTER = 'diagnostic_reports_supporters';
+export const DIAGNOSTIC_REPORT_LABEL = 'diagnostic_reports_labels';
 export enum BIHubDiagnosticReportStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
 }
 
-// BI Hub Diagnostic report — owns M:N junctions for scopes and labels
 @Entity('bi_hub_diagnostic_reports')
-export class BIHubDiagnosticReport extends BaseSoftDeleteEntity {
-  @Column({ nullable: false })
+export class BIHubDiagnosticReport extends BaseAuthorAdminSoftDeleteColumn {
+  @Column({ nullable: true })
+  bicc_department_id: number;
+  @ManyToOne(() => BiHubBiccDepartment)
+  @JoinColumn({ name: 'bicc_department_id' })
+  bicc_department: BiHubBiccDepartment;
+
+  @Column({ type: 'varchar', nullable: true })
   name: string;
 
   @Column({ type: 'text', nullable: true })
   key_insights: string;
 
-  @Column({ type: 'boolean', nullable: true, default: false })
+  @Column({ type: 'boolean', nullable: true })
   is_sensitive: boolean;
 
-  @Column({ nullable: true })
+  @ManyToMany(() => BiHubLabel)
+  @JoinTable({
+    name: DIAGNOSTIC_REPORT_LABEL,
+    joinColumn: {
+      name: 'diagnostic_report_id',
+      referencedColumnName: 'id',
+    },
+    inverseJoinColumn: {
+      name: 'label_id',
+      referencedColumnName: 'id',
+    },
+  })
+  labels: BiHubLabel[];
+
+  @OneToMany(() => BiHubDiagnosticFile, (f) => f.bi_hub_diagnostic_report)
+  bi_hub_diagnostic_files: BiHubDiagnosticFile[];
+
+  @Column({ type: 'enum', enum: BIHubDiagnosticReportStatus, nullable: true })
+  status: BIHubDiagnosticReportStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  icon: string;
+
+  @Column({ type: 'varchar', nullable: true })
   bu_name: string;
+
+  @Column({ type: 'boolean', nullable: true })
+  is_deleted: boolean;
 
   @Column({ type: 'int', nullable: true, default: 0 })
   version: number;
 
+  @OneToMany(() => BIHubDiagnosticHistoryReport, (h) => h.bi_hub_diagnostic_report)
+  bi_hub_diagnostic_history_reports: BIHubDiagnosticHistoryReport[];
+
+  @Column({ type: 'boolean', nullable: true, default: false })
+  is_change_link: boolean;
+
   @Column({ type: 'int', nullable: true, default: 0 })
   total_view: number;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'text', nullable: false })
   txt_diagnostic_scope: string;
 
   @Column({ type: 'text', nullable: true })
   summary: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  insight: Record<string, any>;
+  @Column({ type: 'simple-json', nullable: true })
+  insight: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   code: string;
-
-  @Column({ nullable: true })
-  icon: string;
-
-  @Column({ type: 'boolean', nullable: true, default: false })
-  is_deleted: boolean;
-
-  @Column({ type: 'boolean', nullable: true, default: false })
-  is_change_link: boolean;
-
-  @Column({ type: 'enum', enum: BIHubDiagnosticReportStatus, default: BIHubDiagnosticReportStatus.ACTIVE })
-  diagnostic_report_status: BIHubDiagnosticReportStatus;
-
-  // N:1 bicc-department — direct link (category layer removed)
-  @Column({ type: 'int', nullable: true })
-  bicc_department_id: number;
-
-  @ManyToOne(() => BiHubBiccDepartment, (d) => d.bi_hub_diagnostic_reports)
-  @JoinColumn({ name: 'bicc_department_id' })
-  bicc_department: BiHubBiccDepartment;
-
-  // N:1 org hierarchy FKs
-  @Column({ type: 'int', nullable: true })
-  division_id: number;
-
-  @ManyToOne(() => BiHubDivision)
-  @JoinColumn({ name: 'division_id' })
-  division: BiHubDivision;
-
-  @Column({ type: 'int', nullable: true })
-  center_id: number;
-
-  @ManyToOne(() => BiHubCenter)
-  @JoinColumn({ name: 'center_id' })
-  center: BiHubCenter;
-
-  @Column({ type: 'int', nullable: true })
-  department_id: number;
-
-  @ManyToOne(() => BiHubDepartment)
-  @JoinColumn({ name: 'department_id' })
-  department: BiHubDepartment;
-
-  // M:N relations — this entity owns all junction tables
-  @ManyToMany(() => BiHubDiagnosticScope)
-  @JoinTable({ name: 'bi_hub_diagnostic_reports_scopes' })
-  scopes: BiHubDiagnosticScope[];
-
-  @ManyToMany(() => BiHubLabel)
-  @JoinTable({ name: 'bi_hub_diagnostic_reports_labels' })
-  labels: BiHubLabel[];
-
-  // 1:N child relations
-  @OneToMany(() => BiHubDiagnosticFile, (f) => f.bi_hub_diagnostic_report)
-  bi_hub_diagnostic_files: BiHubDiagnosticFile[];
-
-  @OneToMany(() => BIHubDiagnosticHistoryReport, (h) => h.bi_hub_diagnostic_report)
-  bi_hub_diagnostic_history_reports: BIHubDiagnosticHistoryReport[];
 }

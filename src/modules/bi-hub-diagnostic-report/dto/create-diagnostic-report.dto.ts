@@ -33,9 +33,10 @@ export class CreateDiagnosticReportDto {
   @IsString()
   readonly summary?: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, description: 'JSON string for insight data' })
   @IsOptional()
-  readonly insight?: Record<string, any>;
+  @IsString()
+  readonly insight?: string;
 
   @ApiProperty({ required: true })
   @IsNotEmpty()
@@ -58,26 +59,11 @@ export class CreateDiagnosticReportDto {
   @Type(() => DiagnosticFileDto)
   readonly file?: DiagnosticFileDto;
 
-  @ApiProperty({ required: true })
+  @ApiProperty({ required: true, description: 'Diagnostic scope text' })
   @IsNotEmpty()
-  @IsNumber()
-  readonly department: number;
-
-  @ApiProperty({ required: true })
-  @IsNotEmpty()
-  @IsNumber()
-  readonly center: number;
-
-  @ApiProperty({ required: true })
-  @IsNotEmpty()
-  @IsNumber()
-  readonly division: number;
-
-  @ApiProperty({ required: false, description: 'Diagnostic scope text' })
-  @IsOptional()
   @IsString()
   @MaxLength(2000)
-  readonly scopes?: string;
+  readonly scopes: string;
 
   @ApiProperty({ required: false, type: [Number], description: 'Label IDs' })
   @IsOptional()
