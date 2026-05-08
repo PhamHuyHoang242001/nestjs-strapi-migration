@@ -24,7 +24,7 @@ import { BiHubTag } from './bi-hub-tag.entity';
 
 // Central BI Hub report entity — owns all M:N junction tables
 @Entity('bi_hub_reports')
-export class BiHubReport extends BaseSoftDeleteEntity {
+export class BiHubDescriptiveReport extends BaseSoftDeleteEntity {
   @Column({ nullable: false })
   public name: string;
 
