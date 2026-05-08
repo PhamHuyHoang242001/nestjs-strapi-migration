@@ -34,7 +34,7 @@ seeder({
   UserSeeder,
   RoleSeeder,
   UserRoleSeeder,
-  // BusinessTableSampleSeeder,
+  BusinessTableSampleSeeder,
   DataAccessSeeder,
   ChangeHistorySeeder,
   SettingSeeder,

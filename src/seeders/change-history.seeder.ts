@@ -21,7 +21,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: JSON.stringify({ code: 'SUPER_ADMIN', name: 'Super Admin' }),
-        description: 'Tạo role "Super Admin"',
         created_at: '2026-04-10 09:00:00',
       },
       {
@@ -33,7 +32,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: JSON.stringify({ name: 'Analyst' }),
         new_value: JSON.stringify({ name: 'Data Analyst' }),
-        description: 'Đổi tên role "Analyst" → "Data Analyst"',
         created_at: '2026-04-11 10:30:00',
       },
       {
@@ -45,7 +43,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: null,
-        description: 'Deactivate role "Old Role"',
         created_at: '2026-04-12 14:00:00',
       },
       {
@@ -57,7 +54,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: null,
-        description: 'Thêm user "Trần Thị Manager" vào role "Department Manager"',
         created_at: '2026-04-10 09:15:00',
       },
       {
@@ -69,7 +65,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: null,
-        description: 'Thêm user "Trần Thị Manager" vào role "Data Analyst"',
         created_at: '2026-04-10 09:16:00',
       },
       {
@@ -81,7 +76,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: null,
-        description: 'Bỏ user "Hoàng Văn Inactive" khỏi role "Viewer"',
         created_at: '2026-04-12 15:00:00',
       },
       {
@@ -93,7 +87,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: JSON.stringify({ username: 'analyst01', department: 'Bán lẻ' }),
-        description: 'Tạo người dùng "Lê Văn Analyst"',
         created_at: '2026-04-10 08:00:00',
       },
       {
@@ -105,7 +98,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: null,
-        description: 'Deactivate user "Hoàng Văn Inactive"',
         created_at: '2026-04-12 15:30:00',
       },
       {
@@ -117,7 +109,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: JSON.stringify({ permissions: [1, 4, 8, 12] }),
         new_value: JSON.stringify({ permissions: [1, 2, 4, 5, 8, 9, 10, 12] }),
-        description: 'Cập nhật quyền role "Data Analyst": thêm create + download',
         created_at: '2026-04-11 11:00:00',
       },
       {
@@ -129,7 +120,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: JSON.stringify({ roles: ['Dept Manager'], data_id: 2002, scope: 'deny' }),
-        description: 'DENY role "Dept Manager" truy cập data lương nhân sự',
         created_at: '2026-04-13 09:00:00',
       },
       {
@@ -141,7 +131,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: null,
         new_value: JSON.stringify({ users: ['manager01'], data_id: 2002, scope: 'allow', end: '2026-04-30' }),
-        description: 'Ngoại lệ: ALLOW manager01 xem data lương đến 30/04/2026',
         created_at: '2026-04-14 10:00:00',
       },
       {
@@ -153,7 +142,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'admin01',
         old_value: JSON.stringify({ data_id: 9999, scope: 'allow' }),
         new_value: null,
-        description: 'Xóa rule report access cũ',
         created_at: '2026-04-15 16:00:00',
       },
       {
@@ -165,7 +153,6 @@ export class ChangeHistorySeeder implements Seeder {
         performed_by: 'system',
         old_value: null,
         new_value: null,
-        description: 'Khởi tạo dữ liệu mẫu',
         created_at: '2026-04-10 08:00:00',
       },
     ];
@@ -191,8 +178,8 @@ export class ChangeHistorySeeder implements Seeder {
     for (const item of arrDataInit) {
       await this.connection.query(
         `INSERT INTO ${tableName}
-          (id, entity_type, action_type, entity_id, entity_name, performed_by, old_value, new_value, description, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          (id, entity_type, action_type, entity_id, entity_name, performed_by, old_value, new_value, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           item.id,
           item.entity_type,
@@ -202,14 +189,13 @@ export class ChangeHistorySeeder implements Seeder {
           item.performed_by,
           item.old_value,
           item.new_value,
-          item.description,
           item.created_at,
         ],
       );
     }
 
     await this.connection.query(
-      `SELECT setval('change_history_id_seq', (SELECT COALESCE(MAX(id), 1) FROM ${tableName}))`,
+      `SELECT setval(pg_get_serial_sequence('${tableName}', 'id'), (SELECT COALESCE(MAX(id), 1) FROM ${tableName}))`,
     );
   }
 

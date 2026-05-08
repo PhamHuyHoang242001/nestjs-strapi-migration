@@ -12,18 +12,18 @@ export class DataAccessSeeder implements Seeder {
   async seed(): Promise<any> {
     // data_id references actual record IDs from BusinessTableSampleSeeder
     const dataConfig = [
-      { id: 1,  data_id: 1, table_name: 'bi_hub_reports',    scope_type: 'allow', start_date: null, end_date: null },
-      { id: 2,  data_id: 2, table_name: 'bi_hub_reports',    scope_type: 'allow', start_date: null, end_date: null },
-      { id: 3,  data_id: 1, table_name: 'ma_tool_documents', scope_type: 'allow', start_date: null, end_date: null },
-      { id: 4,  data_id: 2, table_name: 'ma_tool_documents', scope_type: 'allow', start_date: null, end_date: null },
-      { id: 5,  data_id: 1, table_name: 'ma_tool_templates', scope_type: 'allow', start_date: null, end_date: null },
-      { id: 6,  data_id: 3, table_name: 'ma_tool_documents', scope_type: 'deny',  start_date: null, end_date: null },
-      { id: 7,  data_id: 3, table_name: 'bi_hub_reports',    scope_type: 'allow', start_date: '2026-01-01', end_date: '2026-12-31' },
-      { id: 8,  data_id: 4, table_name: 'bi_hub_reports',    scope_type: 'allow', start_date: '2026-01-01', end_date: '2026-12-31' },
-      { id: 9,  data_id: 5, table_name: 'bi_hub_reports',    scope_type: 'allow', start_date: null, end_date: null },
-      { id: 10, data_id: 4, table_name: 'ma_tool_documents', scope_type: 'deny',  start_date: null, end_date: null },
-      { id: 11, data_id: 5, table_name: 'ma_tool_documents', scope_type: 'allow', start_date: '2026-04-01', end_date: '2026-04-30' },
-      { id: 12, data_id: 6, table_name: 'ma_tool_documents', scope_type: 'allow', start_date: '2026-04-15', end_date: '2026-05-15' },
+      { id: 1, data_id: 1, module_id: 7, scope_type: 'allow', start_date: null, end_date: null },
+      { id: 2, data_id: 2, module_id: 7, scope_type: 'allow', start_date: null, end_date: null },
+      { id: 3, data_id: 1, module_id: 4, scope_type: 'allow', start_date: null, end_date: null },
+      { id: 4, data_id: 2, module_id: 4, scope_type: 'allow', start_date: null, end_date: null },
+      { id: 5, data_id: 1, module_id: 3, scope_type: 'allow', start_date: null, end_date: null },
+      { id: 6, data_id: 3, module_id: 4, scope_type: 'deny', start_date: null, end_date: null },
+      { id: 7, data_id: 3, module_id: 7, scope_type: 'allow', start_date: '2026-01-01', end_date: '2026-12-31' },
+      { id: 8, data_id: 4, module_id: 7, scope_type: 'allow', start_date: '2026-01-01', end_date: '2026-12-31' },
+      { id: 9, data_id: 5, module_id: 7, scope_type: 'allow', start_date: null, end_date: null },
+      { id: 10, data_id: 4, module_id: 4, scope_type: 'deny', start_date: null, end_date: null },
+      { id: 11, data_id: 5, module_id: 4, scope_type: 'allow', start_date: '2026-04-01', end_date: '2026-04-30' },
+      { id: 12, data_id: 6, module_id: 4, scope_type: 'allow', start_date: '2026-04-15', end_date: '2026-05-15' },
     ];
 
     for (const item of dataConfig) {
@@ -54,7 +54,6 @@ export class DataAccessSeeder implements Seeder {
   private async seedJunctionTables(): Promise<void> {
     await this.seedDataAccessRoles();
     await this.seedDataAccessUsers();
-    await this.seedDataPermissions();
   }
 
   private async seedDataAccessRoles(): Promise<void> {
@@ -82,27 +81,13 @@ export class DataAccessSeeder implements Seeder {
     if (existing.length > 0) return;
 
     await this.connection.query(`
-      INSERT INTO data_access_users (data_access_id, user_id) VALUES
-      (9, 3), (10, 4), (11, 2), (12, 3)
-    `);
-  }
-
-  private async seedDataPermissions(): Promise<void> {
-    const existing = await this.connection.query<{ data_access_id: number; permission_id: number }[]>(
-      `SELECT data_access_id, permission_id FROM data_permissions WHERE data_access_id = ANY($1)`,
-      [this.dataRef],
-    );
-    if (existing.length > 0) return;
-
-    await this.connection.query(`
-      INSERT INTO data_permissions (data_access_id, permission_id) VALUES
-      (9, 23), (10, 14), (11, 12), (12, 13)
+      INSERT INTO data_access_users (data_access_id, user_id, permission_id) VALUES
+      (9, 3, 23), (10, 4, 14), (11, 2, 12), (12, 3, 13)
     `);
   }
 
   async drop(): Promise<any> {
     if (!this.dataRef.length) return;
-    await this.connection.query(`DELETE FROM data_permissions WHERE data_access_id = ANY($1)`, [this.dataRef]);
     await this.connection.query(`DELETE FROM data_access_users WHERE data_access_id = ANY($1)`, [this.dataRef]);
     await this.connection.query(`DELETE FROM data_access_roles WHERE data_access_id = ANY($1)`, [this.dataRef]);
     await this.connection
