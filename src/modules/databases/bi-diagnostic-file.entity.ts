@@ -1,21 +1,36 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { BiDiagnosticReport } from './bi-diagnostic-report.entity';
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { BIHubDiagnosticReport } from './bi-diagnostic-report.entity';
 
-// File attachment for a BI Diagnostic report
-@Entity('bi_diagnostic_files')
-export class BiDiagnosticFile extends BaseSoftDeleteEntity {
+export enum BIHubDiagnosticFileStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+}
+
+@Entity('bi_hub_diagnostic_files')
+export class BiHubDiagnosticFile extends BaseSoftDeleteEntity {
+  @Column({ type: 'varchar', nullable: true })
+  file_media: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  file_url: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  type: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  name: string;
+
   @Column({ nullable: true })
-  public file_name: string;
+  bi_hub_diagnostic_report_id: number;
 
-  @Column({ nullable: true })
-  public file_url: string;
+  @ManyToOne(() => BIHubDiagnosticReport, (r) => r.bi_hub_diagnostic_files)
+  @JoinColumn({ name: 'bi_hub_diagnostic_report_id' })
+  bi_hub_diagnostic_report: BIHubDiagnosticReport;
 
-  // FK to bi_diagnostic_reports
-  @Column({ type: 'int', nullable: false })
-  public diagnostic_report_id: number;
+  @Column({ type: 'boolean', nullable: true })
+  lastest_version: boolean;
 
-  @ManyToOne(() => BiDiagnosticReport, (r) => r.files)
-  @JoinColumn({ name: 'diagnostic_report_id' })
-  public diagnostic_report: BiDiagnosticReport;
+  @Column({ type: 'enum', enum: BIHubDiagnosticFileStatus, nullable: true })
+  status: BIHubDiagnosticFileStatus;
 }
