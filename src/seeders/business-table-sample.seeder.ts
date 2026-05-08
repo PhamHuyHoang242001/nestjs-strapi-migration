@@ -15,7 +15,6 @@ export class BusinessTableSampleSeeder implements Seeder {
     await this.seedDocuments();
     await this.seedBiccDepartments();
     await this.seedHubReports();
-    await this.seedDiagnosticCategories();
     await this.seedDiagnosticReports();
     await this.seedPaymentProjects();
     await this.seedPaymentPrograms();
@@ -103,33 +102,19 @@ export class BusinessTableSampleSeeder implements Seeder {
     await this.resetSeq('bi_hub_reports');
   }
 
-  // ── BI Diagnostic Categories ───────────────────────────────────────
-  private async seedDiagnosticCategories() {
-    if (await this.hasData('bi_diagnostic_categories')) return;
-    await this.connection.query(`
-      INSERT INTO bi_diagnostic_categories (id, name, code, bicc_department_id) VALUES
-      (1, 'Tài chính',  'FIN', 1),
-      (2, 'Nhân sự',    'HR',  2),
-      (3, 'Vận hành',   'OPS', 3),
-      (4, 'IT',         'IT',  5),
-      (5, 'Marketing',  'MKT', 4)
-    `);
-    await this.resetSeq('bi_diagnostic_categories');
-  }
-
   // ── BI Diagnostic Reports ──────────────────────────────────────────
   private async seedDiagnosticReports() {
-    if (await this.hasData('bi_diagnostic_reports')) return;
+    if (await this.hasData('bi_hub_diagnostic_reports')) return;
     await this.connection.query(`
-      INSERT INTO bi_diagnostic_reports (id, name, code, bu_name, summary, bi_diagnostic_category_id) VALUES
+      INSERT INTO bi_hub_diagnostic_reports (id, name, code, bu_name, summary, bicc_department_id) VALUES
       (1, 'Chẩn đoán dòng tiền Q1/2026',       'DIAG-FIN-001', 'BU Thép',        'Phân tích dòng tiền quý 1',          1),
       (2, 'Chẩn đoán hiệu suất nhân viên',      'DIAG-HR-001',  'BU Bất động sản','Đánh giá hiệu suất toàn công ty',    2),
       (3, 'Chẩn đoán quy trình sản xuất',       'DIAG-OPS-001', 'BU Thép',        'Phân tích bottleneck sản xuất',      3),
-      (4, 'Chẩn đoán hạ tầng IT',               'DIAG-IT-001',  'IT Center',      'Đánh giá hạ tầng server và network', 4),
-      (5, 'Chẩn đoán hiệu quả chiến dịch MKT', 'DIAG-MKT-001', 'BU Điện máy',    'ROI các chiến dịch marketing',       5),
+      (4, 'Chẩn đoán hạ tầng IT',               'DIAG-IT-001',  'IT Center',      'Đánh giá hạ tầng server và network', 5),
+      (5, 'Chẩn đoán hiệu quả chiến dịch MKT', 'DIAG-MKT-001', 'BU Điện máy',    'ROI các chiến dịch marketing',       4),
       (6, 'Chẩn đoán chi phí logistics',        'DIAG-OPS-002', 'BU Thép',        'Chi phí vận chuyển và kho bãi',      3)
     `);
-    await this.resetSeq('bi_diagnostic_reports');
+    await this.resetSeq('bi_hub_diagnostic_reports');
   }
 
   // ── BI Payment Projects ────────────────────────────────────────────
@@ -230,8 +215,7 @@ export class BusinessTableSampleSeeder implements Seeder {
       'bi_payment_work_steps',
       'bi_payment_programs',
       'bi_payment_projects',
-      'bi_diagnostic_reports',
-      'bi_diagnostic_categories',
+      'bi_hub_diagnostic_reports',
       'bi_hub_reports',
       'bi_hub_bicc_departments',
       'ma_tool_documents',

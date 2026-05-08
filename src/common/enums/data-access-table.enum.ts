@@ -8,8 +8,7 @@ export enum DATA_ACCESS_TABLE {
   // BI Hub
   BI_HUB_BICC_DEPARTMENTS = 'bi_hub_bicc_departments',
   BI_HUB_REPORTS = 'bi_hub_reports',
-  BI_DIAGNOSTIC_CATEGORIES = 'bi_diagnostic_categories',
-  BI_DIAGNOSTIC_REPORTS = 'bi_diagnostic_reports',
+  BI_HUB_DIAGNOSTIC_REPORTS = 'bi_hub_diagnostic_reports',
 
   // BI Payment
   BI_PAYMENT_PROJECTS = 'bi_payment_projects',

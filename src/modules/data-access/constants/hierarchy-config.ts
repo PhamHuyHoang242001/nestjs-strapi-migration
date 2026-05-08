@@ -22,11 +22,10 @@ export const HIERARCHY_MAP: Record<string, HierarchyEntry | null> = {
   bi_payment_other_files: { parentTable: 'bi_payment_checklists', fkColumn: 'bi_payment_checklist_id' },
   bi_payment_projects: null,
 
-  // bi_hub: bicc_department → { reports, diagnostic_category → diagnostic_report }
+  // bi_hub: bicc_department → { reports, diagnostic_report }
   bi_hub_bicc_departments: null,
   bi_hub_reports: { parentTable: 'bi_hub_bicc_departments', fkColumn: 'bicc_department_id' },
-  bi_diagnostic_categories: { parentTable: 'bi_hub_bicc_departments', fkColumn: 'bicc_department_id' },
-  bi_diagnostic_reports: { parentTable: 'bi_diagnostic_categories', fkColumn: 'bi_diagnostic_category_id' },
+  bi_hub_diagnostic_reports: { parentTable: 'bi_hub_bicc_departments', fkColumn: 'bicc_department_id' },
 };
 
 /** Whitelist of tables allowed for data access rules and records browser */
@@ -42,8 +41,7 @@ export const NAME_COLUMN_MAP: Record<string, string> = {
   bi_payment_programs: 'name',
   bi_payment_work_steps: 'step_name',
   ma_tool_workspaces: 'name',
-  bi_diagnostic_categories: 'name',
-  bi_diagnostic_reports: 'name',
+  bi_hub_diagnostic_reports: 'name',
   bi_payment_checklists: 'name',
   bi_payment_other_files: 'name',
 };

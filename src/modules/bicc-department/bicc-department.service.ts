@@ -47,7 +47,7 @@ export class BiccDepartmentService {
   async details(id: number) {
     const dept = await this.biccDeptRepo.findOne({
       where: { id },
-      relations: ['reports', 'diagnostic_categories'],
+      relations: ['reports', 'diagnostic_reports'],
     });
     if (!dept) throw new NotFoundException('BICC Department not found');
     return dept;

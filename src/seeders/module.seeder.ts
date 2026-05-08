@@ -25,8 +25,7 @@ const BI_HUB: ModuleSeedItem[] = [
   { id: 5, path: '/bi-hub', name: 'BI Hub', table_name: null, is_active: true, parent_id: null },
   { id: 6, path: '/bi-hub/bicc-department', name: 'BICC Department', table_name: 'bi_hub_bicc_departments', is_active: true, parent_id: 5 },
   { id: 7, path: '/bi-hub/bicc-department/bi-hub-reports', name: 'BI Hub Reports', table_name: 'bi_hub_reports', is_active: true, parent_id: 6 },
-  { id: 8, path: '/bi-hub/bicc-department/bi-diagnostic-category', name: 'BI Diagnostic Category', table_name: 'bi_diagnostic_categories', is_active: true, parent_id: 6 },
-  { id: 9, path: '/bi-hub/bicc-department/bi-diagnostic-category/bi-diagnostic-report', name: 'BI Diagnostic Report', table_name: 'bi_diagnostic_reports', is_active: true, parent_id: 8 },
+  { id: 8, path: '/bi-hub/bicc-department/bi-hub-diagnostic-report', name: 'BI Hub Diagnostic Report', table_name: 'bi_hub_diagnostic_reports', is_active: true, parent_id: 6 },
 ];
 
 // ── BI Payment — TEMPORARILY DISABLED ────────────────────────────

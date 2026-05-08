@@ -1,11 +1,4 @@
-// BI Diagnostic domain enums extracted from Strapi schemas
-
-export enum BiDiagnosticCategoryStatus {
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
-}
-
-export enum BiDiagnosticReportStatus {
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
-}
+// BI Diagnostic enums are co-located with their entities:
+// - BIHubDiagnosticReportStatus → bi-diagnostic-report.entity.ts
+// - BIHubDiagnosticFileStatus → bi-diagnostic-file.entity.ts
+export {};
