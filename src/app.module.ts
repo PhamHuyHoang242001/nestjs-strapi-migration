@@ -31,6 +31,7 @@ import { PermissionMatrixModule } from '@modules/permission-matrix/permission-ma
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 import { DataAccessModule } from '@modules/data-access/data-access.module';
 import { BiccDepartmentModule } from '@modules/bicc-department/bicc-department.module';
+import { BiHubDiagnosticReportModule } from '@modules/bi-hub-diagnostic-report/bi-hub-diagnostic-report.module';
 import { AuthorizationModule } from '@common/authorization';
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { AuthorizationModule } from '@common/authorization';
     ChangeHistoryModule,
     DataAccessModule,
     BiccDepartmentModule,
+    BiHubDiagnosticReportModule,
     AuthorizationModule,
   ],
   controllers: [AppController],

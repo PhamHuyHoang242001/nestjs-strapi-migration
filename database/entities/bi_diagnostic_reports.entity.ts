@@ -1,6 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 import { AdminsBiDiagnosticReports } from './admins_bi_diagnostic_reports.entity';
-import { BiDiagnosticCategories } from './bi_diagnostic_categories.entity';
 import { BiDiagnosticReportsBiHubLabels } from './bi_diagnostic_reports_bi_hub_labels.entity';
 import { Admins } from './admins.entity';
 
@@ -19,11 +18,6 @@ export class BiDiagnosticReports {
   key_insights?: string;
   @OneToMany(() => AdminsBiDiagnosticReports, (p) => p.bi_diagnostic_reports)
   pic_links?: AdminsBiDiagnosticReports[];
-  @Column({ nullable: true })
-  bi_diagnostic_category_id?: number;
-  @ManyToOne(() => BiDiagnosticCategories)
-  @JoinColumn({ name: 'bi_diagnostic_category_id' })
-  bi_diagnostic_category?: BiDiagnosticCategories;
   @Column({ type: 'boolean', nullable: true })
   is_sensitive?: boolean;
   @OneToMany(() => AdminsBiDiagnosticReports, (p) => p.bi_diagnostic_reports)

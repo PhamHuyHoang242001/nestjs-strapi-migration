@@ -68,10 +68,10 @@ export class AuthService {
 
   async login(data: UserLoginDto, client: USER_CLIENT, header: ClientBasic): Promise<AccessToken> {
     const { email, password, remember_me } = data;
-    const { domain } = header;
+    const { domain, device_hash } = header;
     const user = await this.checkAccountExist(email, client);
     this.checkPassword(password, user['password'] as string);
-    return this.createToken(user['id'] as number, client, domain, false, remember_me);
+    return this.createToken(user['id'] as number, client, domain, device_hash, false, remember_me);
   }
 
   async register(payload: UserRegisterDto, header: ClientBasic): Promise<AccessToken> {
@@ -119,11 +119,12 @@ export class AuthService {
     };
     await this.userRepository.updateOne({ email }, data as Partial<Users>);
     const { domain, device_hash } = header;
-    return this.createToken(userVerified.id, domain, device_hash, false, false);
+    return this.createToken(userVerified.id, USER_CLIENT.USER, domain, device_hash, false, false);
   }
 
   async createToken(
     user: number,
+    client: USER_CLIENT,
     domain: string,
     device_hash: string,
     ask_change_pwd: boolean = false,
@@ -132,6 +133,7 @@ export class AuthService {
   ) {
     const { token, expired_at } = await this.generateToken({
       user,
+      client,
       type: TOKEN_TYPE.LOGIN,
       remember_me,
       device_hash,
@@ -139,6 +141,7 @@ export class AuthService {
     });
     const { token: refresh_token, expired_at: refresh_token_expired_at } = await this.generateToken({
       user,
+      client,
       type: TOKEN_TYPE.REFRESH_TOKEN,
       remember_me,
       device_hash,
@@ -155,7 +158,7 @@ export class AuthService {
   }
 
   async generateToken(payload: ICreateToken) {
-    const { token_ref = null, user, type, remember_me = false, device_hash, is_mobile } = payload;
+    const { token_ref = null, user, client: tokenClient, type, remember_me = false, device_hash, is_mobile } = payload;
     let time: number | undefined;
     const time_extend_remember_login = remember_me ? 14 * 24 * 60 : 0;
     switch (type) {
@@ -171,16 +174,17 @@ export class AuthService {
       default:
         break;
     }
-    const user_id = user;
     const expired_at = is_mobile
       ? null
       : dayjs()
           .add((time ?? 0) + time_extend_remember_login, 'minutes')
           .toDate();
+    const isAdmin = tokenClient === USER_CLIENT.ADMIN;
     const options: Record<string, unknown> = {
       token: '',
       token_ref,
-      user_id,
+      ...(isAdmin ? { admin_id: user } : { user_id: user }),
+      client: tokenClient || USER_CLIENT.USER,
       type,
       device_hash,
       expired_at: expired_at?.valueOf(),
@@ -203,8 +207,8 @@ export class AuthService {
       if (!value[key]) delete value[key];
     });
 
-    if (user_id) {
-      value['uid'] = user_id;
+    if (user) {
+      value['uid'] = user;
     }
     const access_token = generateToken(value);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -254,7 +258,7 @@ export class AuthService {
         id: tokenDecrypt['user_id'] as number,
       })) as unknown as Record<string, unknown>;
     }
-    const tokenResponse = await this.createToken(account?.['id'] as number, domain, device_hash);
+    const tokenResponse = await this.createToken(account?.['id'] as number, tokenDecrypt['client'] as USER_CLIENT || USER_CLIENT.USER, domain, device_hash);
     return tokenResponse;
   }
 
@@ -289,7 +293,7 @@ export class AuthService {
     const rs = await this.userRepository.findOneBy({ email });
     if (!rs) throw new NotFoundException(MODEL_AUTH_USERNAME_INVALID);
     await this.userRepository.updateOne({ id: rs.id }, { deleted_at: null });
-    return this.createToken(rs.id, domain, device_hash, false, false);
+    return this.createToken(rs.id, USER_CLIENT.USER, domain, device_hash, false, false);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -344,7 +348,7 @@ export class AuthService {
     const user = await this.userRepository.findOneBy({ guest_id, is_registered: false });
     const { domain, device_hash } = header;
     if (!user) throw new BadRequestException('Invalid data');
-    return this.createToken(user.id, domain, device_hash);
+    return this.createToken(user.id, USER_CLIENT.USER, domain, device_hash);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -403,6 +407,6 @@ export class AuthService {
 
     const domain = (header?.['domain'] as string) || '';
     const device_hash = (header?.['device_hash'] as string) || '';
-    return this.createToken(user.id, domain, device_hash, false, false);
+    return this.createToken(user.id, USER_CLIENT.USER, domain, device_hash, false, false);
   }
 }

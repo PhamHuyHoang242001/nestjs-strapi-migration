@@ -20,7 +20,6 @@ export class BiHubBiccDepartments {
   code?: string;
   @Column({ type: 'enum', enum: BiHubBiccDepartmentsBiccDepartmentStatusEnum, nullable: true })
   bicc_department_status?: BiHubBiccDepartmentsBiccDepartmentStatusEnum;
-  // OneToMany inverse: bi_diagnostic_categories -> BiDiagnosticCategories
   // OneToMany inverse: diagnostic_scopes -> BiDiagnosticScope
   @OneToMany(() => BiHubBiccDepartmentsMaToolS3s, (p) => p.bi_hub_bicc_departments)
   s3_buckets_links?: BiHubBiccDepartmentsMaToolS3s[];

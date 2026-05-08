@@ -146,33 +146,9 @@ const BI_HUB_REPORTS: PermissionSeedItem[] = [
   },
 ];
 
-// ── BI Hub / BI Diagnostic Category (module_id=8) ────────────────
-const BI_HUB_DIAG_CATEGORY: PermissionSeedItem[] = [
-  { id: 26, code: 'bh_diag_cat_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 8 },
-  {
-    id: 27,
-    code: 'bh_diag_cat_create',
-    name: 'Tạo mới',
-    method: 'POST',
-    action: 'create',
-    is_active: true,
-    module_id: 8,
-  },
-  { id: 28, code: 'bh_diag_cat_edit', name: 'Sửa', method: 'PUT', action: 'update', is_active: true, module_id: 8 },
-  {
-    id: 29,
-    code: 'bh_diag_cat_delete',
-    name: 'Xóa',
-    method: 'DELETE',
-    action: 'delete',
-    is_active: true,
-    module_id: 8,
-  },
-];
-
-// ── BI Hub / BI Diagnostic Report (module_id=9) ─────────────────
+// ── BI Hub / BI Diagnostic Report (module_id=8) ─────────────────
 const BI_HUB_DIAG_REPORT: PermissionSeedItem[] = [
-  { id: 30, code: 'bh_diag_report_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 9 },
+  { id: 30, code: 'bh_diag_report_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 8 },
   {
     id: 31,
     code: 'bh_diag_report_create',
@@ -180,9 +156,9 @@ const BI_HUB_DIAG_REPORT: PermissionSeedItem[] = [
     method: 'POST',
     action: 'create',
     is_active: true,
-    module_id: 9,
+    module_id: 8,
   },
-  { id: 32, code: 'bh_diag_report_edit', name: 'Sửa', method: 'PUT', action: 'update', is_active: true, module_id: 9 },
+  { id: 32, code: 'bh_diag_report_edit', name: 'Sửa', method: 'PUT', action: 'update', is_active: true, module_id: 8 },
   {
     id: 33,
     code: 'bh_diag_report_delete',
@@ -190,7 +166,7 @@ const BI_HUB_DIAG_REPORT: PermissionSeedItem[] = [
     method: 'DELETE',
     action: 'delete',
     is_active: true,
-    module_id: 9,
+    module_id: 8,
   },
   {
     id: 34,
@@ -199,7 +175,7 @@ const BI_HUB_DIAG_REPORT: PermissionSeedItem[] = [
     method: 'GET',
     action: 'download',
     is_active: true,
-    module_id: 9,
+    module_id: 8,
   },
 ];
 
@@ -279,7 +255,6 @@ export class PermissionSeeder implements Seeder {
       ...DATA_UPLOADER_DOCUMENT,
       ...BI_HUB_BICC_DEPT,
       ...BI_HUB_REPORTS,
-      ...BI_HUB_DIAG_CATEGORY,
       ...BI_HUB_DIAG_REPORT,
       // BI Payment — temporarily disabled (uncomment when ready)
       // ...BI_PAYMENT_PROJECT,

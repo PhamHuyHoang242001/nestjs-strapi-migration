@@ -21,7 +21,7 @@ export class BiHubBiccDepartment extends BaseAuthorUserSoftDeleteColumn {
   @Column({ type: 'varchar', nullable: false })
   name: string;
 
-  @Column({ type: 'varchar', nullable: false })
+  @Column({ type: 'varchar', nullable: true, default: '' })
   image: string;
 
   @Column({ type: 'varchar', nullable: false })
