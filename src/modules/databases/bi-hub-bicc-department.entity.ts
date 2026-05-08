@@ -1,23 +1,46 @@
-import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, OneToMany } from 'typeorm';
+import { Entity, Column, OneToMany, ManyToMany, JoinTable } from 'typeorm';
+import { BaseAuthorUserSoftDeleteColumn } from '@configuration/base-entity/base-author-user-soft-delete-column.entity';
+import { BiHubDescriptiveReport } from './bi-hub-descriptive-report.entity';
+import { MaToolS3 } from './ma-tool-s3.entity';
 import { BIHubDiagnosticReport } from './bi-diagnostic-report.entity';
-import { BiHubReport } from './bi-hub-report.entity';
+export const BICC_DEPARTMENT_S3 = 'bicc_departments_s3s';
 
-// Org hierarchy: BICC department level — parent of bi_hub_reports and bi_diagnostic_reports
+export enum BiccDepartmentStatusEnum {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+}
+
 @Entity('bi_hub_bicc_departments')
-export class BiHubBiccDepartment extends BaseSoftDeleteEntity {
-  @Column({ nullable: false })
-  public name: string;
+export class BiHubBiccDepartment extends BaseAuthorUserSoftDeleteColumn {
+  @OneToMany(() => BiHubDescriptiveReport, (c) => c.bicc_department)
+  bi_hub_reports: BiHubDescriptiveReport[];
 
-  @Column({ nullable: true })
-  public code: string;
+  @OneToMany(() => BIHubDiagnosticReport, (c) => c.bicc_department)
+  bi_hub_diagnostic_reports: BIHubDiagnosticReport[];
 
-  @Column({ nullable: true })
-  public is_deleted: boolean;
+  @Column({ type: 'varchar', nullable: false })
+  name: string;
 
-  @OneToMany(() => BiHubReport, (r) => r.bicc_department)
-  public reports: BiHubReport[];
+  @Column({ type: 'varchar', nullable: false })
+  image: string;
 
-  @OneToMany(() => BIHubDiagnosticReport, (r) => r.bicc_department)
-  public diagnostic_reports: BIHubDiagnosticReport[];
+  @Column({ type: 'varchar', nullable: false })
+  code: string;
+
+  @Column({ type: 'enum', enum: BiccDepartmentStatusEnum, nullable: true })
+  status: BiccDepartmentStatusEnum;
+
+  @ManyToMany(() => MaToolS3)
+  @JoinTable({
+    name: BICC_DEPARTMENT_S3,
+    joinColumn: {
+      name: 'bicc_department_id',
+      referencedColumnName: 'id',
+    },
+    inverseJoinColumn: {
+      name: 's3_id',
+      referencedColumnName: 'id',
+    },
+  })
+  s3s: MaToolS3[];
 }
