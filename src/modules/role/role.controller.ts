@@ -1,3 +1,5 @@
+import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
+import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { UserScope } from '@common/decorators';
 import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
 import { Sort, SortParams } from '@common/decorators/sort.decorator';
@@ -17,27 +19,23 @@ import { Users } from '@modules/databases/user.entity';
 @Controller('v1/role')
 @ApiTags('role')
 @ApiBearerAuth()
+@UseGuards(BearerGuard, IsMaintenanceGuard, PermissionGuard)
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
   @ApiOperation({ summary: 'create' })
-  @ApiBody({
-    description: 'create',
-    type: CreateRoleDto,
-  })
+  @ApiBody({ description: 'create', type: CreateRoleDto })
   @Post('create')
   @HttpCode(200)
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_create')
   async create(@Body() body: CreateRoleDto, @UserScope() user: Users) {
     const data = await this.roleService.validateForm(body);
     return this.roleService.create(data, user.id);
   }
 
-  @ApiOperation({
-    description: 'Search categories by search input',
-  })
+  @ApiOperation({ description: 'Search categories by search input' })
   @Get('search')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_view')
   async search(
     @PaginationDecorator() paginationParams: PaginationParams,
     @Sort({ allowedFields: ['created_at', 'name'] }) sortParams: SortParams,
@@ -46,47 +44,38 @@ export class RoleController {
     return this.roleService.search(query, sortParams, paginationParams);
   }
 
-  @ApiOperation({
-    description: 'details',
-  })
+  @ApiOperation({ description: 'details' })
   @Get('details')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_view')
   details(@Query('id') id: number) {
     return this.roleService.details(id);
   }
 
-  @ApiOperation({
-    description: 'update',
-  })
-  @ApiBody({
-    type: UpdateRoleDto,
-  })
+  @ApiOperation({ description: 'update' })
+  @ApiBody({ type: UpdateRoleDto })
   @Put('update/:id')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_update')
   async update(@Param('id') id: number, @Body() body: UpdateRoleDto) {
     const data = await this.roleService.validateFormUpdate(body, id);
     return this.roleService.update(id, data);
   }
-  @ApiOperation({
-    description: 'set-status',
-  })
-  @ApiBody({
-    type: UpdateRoleDto,
-  })
+
+  @ApiOperation({ description: 'set-status' })
+  @ApiBody({ type: UpdateRoleDto })
   @Patch('set-status/:id')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_update')
   setStatus(@Param('id') id: number, @Body() body: StatusDto) {
     return this.roleService.setStatus(id, body);
   }
 
   @Delete('delete/:id')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_delete')
   delete(@Param('id') id: number) {
     return this.roleService.delete(id);
   }
 
   @Get('all')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_view')
   getAll() {
     return this.roleService.getAll();
   }
@@ -95,14 +84,14 @@ export class RoleController {
   @ApiBody({ type: CloneRoleDto })
   @Post('clone/:id')
   @HttpCode(200)
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_create')
   clone(@Param('id') id: number, @Body() body: CloneRoleDto, @UserScope() user: Users) {
     return this.roleService.clone(id, body, user.id);
   }
 
   @ApiOperation({ summary: 'Get users assigned to a role' })
   @Get('users/:roleId')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_view')
   getUsersInRole(
     @Param('roleId') roleId: number,
     @Query('search') search: string,
@@ -115,7 +104,7 @@ export class RoleController {
   @ApiBody({ type: AssignUsersRoleDto })
   @Post('assign-users/:roleId')
   @HttpCode(200)
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_update')
   assignUsers(@Param('roleId') roleId: number, @Body() body: AssignUsersRoleDto) {
     return this.roleService.assignUsers(roleId, body);
   }
@@ -124,7 +113,7 @@ export class RoleController {
   @ApiBody({ type: AssignUsersRoleDto })
   @Post('remove-users/:roleId')
   @HttpCode(200)
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_role_update')
   removeUsers(@Param('roleId') roleId: number, @Body() body: AssignUsersRoleDto) {
     return this.roleService.removeUsers(roleId, body);
   }

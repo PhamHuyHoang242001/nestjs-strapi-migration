@@ -179,6 +179,31 @@ const BI_HUB_DIAG_REPORT: PermissionSeedItem[] = [
   },
 ];
 
+// ── Permission Management / Vai trò (module_id=101) ─────────────
+const PERM_MGMT_ROLE: PermissionSeedItem[] = [
+  { id: 100, code: 'perm_role_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 101 },
+  { id: 101, code: 'perm_role_create', name: 'Tạo mới', method: 'POST', action: 'create', is_active: true, module_id: 101 },
+  { id: 102, code: 'perm_role_update', name: 'Chỉnh sửa', method: 'PUT', action: 'update', is_active: true, module_id: 101 },
+  { id: 103, code: 'perm_role_delete', name: 'Xóa', method: 'DELETE', action: 'delete', is_active: true, module_id: 101 },
+];
+
+// ── Permission Management / Người dùng (module_id=102) ──────────
+const PERM_MGMT_USER: PermissionSeedItem[] = [
+  { id: 104, code: 'perm_user_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 102 },
+];
+
+// ── Permission Management / Phân quyền dữ liệu (module_id=103) ─
+const PERM_MGMT_DATA_ACCESS: PermissionSeedItem[] = [
+  { id: 105, code: 'perm_data_access_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 103 },
+  { id: 106, code: 'perm_data_access_create', name: 'Tạo mới', method: 'POST', action: 'create', is_active: true, module_id: 103 },
+  { id: 107, code: 'perm_data_access_delete', name: 'Xóa', method: 'DELETE', action: 'delete', is_active: true, module_id: 103 },
+];
+
+// ── Permission Management / Lịch sử thay đổi (module_id=104) ───
+const PERM_MGMT_HISTORY: PermissionSeedItem[] = [
+  { id: 108, code: 'perm_history_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 104 },
+];
+
 // ── BI Payment (module_id=12-18) — TEMPORARILY DISABLED ─────────
 // Uncomment when BI Payment modules are ready for seeding
 /*
@@ -256,6 +281,11 @@ export class PermissionSeeder implements Seeder {
       ...BI_HUB_BICC_DEPT,
       ...BI_HUB_REPORTS,
       ...BI_HUB_DIAG_REPORT,
+      // Permission Management
+      ...PERM_MGMT_ROLE,
+      ...PERM_MGMT_USER,
+      ...PERM_MGMT_DATA_ACCESS,
+      ...PERM_MGMT_HISTORY,
       // BI Payment — temporarily disabled (uncomment when ready)
       // ...BI_PAYMENT_PROJECT,
       // ...BI_PAYMENT_PROGRAM,

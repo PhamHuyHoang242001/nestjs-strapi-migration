@@ -1,3 +1,5 @@
+import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
+import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
 import { Sort, SortParams } from '@common/decorators/sort.decorator';
 import { BearerGuard } from '@common/guards';
@@ -10,12 +12,13 @@ import { SearchChangeHistoryDto } from './dto/search-change-history.dto';
 @Controller('v1/change-history')
 @ApiTags('change-history')
 @ApiBearerAuth()
+@UseGuards(BearerGuard, IsMaintenanceGuard, PermissionGuard)
 export class ChangeHistoryController {
   constructor(private readonly changeHistoryService: ChangeHistoryService) {}
 
   @ApiOperation({ summary: 'Search change history with pagination' })
   @Get('search')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_history_view')
   search(
     @PaginationDecorator() paginationParams: PaginationParams,
     @Sort({ allowedFields: ['created_at', 'entity_type', 'action_type', 'performed_by'] })
@@ -27,21 +30,21 @@ export class ChangeHistoryController {
 
   @ApiOperation({ summary: 'Get change history statistics by entity and action type' })
   @Get('stats')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_history_view')
   getStats() {
     return this.changeHistoryService.getStats();
   }
 
   @ApiOperation({ summary: 'Export all matching change history records (no pagination)' })
   @Get('export')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_history_view')
   export(@Query() query: SearchChangeHistoryDto) {
     return this.changeHistoryService.export(query);
   }
 
   @ApiOperation({ summary: 'Clear all change history records' })
   @Delete('clear')
-  @UseGuards(BearerGuard, IsMaintenanceGuard)
+  @RequirePermission('perm_history_view')
   clear() {
     return this.changeHistoryService.clear();
   }

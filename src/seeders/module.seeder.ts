@@ -28,6 +28,15 @@ const BI_HUB: ModuleSeedItem[] = [
   { id: 8, path: '/bi-hub/bicc-department/bi-hub-diagnostic-report', name: 'BI Hub Diagnostic Report', table_name: 'bi_hub_diagnostic_reports', is_active: true, parent_id: 6 },
 ];
 
+// ── Permission Management ─────────────────────────────────────────
+const PERMISSION_MANAGEMENT: ModuleSeedItem[] = [
+  { id: 100, path: '/permission', name: 'Quản trị phân quyền', table_name: null, is_active: true, parent_id: null },
+  { id: 101, path: '/permission/role', name: 'Vai trò', table_name: 'role', is_active: true, parent_id: 100 },
+  { id: 102, path: '/permission/user', name: 'Người dùng', table_name: 'users', is_active: true, parent_id: 100 },
+  { id: 103, path: '/permission/data-access', name: 'Phân quyền dữ liệu', table_name: 'data_access', is_active: true, parent_id: 100 },
+  { id: 104, path: '/permission/history', name: 'Lịch sử thay đổi', table_name: 'change_historys', is_active: true, parent_id: 100 },
+];
+
 // ── BI Payment — TEMPORARILY DISABLED ────────────────────────────
 // Uncomment when BI Payment modules are ready for seeding
 /*
@@ -54,6 +63,7 @@ export class ModuleSeeder implements Seeder {
     const dataConfig: ModuleSeedItem[] = [
       ...DATA_UPLOADER,
       ...BI_HUB,
+      ...PERMISSION_MANAGEMENT,
       // BI Payment — temporarily disabled (uncomment when ready)
       // ...BI_PAYMENT,
     ];

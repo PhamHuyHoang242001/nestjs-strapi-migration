@@ -72,6 +72,7 @@ export class RoleSeeder implements Seeder {
     }
 
     await this.seedRolePermissions();
+    await this.assignNewPermissionsToSuperAdmin();
   }
 
   private async seedRolePermissions(): Promise<void> {
@@ -113,6 +114,30 @@ export class RoleSeeder implements Seeder {
     if (!mappings.length) return;
 
     await this.connection.createQueryBuilder().insert().into('roles_permissions').values(mappings).execute();
+  }
+
+  /** Assign any unassigned permissions to SUPER_ADMIN (handles existing DBs) */
+  private async assignNewPermissionsToSuperAdmin(): Promise<void> {
+    const assigned = await this.connection.query<{ permission_id: number }[]>(
+      `SELECT permission_id FROM roles_permissions WHERE role_id = 1`,
+    );
+    const assignedIds = new Set(assigned.map((r) => r.permission_id));
+
+    const allPerms = await this.connection.query<{ id: number }[]>(
+      `SELECT id FROM permission WHERE deleted_at IS NULL`,
+    );
+
+    const toAssign = allPerms.filter((p) => !assignedIds.has(p.id));
+    if (!toAssign.length) return;
+
+    const mappings = toAssign.map((p) => ({ role_id: 1, permission_id: p.id }));
+    await this.connection
+      .createQueryBuilder()
+      .insert()
+      .into('roles_permissions')
+      .values(mappings)
+      .orIgnore()
+      .execute();
   }
 
   async drop(): Promise<any> {
