@@ -1,6 +1,7 @@
 import { BaseAuthorAdminSoftDeleteColumn } from '@configuration/base-entity';
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BIHubDiagnosticReport } from './bi-diagnostic-report.entity';
+import { Users } from './user.entity';
 
 @Entity('bi_hub_diagnostic_history_reports')
 export class BIHubDiagnosticHistoryReport extends BaseAuthorAdminSoftDeleteColumn {
@@ -36,4 +37,8 @@ export class BIHubDiagnosticHistoryReport extends BaseAuthorAdminSoftDeleteColum
 
   @Column({ type: 'varchar', nullable: true })
   code: string;
+
+  @ManyToOne(() => Users)
+  @JoinColumn({ name: 'created_by_admin_id' })
+  created_by_admin: Users;
 }

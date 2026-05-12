@@ -5,7 +5,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { SearchDiagnosticReportDto, SearchDiagnosticHistoryDto, SearchUpdatedUserDto } from './dto';
-import { REPORT_SORT_MAP, HISTORY_SORT_MAP, formatReport } from './diagnostic-report-format.helper';
+import { REPORT_SORT_MAP, HISTORY_SORT_MAP, formatReport, formatHistory } from './diagnostic-report-format.helper';
 
 // User-facing read operations for diagnostic reports
 @Injectable()
@@ -141,6 +141,8 @@ export class BiHubDiagnosticReportService {
     const qb = this.historyRepo
       .createQueryBuilder('h')
       .leftJoinAndSelect('h.bi_hub_diagnostic_report', 'report')
+      .leftJoin('h.created_by_admin', 'updater')
+      .addSelect(['updater.id', 'updater.email'])
       .where('h.deleted_at IS NULL')
       .andWhere('h.bi_hub_diagnostic_report_id = :reportId', { reportId })
       .andWhere('report.is_deleted = false');
@@ -158,7 +160,7 @@ export class BiHubDiagnosticReportService {
 
     const data = await qb.skip((page - 1) * limit).take(limit).getMany();
     const totalItems = await qb.getCount();
-    return { data, meta: standardizePagination(totalItems, data.length, limit, page) };
+    return { data: data.map(formatHistory), meta: standardizePagination(totalItems, data.length, limit, page) };
   }
 
   // ── Increase view count ────────────────────────────────────────

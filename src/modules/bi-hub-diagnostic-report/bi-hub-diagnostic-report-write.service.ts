@@ -57,7 +57,7 @@ export class BiHubDiagnosticReportWriteService {
         await manager.createQueryBuilder().relation(BIHubDiagnosticReport, 'labels').of(saved.id).add(dto.labels);
       }
 
-      await this.createHistoryRecord(manager, saved.id);
+      await this.createHistoryRecord(manager, saved.id, undefined, undefined, userId);
       return { id: saved.id };
     });
   }
@@ -83,6 +83,18 @@ export class BiHubDiagnosticReportWriteService {
       if (dto.biccDepartment !== undefined) updateData.bicc_department_id = dto.biccDepartment;
       updateData.updated_by_admin_id = userId;
 
+      // Track which fields changed for history change_log
+      const changedKeys: string[] = [];
+      if (dto.name !== undefined && dto.name !== existing.name) changedKeys.push('name');
+      if (dto.summary !== undefined && dto.summary !== existing.summary) changedKeys.push('summary');
+      if (dto.insight !== undefined && JSON.stringify(dto.insight) !== JSON.stringify(existing.insight)) changedKeys.push('insight');
+      if (dto.icon !== undefined && dto.icon !== existing.icon) changedKeys.push('icon');
+      if (dto.isSensitive !== undefined && dto.isSensitive !== existing.is_sensitive) changedKeys.push('is_sensitive');
+      if (dto.biccDepartment !== undefined && dto.biccDepartment !== existing.bicc_department_id) changedKeys.push('bicc_department_id');
+      if (dto.scopes !== undefined && dto.scopes !== existing.txt_diagnostic_scope) changedKeys.push('txt_diagnostic_scope');
+      if (dto.labels) changedKeys.push('labels');
+      if (dto.file) changedKeys.push('file');
+
       if (Object.keys(updateData).length) await manager.update(BIHubDiagnosticReport, id, updateData);
 
       if (dto.file) {
@@ -101,7 +113,9 @@ export class BiHubDiagnosticReportWriteService {
         await manager.createQueryBuilder().relation(BIHubDiagnosticReport, 'labels').of(id).addAndRemove(dto.labels, existingLabelIds);
       }
 
-      await this.createHistoryRecord(manager, id, existing);
+      if (changedKeys.length > 0) {
+        await this.createHistoryRecord(manager, id, existing, changedKeys, userId);
+      }
       return { id };
     });
   }
@@ -175,18 +189,43 @@ export class BiHubDiagnosticReportWriteService {
     return { message: 'Sync completed' };
   }
 
-  // ── Create history record ──────────────────────────────────────
-  private async createHistoryRecord(manager: EntityManager, reportId: number, oldData?: BIHubDiagnosticReport) {
+  // ── Create history record with change tracking ─────────────────
+  private async createHistoryRecord(
+    manager: EntityManager,
+    reportId: number,
+    oldData?: BIHubDiagnosticReport,
+    changedKeys?: string[],
+    userId?: number,
+  ) {
     const report = await manager.findOne(BIHubDiagnosticReport, {
-      where: { id: reportId }, relations: ['bi_hub_diagnostic_files'],
+      where: { id: reportId },
+      relations: ['bi_hub_diagnostic_files', 'labels'],
     });
     if (!report) return;
 
     const latestFile = report.bi_hub_diagnostic_files?.find((f: BiHubDiagnosticFile) => f.lastest_version);
+
+    // Build change_log: create vs update
+    let change_log: Record<string, any>;
+    if (!oldData) {
+      change_log = {
+        change_description: 'create_new',
+        old_data: null,
+        new_data: this.extractReportSnapshot(report),
+      };
+    } else {
+      const keys = changedKeys || [];
+      change_log = {
+        change_description: keys,
+        old_data: this.extractFieldsByKeys(oldData, keys),
+        new_data: this.extractFieldsByKeys(report, keys),
+      };
+    }
+
     const history = manager.create(BIHubDiagnosticHistoryReport, {
       name: report.name,
       version: (report.version || 0) + 1,
-      change_log: oldData ? { action: 'updated' } : { action: 'created' },
+      change_log,
       diagnostic_files_id: latestFile?.id || null,
       diagnostic_files_name: latestFile?.name || null,
       diagnostic_files_url: latestFile?.file_url || null,
@@ -194,8 +233,31 @@ export class BiHubDiagnosticReportWriteService {
       bi_hub_diagnostic_report_id: reportId,
       is_change_link: report.is_change_link,
       code: report.code,
+      created_by_admin_id: userId,
     });
     await manager.save(history);
     await manager.update(BIHubDiagnosticReport, reportId, { version: () => 'COALESCE(version, 0) + 1' });
+  }
+
+  // ── Snapshot all trackable fields from a report ───────────────
+  private extractReportSnapshot(report: BIHubDiagnosticReport): Record<string, any> {
+    return {
+      name: report.name,
+      summary: report.summary,
+      insight: report.insight,
+      icon: report.icon,
+      is_sensitive: report.is_sensitive,
+      bicc_department_id: report.bicc_department_id,
+      txt_diagnostic_scope: report.txt_diagnostic_scope,
+      labels: report.labels?.map((l) => ({ id: l.id, name: l.name })),
+      bu_name: report.bu_name,
+      status: report.status,
+    };
+  }
+
+  // ── Extract only changed fields from a report snapshot ────────
+  private extractFieldsByKeys(data: BIHubDiagnosticReport, keys: string[]): Record<string, any> {
+    const snapshot = this.extractReportSnapshot(data);
+    return Object.fromEntries(keys.filter((k) => k in snapshot).map((k) => [k, snapshot[k]]));
   }
 }
