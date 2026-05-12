@@ -14,8 +14,6 @@ export class BiDiagnosticReports {
   id: number;
   @Column({ type: 'varchar', nullable: true })
   name?: string;
-  @Column({ type: 'text', nullable: true })
-  key_insights?: string;
   @OneToMany(() => AdminsBiDiagnosticReports, (p) => p.bi_diagnostic_reports)
   pic_links?: AdminsBiDiagnosticReports[];
   @Column({ type: 'boolean', nullable: true })
@@ -45,7 +43,7 @@ export class BiDiagnosticReports {
   @Column({ type: 'text', nullable: true })
   summary?: string;
   @Column({ type: 'simple-json', nullable: true })
-  insight?: string;
+  insight?: string[];
   @Column({ type: 'varchar', nullable: true })
   code?: string;
   @Column({ nullable: true })

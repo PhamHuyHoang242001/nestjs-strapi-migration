@@ -33,10 +33,11 @@ export class CreateDiagnosticReportDto {
   @IsString()
   readonly summary?: string;
 
-  @ApiProperty({ required: false, description: 'JSON string for insight data' })
+  @ApiProperty({ required: false, type: [String], description: 'Array of insight strings' })
   @IsOptional()
-  @IsString()
-  readonly insight?: string;
+  @IsArray()
+  @IsString({ each: true })
+  readonly insight?: string[];
 
   @ApiProperty({ required: true })
   @IsNotEmpty()

@@ -23,9 +23,6 @@ export class BIHubDiagnosticReport extends BaseAuthorAdminSoftDeleteColumn {
   @Column({ type: 'varchar', nullable: true })
   name: string;
 
-  @Column({ type: 'text', nullable: true })
-  key_insights: string;
-
   @Column({ type: 'boolean', nullable: true })
   is_sensitive: boolean;
 
@@ -77,7 +74,7 @@ export class BIHubDiagnosticReport extends BaseAuthorAdminSoftDeleteColumn {
   summary: string;
 
   @Column({ type: 'simple-json', nullable: true })
-  insight: string;
+  insight: string[];
 
   @Column({ type: 'varchar', nullable: true })
   code: string;
