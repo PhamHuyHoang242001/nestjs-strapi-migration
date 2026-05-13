@@ -2,12 +2,29 @@ import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.e
 import { BiHubDiagnosticFile } from '@modules/databases/bi-diagnostic-file.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { BiHubBiccDepartment } from '@modules/databases/bi-hub-bicc-department.entity';
-import { standardizePagination } from '@common/utils';
+import { exportExcelToResponse, ExcelColumn } from '@common/utils';
+import { Response } from 'express';
+import dayjs from 'dayjs';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DownloadDiagnosticReportDto } from './dto';
 import { REPORT_SORT_MAP } from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
+
+// Excel column config for diagnostic report download
+const DOWNLOAD_COLUMNS: ExcelColumn[] = [
+  { header: 'Report Analysis', key: 'name', width: 30 },
+  { header: 'BICC Department', key: 'bicc_name', width: 20 },
+  { header: 'BU Name', key: 'bu_name', width: 20 },
+  { header: 'Insight', key: 'insight', width: 40 },
+  { header: 'Labels', key: 'labels', width: 25 },
+  { header: 'Scope', key: 'scopes', width: 30 },
+  { header: 'Sensitive Data', key: 'is_sensitive', width: 15 },
+  { header: 'File URL', key: 'file_url', width: 40 },
+  { header: 'Icon', key: 'icon', width: 15 },
+  { header: 'Updated By', key: 'updated_by', width: 25 },
+  { header: 'Updated At', key: 'updated_at', width: 20 },
+];
 
 // Admin write operations for diagnostic reports
 @Injectable()
@@ -143,18 +160,22 @@ export class BiHubDiagnosticReportWriteService {
     return { success: deletableIds.length, error: reports.length - deletableIds.length };
   }
 
-  // ── Download reports ───────────────────────────────────────────
-  async download(query: DownloadDiagnosticReportDto, accessibleDataIds?: number[]) {
+  // ── Download reports as Excel ───────────────────────────────────
+  async download(query: DownloadDiagnosticReportDto, res: Response, accessibleDataIds?: number[]) {
     const qb = this.reportRepo.createQueryBuilder('report')
       .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'file', 'file.lastest_version = true')
       .leftJoinAndSelect('report.labels', 'label')
       .leftJoinAndSelect('report.bicc_department', 'bicc')
+      .leftJoin('users', 'updater', 'updater.id = report.updated_by_admin_id')
+      .addSelect(['updater.email'])
       .where('report.deleted_at IS NULL')
       .andWhere('report.is_deleted = :isDeleted', { isDeleted: query.isDeleted === 'true' });
 
     if (query.download_type === 'ALL') {
       if (accessibleDataIds?.length > 0) qb.andWhere('report.id IN (:...accessibleDataIds)', { accessibleDataIds });
-      else if (accessibleDataIds?.length === 0) return [];
+      else if (accessibleDataIds?.length === 0) {
+        return exportExcelToResponse(res, { sheetName: 'Diagnostic_Reports', columns: DOWNLOAD_COLUMNS, rows: [] });
+      }
       if (query.keyword?.trim()) qb.andWhere('(report.name ILIKE :kw OR report.summary ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
       const sortCol = REPORT_SORT_MAP[query.sortField || 'createdAt'] || 'created_at';
       const sortDir = ['ASC', 'DESC'].includes(query.sortValue?.toUpperCase()) ? (query.sortValue.toUpperCase() as 'ASC' | 'DESC') : 'DESC';
@@ -163,24 +184,40 @@ export class BiHubDiagnosticReportWriteService {
       if (!query.ids) throw new BadRequestException('Missing IDs');
       let idArr = query.ids.split(',').map(Number).filter(Boolean);
       if (!idArr.length) throw new BadRequestException('Invalid IDs');
-      // Data access filter for MULTIPLE mode
       if (accessibleDataIds) {
         idArr = idArr.filter((id) => accessibleDataIds.includes(id));
-        if (!idArr.length) return [];
+        if (!idArr.length) {
+          return exportExcelToResponse(res, { sheetName: 'Diagnostic_Reports', columns: DOWNLOAD_COLUMNS, rows: [] });
+        }
       }
       qb.andWhere('report.id IN (:...idArr)', { idArr });
     } else {
       throw new BadRequestException('Invalid download_type');
     }
 
-    const reports = await qb.getMany();
-    return reports.map((item) => ({
-      ...item,
-      bicc_name: item.bicc_department?.name,
-      bu_name: item.bu_name,
-      labels: item.labels?.map((l) => l.name).join(','),
-      scopes: item.txt_diagnostic_scope,
+    const reports = await qb.getRawAndEntities();
+
+    // Build email map keyed by report ID to avoid raw/entity index misalignment
+    const emailMap = new Map<number, string>();
+    for (const raw of reports.raw) {
+      if (raw.report_id && raw.updater_email) emailMap.set(Number(raw.report_id), raw.updater_email);
+    }
+
+    const rows = reports.entities.map((item) => ({
+      name: item.name || '',
+      bicc_name: item.bicc_department?.name || '',
+      bu_name: item.bu_name || '',
+      insight: Array.isArray(item.insight) ? item.insight.join(', ') : (item.insight || ''),
+      labels: item.labels?.map((l) => l.name).join(', ') || '',
+      scopes: item.txt_diagnostic_scope || '',
+      is_sensitive: item.is_sensitive ? 'Yes' : 'No',
+      file_url: item.bi_hub_diagnostic_files?.[0]?.file_url || '',
+      icon: item.icon || '',
+      updated_by: emailMap.get(item.id) || '',
+      updated_at: item.updated_at ? dayjs(item.updated_at).format('DD/MM/YYYY HH:mm') : '',
     }));
+
+    await exportExcelToResponse(res, { sheetName: 'Diagnostic_Reports', columns: DOWNLOAD_COLUMNS, rows });
   }
 
   // ── Sync group BI manager ──────────────────────────────────────

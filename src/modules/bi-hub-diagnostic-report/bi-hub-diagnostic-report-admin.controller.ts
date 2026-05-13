@@ -6,7 +6,8 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, Res, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BiHubDiagnosticReportWriteService } from './bi-hub-diagnostic-report-write.service';
 import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DeleteManyDiagnosticReportDto, DownloadDiagnosticReportDto } from './dto';
@@ -26,8 +27,8 @@ export class BiHubDiagnosticReportAdminController {
   @Get('admin/diagnostic/report/download')
   @RequirePermission('bh_diag_report_download')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_download')
-  download(@Query() query: DownloadDiagnosticReportDto, @Req() req: RequestWithInfo) {
-    return this.service.download(query, req.info?.accessibleDataIds);
+  async download(@Query() query: DownloadDiagnosticReportDto, @Req() req: RequestWithInfo, @Res() res: Response) {
+    await this.service.download(query, res, req.info?.accessibleDataIds);
   }
 
   @ApiOperation({ summary: 'Create diagnostic report' })
