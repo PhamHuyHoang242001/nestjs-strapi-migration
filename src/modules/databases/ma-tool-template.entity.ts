@@ -6,7 +6,7 @@ import {
   MaToolUploadMethod,
   MaToolWorkstepType,
 } from '@common/enums/ma-tool.enums';
-import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
 import { MaToolWorkspace } from './ma-tool-workspace.entity';
 import { MaToolSheetTemplate } from './ma-tool-sheet-template.entity';
 import { MaToolDocument } from './ma-tool-document.entity';
@@ -96,6 +96,11 @@ export class MaToolTemplate extends BaseSoftDeleteEntity {
 
   // M:N inverse — sharing/exploit workspaces
   @ManyToMany(() => MaToolWorkspace, (w) => w.sharing_templates)
+  @JoinTable({
+    name: 'ma_tool_workspaces_sharing_templates',
+    joinColumn: { name: 'template_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'workspace_id', referencedColumnName: 'id' },
+  })
   public exploit_workspaces: MaToolWorkspace[];
 
   // Nullable int FKs for user references (no relation decorator per rules)

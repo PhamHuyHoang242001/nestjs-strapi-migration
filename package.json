@@ -23,6 +23,8 @@
     "typeorm:generate": "npm run typeorm migration:generate -- -d  src/migration -n",
     "typeorm:run": "npm run typeorm migration:run",
     "typeorm:revert": "npm run typeorm migration:revert",
+    "start:data-migration": "nest build && node dist/src/data-migrations/metadata-index.js",
+    "start:relation-migration": "nest build && node dist/src/data-migrations/relation-index.js",
     "seed": "nest build && node dist/src/seeder",
     "seed:refresh": "node dist/src/seeder --refresh"
   },

@@ -2,12 +2,18 @@ import { BiHubBiccDepartmentDataMigration } from './metadata/bi-hub-bicc-departm
 import { BiHubDiagnosticReportDataMigration } from './metadata/bi-hub-diagnostic-report.data-migration';
 import { BiHubDiagnosticFileDataMigration } from './metadata/bi-hub-diagnostic-file.data-migration';
 import { BiHubDiagnosticHistoryReportDataMigration } from './metadata/bi-hub-diagnostic-history-report.data-migration';
+import { MaToolWorkspaceDataMigration } from './metadata/ma-tool-workspace.data-migration';
+import { MaToolWorkspaceHistoryDataMigration } from './metadata/ma-tool-workspace-history.data-migration';
+import { MaToolWorkspaceBookmarkDataMigration } from './metadata/ma-tool-workspace-bookmark.data-migration';
 
 enum TableName {
   BI_HUB_BICC_DEPARTMENT = 'bi_hub_bicc_department',
   BI_HUB_DIAGNOSTIC_REPORT = 'bi_hub_diagnostic_report',
   BI_HUB_DIAGNOSTIC_FILE = 'bi_hub_diagnostic_file',
   BI_HUB_DIAGNOSTIC_HISTORY_REPORT = 'bi_hub_diagnostic_history_report',
+  MA_TOOL_WORKSPACE = 'ma_tool_workspace',
+  MA_TOOL_WORKSPACE_HISTORY = 'ma_tool_workspace_history',
+  MA_TOOL_WORKSPACE_BOOKMARK = 'ma_tool_workspace_bookmark',
 }
 
 interface MigrationParams {
@@ -52,6 +58,21 @@ const main = async () => {
       await script.run();
       break;
     }
+    case TableName.MA_TOOL_WORKSPACE: {
+      const script = new MaToolWorkspaceDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.MA_TOOL_WORKSPACE_HISTORY: {
+      const script = new MaToolWorkspaceHistoryDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.MA_TOOL_WORKSPACE_BOOKMARK: {
+      const script = new MaToolWorkspaceBookmarkDataMigration(params);
+      await script.run();
+      break;
+    }
     default:
       throw new Error(`Unknown table name: ${params.table_name}`);
   }
@@ -63,3 +84,6 @@ void main();
 // npm run start:data-migration -- --table_name=bi_hub_diagnostic_report --db_host=localhost --db_port=5432 --db_username=postgres --db_name=eda --db_password=123456aA
 // npm run start:data-migration -- --table_name=bi_hub_diagnostic_file --db_host=localhost --db_port=5432 --db_username=postgres --db_name=eda --db_password=123456aA
 // npm run start:data-migration -- --table_name=bi_hub_diagnostic_history_report --db_host=localhost --db_port=5432 --db_username=postgres --db_name=eda --db_password=123456aA
+// npm run start:data-migration -- --table_name=ma_tool_workspace --db_host=localhost --db_port=5432 --db_username=postgres --db_name=eda --db_password=123456aA
+// npm run start:data-migration -- --table_name=ma_tool_workspace_history --db_host=localhost --db_port=5432 --db_username=postgres --db_name=eda --db_password=123456aA
+// npm run start:data-migration -- --table_name=ma_tool_workspace_bookmark --db_host=localhost --db_port=5432 --db_username=postgres --db_name=eda --db_password=123456aA
