@@ -1,34 +1,15 @@
-import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseAuthorUserSoftDeleteColumn } from '@configuration/base-entity/base-author-user-soft-delete-column.entity';
 import { MaToolWorkspace } from './ma-tool-workspace.entity';
 
-// Audit history record for MA Tool workspace changes
 @Entity('ma_tool_workspace_histories')
-export class MaToolWorkspaceHistory extends BaseSoftDeleteEntity {
+export class MaToolWorkspaceHistory extends BaseAuthorUserSoftDeleteColumn {
   @Column({ nullable: true })
-  public action: string;
-
-  @Column({ nullable: true })
-  public action_by: string;
-
-  @Column({ nullable: true, type: 'timestamp without time zone' })
-  public action_at: Date;
-
-  @Column({ nullable: true, type: 'jsonb' })
-  public old_value: object;
-
-  @Column({ nullable: true, type: 'jsonb' })
-  public new_value: object;
-
-  // FK to ma_tool_workspaces
-  @Column({ nullable: false, type: 'int' })
-  public workspace_id: number;
-
-  @ManyToOne(() => MaToolWorkspace, (w) => w.workspace_histories)
+  workspace_id: number;
+  @ManyToOne(() => MaToolWorkspace)
   @JoinColumn({ name: 'workspace_id' })
-  public workspace: MaToolWorkspace;
+  workspace: MaToolWorkspace;
 
-  // user_id: plain nullable int, no decorator
-  @Column({ nullable: true, type: 'int' })
-  public user_id: number;
+  @Column({ type: 'json', nullable: true })
+  change_log: any;
 }

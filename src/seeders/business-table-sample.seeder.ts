@@ -27,11 +27,11 @@ export class BusinessTableSampleSeeder implements Seeder {
   private async seedWorkspaces() {
     if (await this.hasData('ma_tool_workspaces')) return;
     await this.connection.query(`
-      INSERT INTO ma_tool_workspaces (id, name, fullname, description, workspace_status) VALUES
+      INSERT INTO ma_tool_workspaces (id, name, fullname, description, status) VALUES
       (1, 'WS-Finance',     'Finance Workspace',         'Financial reports workspace',    'active'),
       (2, 'WS-HR',          'Human Resources Workspace',  'HR data management workspace', 'active'),
       (3, 'WS-Operations',  'Operations Workspace',       'Operations data workspace',    'active'),
-      (4, 'WS-Marketing',   'Marketing Workspace',        'Marketing analytics workspace','draft'),
+      (4, 'WS-Marketing',   'Marketing Workspace',        'Marketing analytics workspace','inactive'),
       (5, 'WS-IT',          'IT Infrastructure Workspace', 'IT monitoring workspace',     'active')
     `);
     await this.resetSeq('ma_tool_workspaces');

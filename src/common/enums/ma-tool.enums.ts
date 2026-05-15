@@ -1,16 +1,5 @@
 // MA Tool domain enums extracted from Strapi schemas
 
-export enum MaToolWorkspaceStatus {
-  DRAFT = 'draft',
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
-}
-
-export enum MaToolStorageType {
-  S3 = 's3',
-  SFTP = 'sftp',
-}
-
 export enum MaToolUploadMethod {
   OVERRIDE = 'override',
   APPEND = 'append',

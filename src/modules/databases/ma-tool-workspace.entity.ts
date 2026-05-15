@@ -1,60 +1,55 @@
-import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { MaToolStorageType, MaToolWorkspaceStatus } from '@common/enums/ma-tool.enums';
-import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import { Entity, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany } from 'typeorm';
+import { BaseAuthorUserSoftDeleteColumn } from '@configuration/base-entity/base-author-user-soft-delete-column.entity';
 import { MaToolS3 } from './ma-tool-s3.entity';
+import { MaToolWorkspaceHistory } from './ma-tool-workspace-history.entity';
 import { MaToolTemplate } from './ma-tool-template.entity';
 import { MaToolWorkspaceBookmark } from './ma-tool-workspace-bookmark.entity';
-import { MaToolWorkspaceHistory } from './ma-tool-workspace-history.entity';
 
-// MA Tool workspace — top-level container grouping templates and members
+export enum MaToolWorkspaceStorageTypeEnum {
+  S3 = 's3',
+  SFTP = 'sftp',
+}
+
+export enum MaToolWorkspaceStatusEnum {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+}
+
 @Entity('ma_tool_workspaces')
-export class MaToolWorkspace extends BaseSoftDeleteEntity {
-  @Column({ nullable: true })
-  public name: string;
+export class MaToolWorkspace extends BaseAuthorUserSoftDeleteColumn {
+  @Column({ type: 'varchar', nullable: true })
+  name: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  fullname: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  image_url: string;
 
   @Column({ nullable: true })
-  public fullname: string;
-
-  @Column({ nullable: true, type: 'text' })
-  public description: string;
+  status: MaToolWorkspaceStatusEnum;
 
   @Column({ nullable: true })
-  public image_url: string;
+  storage_type: MaToolWorkspaceStorageTypeEnum;
 
-  @Column({ nullable: true, type: 'enum', enum: MaToolWorkspaceStatus })
-  public workspace_status: MaToolWorkspaceStatus;
+  @OneToMany(() => MaToolTemplate, (t) => t.workspace)
+  templates: MaToolTemplate[];
 
-  @Column({ nullable: true, type: 'enum', enum: MaToolStorageType })
-  public storage_type: MaToolStorageType;
+  @ManyToMany(() => MaToolTemplate, (p) => p.exploit_workspaces)
+  sharing_templates: MaToolTemplate[];
 
   @Column({ nullable: true })
-  public is_deleted: boolean;
-
-  // FK to ma_tool_s3 (nullable)
-  @Column({ nullable: true, type: 'int' })
-  public s3_id: number;
-
-  @ManyToOne(() => MaToolS3, (s3) => s3.workspaces)
+  s3_id: number;
+  @ManyToOne(() => MaToolS3)
   @JoinColumn({ name: 's3_id' })
-  public s3: MaToolS3;
+  s3: MaToolS3;
 
-  // M:N with MaToolTemplate — workspace owns the join table
-  @ManyToMany(() => MaToolTemplate, (t) => t.workspaces)
-  @JoinTable({ name: 'ma_tool_workspaces_templates' })
-  public templates: MaToolTemplate[];
+  @OneToMany(() => MaToolWorkspaceHistory, (p) => p.workspace)
+  ma_tool_workspace_histories: MaToolWorkspaceHistory[];
 
-  // M:N sharing templates (separate join table)
-  @ManyToMany(() => MaToolTemplate, (t) => t.exploit_workspaces)
-  @JoinTable({ name: 'ma_tool_workspaces_sharing_templates' })
-  public sharing_templates: MaToolTemplate[];
-
-  // M:N allowed users — user_id only (plain int junction); stored as separate join table
-  // user_id references are kept as plain int; no User entity relation
-
-  // Reverse relations
-  @OneToMany(() => MaToolWorkspaceBookmark, (b) => b.workspace)
-  public workspace_bookmarks: MaToolWorkspaceBookmark[];
-
-  @OneToMany(() => MaToolWorkspaceHistory, (h) => h.workspace)
-  public workspace_histories: MaToolWorkspaceHistory[];
+  @OneToMany(() => MaToolWorkspaceBookmark, (wsb) => wsb.workspace)
+  workspace_bookmarks: MaToolWorkspaceBookmark;
 }

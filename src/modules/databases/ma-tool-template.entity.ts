@@ -90,10 +90,6 @@ export class MaToolTemplate extends BaseSoftDeleteEntity {
   @JoinColumn({ name: 'workspace_id' })
   public workspace: MaToolWorkspace;
 
-  // M:N inverse side — workspaces that own this template
-  @ManyToMany(() => MaToolWorkspace, (w) => w.templates)
-  public workspaces: MaToolWorkspace[];
-
   // M:N inverse — sharing/exploit workspaces
   @ManyToMany(() => MaToolWorkspace, (w) => w.sharing_templates)
   @JoinTable({

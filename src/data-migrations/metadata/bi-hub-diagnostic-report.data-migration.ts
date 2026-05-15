@@ -94,16 +94,20 @@ export class BiHubDiagnosticReportDataMigration {
   }
 
   async extract(offset: number, limit: number): Promise<ExtractedDiagnosticReport[]> {
-    // Resolve bicc_department_id through category layer (category removed in NestJS)
+    // Resolve bicc_department_id: report → lnk → category → lnk → bicc_department
+    // Strapi v5 stores ALL relations in *_lnk tables, not direct FK columns
     const query = `
       SELECT
         r.id, r.name, r.is_sensitive, r.diagnostic_report_status,
         r.icon, r.bu_name, r.is_deleted, r.version, r.is_change_link,
         r.total_view, r.txt_diagnostic_scope, r.summary, r.insight, r.code,
-        cat.bicc_department_id,
+        bicc_lnk.bi_hub_bicc_department_id AS bicc_department_id,
         r.created_at, r.updated_at
       FROM bi_diagnostic_reports r
-      LEFT JOIN bi_diagnostic_categories cat ON r.bi_diagnostic_category_id = cat.id
+      LEFT JOIN bi_diagnostic_reports_bi_diagnostic_category_lnk cat_lnk
+        ON cat_lnk.bi_diagnostic_report_id = r.id
+      LEFT JOIN bi_diagnostic_categories_bicc_department_lnk bicc_lnk
+        ON bicc_lnk.bi_diagnostic_category_id = cat_lnk.bi_diagnostic_category_id
       ORDER BY r.id ASC
       LIMIT $1 OFFSET $2
     `;

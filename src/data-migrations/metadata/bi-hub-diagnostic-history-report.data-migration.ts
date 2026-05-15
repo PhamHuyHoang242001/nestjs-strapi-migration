@@ -86,14 +86,18 @@ export class BiHubDiagnosticHistoryReportDataMigration {
   }
 
   async extract(offset: number, limit: number): Promise<ExtractedDiagnosticHistory[]> {
+    // Strapi v5: relation stored in *_lnk table, not direct FK column
     const query = `
       SELECT
         h.id, h.name, h.change_log, h.version,
         h.diagnostic_files_id, h.diagnostic_files_name,
         h.diagnostic_files_url, h.diagnostic_files_type,
-        h.diagnostic_report_id, h.is_change_link, h.code,
+        lnk.bi_diagnostic_report_id AS diagnostic_report_id,
+        h.is_change_link, h.code,
         h.created_at, h.updated_at
       FROM bi_diagnostic_history_reports h
+      LEFT JOIN bi_diagnostic_history_reports_diagnostic_report_lnk lnk
+        ON lnk.bi_diagnostic_history_report_id = h.id
       ORDER BY h.id ASC
       LIMIT $1 OFFSET $2
     `;
