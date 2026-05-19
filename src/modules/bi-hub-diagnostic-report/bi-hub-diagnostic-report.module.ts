@@ -1,6 +1,7 @@
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { BiHubDiagnosticFile } from '@modules/databases/bi-diagnostic-file.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
+import { BiDiagnosticLog } from '@modules/databases/bi-diagnostic-log.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BiHubDiagnosticReportUserController } from './bi-hub-diagnostic-report-user.controller';
@@ -9,6 +10,7 @@ import { BiHubBiccDepartmentHelperController } from './bi-hub-bicc-department-he
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
 import { BiHubDiagnosticReportWriteService } from './bi-hub-diagnostic-report-write.service';
 import { BiHubBiccDepartmentHelperService } from './bi-hub-bicc-department-helper.service';
+import { DiagnosticTransformFileResolver } from './diagnostic-transform-file.resolver';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { UserRepository } from '@modules/users/repository/users.repository';
 
@@ -18,6 +20,7 @@ import { UserRepository } from '@modules/users/repository/users.repository';
       BIHubDiagnosticReport,
       BiHubDiagnosticFile,
       BIHubDiagnosticHistoryReport,
+      BiDiagnosticLog,
     ]),
   ],
   controllers: [
@@ -29,9 +32,10 @@ import { UserRepository } from '@modules/users/repository/users.repository';
     BiHubDiagnosticReportService,
     BiHubDiagnosticReportWriteService,
     BiHubBiccDepartmentHelperService,
+    DiagnosticTransformFileResolver,
     AdminRepository,
     UserRepository,
   ],
-  exports: [BiHubDiagnosticReportService, BiHubDiagnosticReportWriteService],
+  exports: [BiHubDiagnosticReportService, BiHubDiagnosticReportWriteService, DiagnosticTransformFileResolver],
 })
 export class BiHubDiagnosticReportModule {}

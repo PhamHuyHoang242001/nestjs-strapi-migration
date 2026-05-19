@@ -32,6 +32,11 @@ import { ChangeHistoryModule } from '@modules/change-history/change-history.modu
 import { DataAccessModule } from '@modules/data-access/data-access.module';
 import { BiccDepartmentModule } from '@modules/bicc-department/bicc-department.module';
 import { BiHubDiagnosticReportModule } from '@modules/bi-hub-diagnostic-report/bi-hub-diagnostic-report.module';
+import { TransformFileModule } from '@common/transform-file';
+import { DiagnosticTransformFileResolver } from '@modules/bi-hub-diagnostic-report/diagnostic-transform-file.resolver';
+import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
+import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
+import { BiDiagnosticLog } from '@modules/databases/bi-diagnostic-log.entity';
 import { AuthorizationModule } from '@common/authorization';
 @Module({
   imports: [
@@ -81,6 +86,10 @@ import { AuthorizationModule } from '@common/authorization';
     DataAccessModule,
     BiccDepartmentModule,
     BiHubDiagnosticReportModule,
+    TransformFileModule.register({
+      imports: [TypeOrmModule.forFeature([BIHubDiagnosticReport, BIHubDiagnosticHistoryReport, BiDiagnosticLog])],
+      resolvers: [DiagnosticTransformFileResolver],
+    }),
     AuthorizationModule,
   ],
   controllers: [AppController],
@@ -101,7 +110,7 @@ export class AppModule implements NestModule {
       .apply(cookieParser(), session({ secret: secretKey, resave: false, saveUninitialized: false }))
       .forRoutes('*');
     // Initialize Passport
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     consumer.apply((passport as any).initialize()).forRoutes('*');
     consumer.apply(LoggerMiddleware).forRoutes('*');
     consumer.apply(LoggerMiddleware).forRoutes('*');

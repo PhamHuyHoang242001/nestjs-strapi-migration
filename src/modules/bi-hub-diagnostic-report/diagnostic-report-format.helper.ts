@@ -1,5 +1,10 @@
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
+import { TransformFileAudience } from '@common/transform-file';
+import {
+  buildDiagnosticHistoryTransformFileUrl,
+  buildDiagnosticReportTransformFileUrl,
+} from './diagnostic-transform-file-link.helper';
 
 // Sort field mapping: FE sends camelCase, DB uses snake_case
 export const REPORT_SORT_MAP: Record<string, string> = {
@@ -15,16 +20,46 @@ export const HISTORY_SORT_MAP: Record<string, string> = {
   name: 'name',
 };
 
-// Transform report entity to FE response shape
-export function formatReport(report: BIHubDiagnosticReport): Record<string, any> {
+function formatReportFile(report: BIHubDiagnosticReport, audience: TransformFileAudience): Record<string, any> | null {
   const file = report.bi_hub_diagnostic_files?.[0] || null;
+  if (!file) return null;
+
+  const url = buildDiagnosticReportTransformFileUrl({
+    reportId: report.id,
+    file,
+    audience,
+    reportCode: report.code,
+  });
+
+  if (audience === 'admin') {
+    return {
+      file_url: url,
+      user_file_url: buildDiagnosticReportTransformFileUrl({
+        reportId: report.id,
+        file,
+        audience: 'user',
+        reportCode: report.code,
+      }),
+      type: file.type,
+      name: file.name,
+    };
+  }
+
+  return { url, type: file.type };
+}
+
+// Transform report entity to FE response shape
+export function formatReport(
+  report: BIHubDiagnosticReport,
+  audience: TransformFileAudience = 'user',
+): Record<string, any> {
   const result: Record<string, any> = {
     id: report.id,
     name: report.name,
     summary: report.summary,
     diagnostic_scopes: report.txt_diagnostic_scope,
     bu_name: report.bu_name,
-    file: file ? { url: file.file_url, type: file.type } : null,
+    file: formatReportFile(report, audience),
     labels: report.labels,
     status: report.status,
     total_view: report.total_view,
@@ -43,21 +78,40 @@ export function formatReport(report: BIHubDiagnosticReport): Record<string, any>
   return result;
 }
 
-// Transform history entity to FE response shape
-export function formatHistory(h: BIHubDiagnosticHistoryReport): Record<string, any> {
-  const file = h.diagnostic_files_url
-    ? { type: h.diagnostic_files_type, url: h.diagnostic_files_url }
-    : null;
+function formatHistoryFile(
+  h: BIHubDiagnosticHistoryReport,
+  audience: TransformFileAudience,
+): Record<string, any> | null {
+  const url = buildDiagnosticHistoryTransformFileUrl({ history: h, audience });
+  if (!url) return null;
 
+  if (audience === 'admin') {
+    return {
+      file_url: url,
+      user_file_url: buildDiagnosticHistoryTransformFileUrl({ history: h, audience: 'user' }),
+      type: h.diagnostic_files_type,
+      name: h.diagnostic_files_name,
+    };
+  }
+
+  return { url, type: h.diagnostic_files_type };
+}
+
+// Transform history entity to FE response shape
+export function formatHistory(
+  h: BIHubDiagnosticHistoryReport,
+  audience: TransformFileAudience = 'user',
+): Record<string, any> {
   // Normalize old change_log format { action: "created" } to new format
   const rawLog = h.change_log;
-  const change_log = rawLog?.change_description !== undefined
-    ? rawLog
-    : {
-        change_description: rawLog?.action === 'created' ? 'create_new' : 'update',
-        old_data: rawLog?.old_data ?? null,
-        new_data: rawLog?.new_data ?? null,
-      };
+  const change_log =
+    rawLog?.change_description !== undefined
+      ? rawLog
+      : {
+          change_description: rawLog?.action === 'created' ? 'create_new' : 'update',
+          old_data: rawLog?.old_data ?? null,
+          new_data: rawLog?.new_data ?? null,
+        };
 
   return {
     id: h.id,
@@ -66,10 +120,8 @@ export function formatHistory(h: BIHubDiagnosticHistoryReport): Record<string, a
     version: h.version,
     is_change_link: h.is_change_link,
     change_log,
-    file,
-    updatedBy: h.created_by_admin
-      ? { id: h.created_by_admin.id, email: h.created_by_admin.email }
-      : null,
+    file: formatHistoryFile(h, audience),
+    updatedBy: h.created_by_admin ? { id: h.created_by_admin.id, email: h.created_by_admin.email } : null,
     created_at: (h as any).created_at,
     updated_at: (h as any).updated_at,
   };

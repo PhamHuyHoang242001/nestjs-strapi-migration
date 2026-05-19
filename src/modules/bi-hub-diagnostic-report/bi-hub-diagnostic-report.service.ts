@@ -65,7 +65,10 @@ export class BiHubDiagnosticReportService {
     const sortDir = (query.sortValue?.toUpperCase() as 'ASC' | 'DESC') || 'DESC';
     qb.orderBy(`report.${sortCol}`, sortDir);
 
-    const data = await qb.skip((page - 1) * limit).take(limit).getMany();
+    const data = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
     const totalItems = await qb.getCount();
 
     return {
@@ -136,7 +139,8 @@ export class BiHubDiagnosticReportService {
     const page = +(query.page || 1);
     const limit = Math.min(+(query.limit || 10), 100);
     if (query.sortField && !HISTORY_SORT_MAP[query.sortField]) throw new BadRequestException('Invalid sortField');
-    if (query.sortValue && !['ASC', 'DESC'].includes(query.sortValue.toUpperCase())) throw new BadRequestException('Invalid sortValue');
+    if (query.sortValue && !['ASC', 'DESC'].includes(query.sortValue.toUpperCase()))
+      throw new BadRequestException('Invalid sortValue');
 
     const qb = this.historyRepo
       .createQueryBuilder('h')
@@ -148,7 +152,8 @@ export class BiHubDiagnosticReportService {
       .andWhere('report.is_deleted = false');
 
     if (query.keyword?.trim()) qb.andWhere('h.name ILIKE :kw', { kw: `%${query.keyword.trim()}%` });
-    if (query.isLinkReportChange !== undefined) qb.andWhere('h.is_change_link = :isChange', { isChange: query.isLinkReportChange === 'true' });
+    if (query.isLinkReportChange !== undefined)
+      qb.andWhere('h.is_change_link = :isChange', { isChange: query.isLinkReportChange === 'true' });
     if (query.updatedByIds) {
       const ids = query.updatedByIds.split(',').map(Number).filter(Boolean);
       if (ids.length) qb.andWhere('h.created_by_admin_id IN (:...updatedByIds)', { updatedByIds: ids });
@@ -158,9 +163,15 @@ export class BiHubDiagnosticReportService {
     const sortDir = (query.sortValue?.toUpperCase() as 'ASC' | 'DESC') || 'DESC';
     qb.orderBy(`h.${sortCol}`, sortDir);
 
-    const data = await qb.skip((page - 1) * limit).take(limit).getMany();
+    const data = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
     const totalItems = await qb.getCount();
-    return { data: data.map(formatHistory), meta: standardizePagination(totalItems, data.length, limit, page) };
+    return {
+      data: data.map((history) => formatHistory(history)),
+      meta: standardizePagination(totalItems, data.length, limit, page),
+    };
   }
 
   // ── Increase view count ────────────────────────────────────────
