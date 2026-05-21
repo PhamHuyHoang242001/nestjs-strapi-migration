@@ -6,6 +6,10 @@ import { BiDiagnosticLogDataMigration } from './metadata/bi-diagnostic-log.data-
 import { MaToolWorkspaceDataMigration } from './metadata/ma-tool-workspace.data-migration';
 import { MaToolWorkspaceHistoryDataMigration } from './metadata/ma-tool-workspace-history.data-migration';
 import { MaToolWorkspaceBookmarkDataMigration } from './metadata/ma-tool-workspace-bookmark.data-migration';
+import { DataSelfServeRequestDataMigration } from './metadata/data-self-serve-request.data-migration';
+import { DataSelfServeValidationLogDataMigration } from './metadata/data-self-serve-validation-log.data-migration';
+import { DataSelfServeLookupDataMigration } from './metadata/data-self-serve-lookup.data-migration';
+import { DataSelfServeConfigDataMigration } from './metadata/data-self-serve-config.data-migration';
 
 enum TableName {
   BI_HUB_BICC_DEPARTMENT = 'bi_hub_bicc_department',
@@ -16,6 +20,10 @@ enum TableName {
   MA_TOOL_WORKSPACE = 'ma_tool_workspace',
   MA_TOOL_WORKSPACE_HISTORY = 'ma_tool_workspace_history',
   MA_TOOL_WORKSPACE_BOOKMARK = 'ma_tool_workspace_bookmark',
+  DATA_SELF_SERVE_REQUEST = 'data_self_serve_request',
+  DATA_SELF_SERVE_VALIDATION_LOG = 'data_self_serve_validation_log',
+  DATA_SELF_SERVE_LOOKUP = 'data_self_serve_lookup',
+  DATA_SELF_SERVE_CONFIG = 'data_self_serve_config',
 }
 
 interface MigrationParams {
@@ -77,6 +85,26 @@ const main = async () => {
     }
     case TableName.MA_TOOL_WORKSPACE_BOOKMARK: {
       const script = new MaToolWorkspaceBookmarkDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.DATA_SELF_SERVE_REQUEST: {
+      const script = new DataSelfServeRequestDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.DATA_SELF_SERVE_VALIDATION_LOG: {
+      const script = new DataSelfServeValidationLogDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.DATA_SELF_SERVE_LOOKUP: {
+      const script = new DataSelfServeLookupDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.DATA_SELF_SERVE_CONFIG: {
+      const script = new DataSelfServeConfigDataMigration(params);
       await script.run();
       break;
     }

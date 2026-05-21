@@ -23,6 +23,15 @@ export class RedisAdapter {
     await this.getClient().set(key, value);
   }
 
+  static async setNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    const result = await this.getClient().set(key, value, 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
+  static async del(key: string): Promise<number> {
+    return this.getClient().del(key);
+  }
+
   static async unlinkKeyByPattern(pattern: string): Promise<number> {
     const client = this.getClient();
     const keys = await client.keys(pattern);

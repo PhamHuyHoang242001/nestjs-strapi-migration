@@ -106,6 +106,14 @@ export const REDIS_URI: string = process.env.REDIS_URI;
 export const REDIS_REPORT_EXPIRE_TIME: number = Number(process.env.REDIS_REPORT_EXPIRE_TIME);
 export const REDIS_CACHE_PERMISSION_EXPIRE_TIME: number = Number(process.env.REDIS_CACHE_PERMISSION_EXPIRE_TIME);
 
+// Kafka
+export const KAFKA_CLIENT_ID: string = process.env.KAFKA_CLIENT_ID ?? process.env.APP_NAME ?? 'base-backend';
+export const KAFKA_BROKERS: string = process.env.KAFKA_BROKERS ?? '';
+export const KAFKA_SSL: boolean = process.env.KAFKA_SSL === 'true';
+export const KAFKA_USERNAME: string = process.env.KAFKA_USERNAME ?? '';
+export const KAFKA_PASSWORD: string = process.env.KAFKA_PASSWORD ?? '';
+export const APP_IDENTIFIER: string = process.env.APP_IDENTIFIER ?? process.env.APP_NAME ?? 'base-backend';
+
 // Facebook
 export const FACEBOOK_APP_ID: string = process.env.FACEBOOK_APP_ID ?? '';
 export const FACEBOOK_APP_SECRET: string = process.env.FACEBOOK_APP_SECRET ?? '';

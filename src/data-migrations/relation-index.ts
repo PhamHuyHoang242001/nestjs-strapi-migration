@@ -4,6 +4,7 @@ import { BiHubDiagnosticHistoryReportRelationDataMigration } from './relation/bi
 import { MaToolWorkspaceRelationDataMigration } from './relation/ma-tool-workspace.data-migration';
 import { MaToolWorkspaceHistoryRelationDataMigration } from './relation/ma-tool-workspace-history.data-migration';
 import { MaToolWorkspaceBookmarkRelationDataMigration } from './relation/ma-tool-workspace-bookmark.data-migration';
+import { DataSelfServeRequestRelationDataMigration } from './relation/data-self-serve-request.data-migration';
 
 enum TableName {
   BI_HUB_BICC_DEPARTMENT = 'bi_hub_bicc_department',
@@ -12,6 +13,7 @@ enum TableName {
   MA_TOOL_WORKSPACE = 'ma_tool_workspace',
   MA_TOOL_WORKSPACE_HISTORY = 'ma_tool_workspace_history',
   MA_TOOL_WORKSPACE_BOOKMARK = 'ma_tool_workspace_bookmark',
+  DATA_SELF_SERVE_REQUEST = 'data_self_serve_request',
 }
 
 interface MigrationParams {
@@ -63,6 +65,11 @@ const main = async () => {
     }
     case TableName.MA_TOOL_WORKSPACE_BOOKMARK: {
       const script = new MaToolWorkspaceBookmarkRelationDataMigration(params);
+      await script.run();
+      break;
+    }
+    case TableName.DATA_SELF_SERVE_REQUEST: {
+      const script = new DataSelfServeRequestRelationDataMigration(params);
       await script.run();
       break;
     }

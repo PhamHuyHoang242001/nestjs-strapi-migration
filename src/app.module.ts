@@ -38,6 +38,7 @@ import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.e
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { BiDiagnosticLog } from '@modules/databases/bi-diagnostic-log.entity';
 import { AuthorizationModule } from '@common/authorization';
+import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -91,6 +92,7 @@ import { AuthorizationModule } from '@common/authorization';
       resolvers: [DiagnosticTransformFileResolver],
     }),
     AuthorizationModule,
+    DataSelfServeModule,
   ],
   controllers: [AppController],
   providers: [

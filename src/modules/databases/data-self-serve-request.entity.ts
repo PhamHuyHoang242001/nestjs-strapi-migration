@@ -1,78 +1,75 @@
-import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinTable, ManyToMany, OneToMany } from 'typeorm';
-import { DataSelfServeSegment } from './data-self-serve-segment.entity';
-import { DataSelfServeIndustry } from './data-self-serve-industry.entity';
+import {
+  DataSelfServeRequestGroup,
+  DataSelfServeRequestStatus,
+  DataSelfServeStorageType,
+  DataSelfServeUploadMethod,
+  DataSelfServeValidationStatus,
+} from '@common/enums';
+import { BaseAuthorUserSoftDeleteColumn } from '@configuration/base-entity';
+import { Column, Entity, OneToMany } from 'typeorm';
 import { DataSelfServeValidationLog } from './data-self-serve-validation-log.entity';
 
-// User request for self-serve data access, linked to segments and industries
 @Entity('data_self_serve_requests')
-export class DataSelfServeRequest extends BaseSoftDeleteEntity {
+export class DataSelfServeRequest extends BaseAuthorUserSoftDeleteColumn {
   @Column({ nullable: true })
-  public request_status: string;
-
-  @Column({ nullable: true })
-  public request_group: string;
+  request_status: DataSelfServeRequestStatus;
 
   @Column({ nullable: true })
-  public validation_status: string;
+  request_group: DataSelfServeRequestGroup;
 
   @Column({ nullable: true })
-  public destination_path: string;
+  validation_status: DataSelfServeValidationStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  destination_path: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  backup_input_file_path: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  code: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  portal_file_url: string;
 
   @Column({ nullable: true })
-  public backup_input_file_path: string;
+  input_method: DataSelfServeUploadMethod;
+
+  @Column({ type: 'varchar', nullable: true })
+  file_size: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  source: string;
 
   @Column({ nullable: true })
-  public code: string;
+  storage_type: DataSelfServeStorageType;
 
-  @Column({ nullable: true })
-  public portal_file_url: string;
+  @Column({ type: 'int', nullable: true })
+  estimated_completion_hours: number;
 
-  @Column({ nullable: true })
-  public input_method: string;
+  @Column({ type: 'jsonb', nullable: true })
+  request_params: Record<string, unknown>;
 
-  @Column({ nullable: true })
-  public file_size: string;
+  @Column({ type: 'jsonb', nullable: true })
+  response_body: Record<string, unknown>;
 
-  @Column({ nullable: true })
-  public source: string;
+  @Column({ type: 'jsonb', nullable: true })
+  rows_file_input: Record<string, unknown>;
 
-  @Column({ nullable: true })
-  public storage_type: string;
+  @Column({ type: 'timestamp', nullable: true })
+  request_completed_at: Date;
 
-  @Column({ nullable: true, type: 'int' })
-  public estimated_completion_hours: number;
+  @Column({ type: 'varchar', nullable: true })
+  short_description: string;
 
-  @Column({ nullable: true, type: 'jsonb' })
-  public request_params: Record<string, any>;
-
-  @Column({ nullable: true, type: 'jsonb' })
-  public response_body: Record<string, any>;
-
-  @Column({ nullable: true, type: 'jsonb' })
-  public rows_file_input: Record<string, any>;
-
-  @Column({ nullable: true, type: 'timestamp' })
-  public request_completed_at: Date;
-
-  @Column({ nullable: true, type: 'text' })
-  public short_description: string;
-
-  // plain FKs; no User relation decorator
-  @Column({ nullable: true, type: 'int' })
-  public created_by_user_id: number;
-
-  @Column({ nullable: true, type: 'int' })
-  public updated_by_user_id: number;
-
-  @ManyToMany(() => DataSelfServeSegment)
-  @JoinTable({ name: 'data_self_serve_requests_segments' })
-  public segments: DataSelfServeSegment[];
-
-  @ManyToMany(() => DataSelfServeIndustry)
-  @JoinTable({ name: 'data_self_serve_requests_industries' })
-  public industries: DataSelfServeIndustry[];
-
-  @OneToMany(() => DataSelfServeValidationLog, (l) => l.request)
-  public validation_logs: DataSelfServeValidationLog[];
+  @OneToMany(() => DataSelfServeValidationLog, (log) => log.request)
+  validation_logs: DataSelfServeValidationLog[];
 }
+
+export {
+  DataSelfServeRequestGroup as DataSelfServeRequestGroupEnum,
+  DataSelfServeRequestStatus as DataSelfServeRequestStatusEnum,
+  DataSelfServeStorageType as DataSelfServeRequestStorageTypeEnum,
+  DataSelfServeUploadMethod as DataSelfServeRequestInputMethodEnum,
+  DataSelfServeValidationStatus as DataSelfServeRequestValidationStatusEnum,
+};

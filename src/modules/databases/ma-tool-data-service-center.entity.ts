@@ -9,6 +9,12 @@ export class MaToolDataServiceCenter extends BaseSoftDeleteEntity {
   @Column({ nullable: true })
   public name: string;
 
+  @Column({ nullable: true })
+  public module_name: string;
+
+  @Column({ nullable: true })
+  public module_code: string;
+
   @Column({ nullable: true, type: 'text' })
   public description: string;
 
