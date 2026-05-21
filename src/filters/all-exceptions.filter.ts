@@ -71,6 +71,7 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
       request: requestInfo,
     };
     const exceptionObj = exception as Record<string, unknown> | undefined;
+    const structuredResponse = this.getStructuredErrorResponse(exception);
     const responseData = {
       reason: (exceptionObj?.['response'] as Record<string, unknown> | undefined)?.['reason'],
       message: message,
@@ -78,7 +79,18 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     };
 
     this.standardizeLogger(logData);
+    if (structuredResponse) return response.status(status).json(structuredResponse);
     return response.status(status).json(responseData);
+  }
+
+  getStructuredErrorResponse(exception: unknown): Record<string, unknown> | null {
+    if (!(exception instanceof HttpException)) return null;
+
+    const exceptionResponse = exception.getResponse();
+    if (!validateDatatype(exceptionResponse, DATA_TYPE.OBJECT)) return null;
+
+    const responseData = exceptionResponse as Record<string, unknown>;
+    return validateDatatype(responseData['error'], DATA_TYPE.OBJECT) ? responseData : null;
   }
 
   getStatusCode(exception: unknown): number {

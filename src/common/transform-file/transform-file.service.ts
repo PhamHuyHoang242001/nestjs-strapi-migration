@@ -2,6 +2,18 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { TransformFileModel } from './transform-file-link.helper';
 import { TransformFileRequest, TransformFileResolver, TransformFileResult } from './transform-file.types';
 
+const UNSUPPORTED_TRANSFORM_MODEL_ERROR = {
+  error: {
+    name: 'ValidationError',
+    message: 'E003',
+    code: 'E003',
+    details: {
+      status: 400,
+      error_message: 'code',
+    },
+  },
+};
+
 @Injectable()
 export class TransformFileService {
   constructor(
@@ -14,7 +26,7 @@ export class TransformFileService {
 
     const model = request.model as TransformFileModel;
     const resolver = this.resolvers.find((item) => item.supports(model));
-    if (!resolver) throw new BadRequestException('Unsupported transform model');
+    if (!resolver) throw new BadRequestException(UNSUPPORTED_TRANSFORM_MODEL_ERROR);
 
     await resolver.authorize(request);
     return resolver.transform(request);
