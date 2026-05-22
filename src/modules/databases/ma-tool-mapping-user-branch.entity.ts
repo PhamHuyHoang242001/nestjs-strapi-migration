@@ -6,6 +6,9 @@ import { MaToolMappingUserBranchHistory } from './ma-tool-mapping-user-branch-hi
 // Mapping between a user and a branch configuration for MA Tool access control
 @Entity('ma_tool_mapping_user_branches')
 export class MaToolMappingUserBranch extends BaseSoftDeleteEntity {
+  @Column({ nullable: true, default: false })
+  public is_primary: boolean;
+
   @Column({ nullable: true })
   public mapping_status: string;
 

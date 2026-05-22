@@ -39,6 +39,7 @@ import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-h
 import { BiDiagnosticLog } from '@modules/databases/bi-diagnostic-log.entity';
 import { AuthorizationModule } from '@common/authorization';
 import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.module';
+import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-output.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -93,6 +94,7 @@ import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.mo
     }),
     AuthorizationModule,
     DataSelfServeModule,
+    SbvRptCvtOutputModule,
   ],
   controllers: [AppController],
   providers: [

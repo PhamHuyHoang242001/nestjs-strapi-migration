@@ -1,28 +1,25 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
-import { MaToolDocument } from './ma-tool-document.entity';
+import { Column, Entity } from 'typeorm';
 
-// Log entry recording a file download event from MA Tool document
+// Log entry recording a report download/zip event from MA Tool SBV reports
 @Entity('ma_tool_log_download_files')
 export class MaToolLogDownloadFile extends BaseSoftDeleteEntity {
   @Column({ nullable: true })
-  public file_name: string;
+  public filename: string;
 
-  @Column({ nullable: true, type: 'date' })
-  public download_date: Date;
+  @Column({ nullable: true })
+  public zip_file_path: string;
 
   @Column({ nullable: true })
   public download_status: string;
 
-  // FK to ma_tool_documents
-  @Column({ nullable: false, type: 'int' })
-  public document_id: number;
+  @Column({ nullable: true, type: 'text' })
+  public error_message: string;
 
-  @ManyToOne(() => MaToolDocument, (d) => d.download_logs)
-  @JoinColumn({ name: 'document_id' })
-  public document: MaToolDocument;
+  // Strapi stores user info and report list as JSON blobs
+  @Column({ nullable: true, type: 'jsonb' })
+  public user: Record<string, any>;
 
-  // user_id: plain nullable int, no decorator
-  @Column({ nullable: true, type: 'int' })
-  public user_id: number;
+  @Column({ nullable: true, type: 'jsonb' })
+  public reports: Record<string, any>[];
 }

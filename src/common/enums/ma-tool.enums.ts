@@ -80,3 +80,23 @@ export enum MaToolValidationColumnType {
   DATETIME = 'datetime',
   BOOLEAN = 'boolean',
 }
+
+export enum ZipFileStatus {
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  PROCESSING = 'processing',
+}
+
+export enum SubmissionType {
+  INITIAL_SUBMISSION = 'S',
+  LATE_SUBMISSION = 'B',
+}
+
+export enum ReportFrequencyCode {
+  D = 'D',
+  M = 'M',
+  Q = 'Q',
+  Y = 'Y',
+  M3 = 'M3',
+  Y2 = 'Y2',
+}

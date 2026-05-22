@@ -170,3 +170,11 @@ export const OIDC_SCOPE: string = process.env.OIDC_SCOPE ?? 'openid profile emai
 export const OIDC_AUTHORIZATION_ENDPOINT: string = process.env.OIDC_AUTHORIZATION_ENDPOINT ?? '';
 export const OIDC_TOKEN_ENDPOINT: string = process.env.OIDC_TOKEN_ENDPOINT ?? '';
 export const OIDC_USERINFO_ENDPOINT: string = process.env.OIDC_USERINFO_ENDPOINT ?? '';
+
+// MA Tool Report Config
+export const MA_REPORT_WHOLE_BANK_CODE: string = process.env.MA_REPORT_WHOLE_BANK_CODE ?? '';
+export const MA_REPORT_HEAD_OFFICE_CODE: string = process.env.MA_REPORT_HEAD_OFFICE_CODE ?? '';
+export const MA_REPORT_TEMPLATE_FOLDER: string = process.env.MA_REPORT_TEMPLATE_FOLDER ?? '';
+export const MA_REQUEST_DOWNLOAD: string = process.env.MA_REQUEST_DOWNLOAD ?? '';
+export const MA_OUTPUT_BUCKET: string = process.env.MA_OUTPUT_BUCKET ?? '';
+export const AWS_ENDPOINT: string = process.env.AWS_ENDPOINT ?? '';

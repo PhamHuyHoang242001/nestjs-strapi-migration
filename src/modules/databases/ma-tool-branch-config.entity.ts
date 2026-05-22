@@ -8,6 +8,9 @@ export class MaToolBranchConfig extends BaseSoftDeleteEntity {
   public branch_code: string;
 
   @Column({ nullable: true })
+  public branch_sbv_code: string;
+
+  @Column({ nullable: true })
   public branch_name: string;
 
   @Column({ nullable: true })

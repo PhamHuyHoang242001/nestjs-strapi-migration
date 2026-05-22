@@ -1,7 +1,6 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { MaToolTemplate } from './ma-tool-template.entity';
-import { MaToolLogDownloadFile } from './ma-tool-log-download-file.entity';
 
 // Document attachment associated with an MA Tool template
 @Entity('ma_tool_documents')
@@ -38,8 +37,4 @@ export class MaToolDocument extends BaseSoftDeleteEntity {
   // uploaded_by_id: plain nullable int, no decorator
   @Column({ nullable: true, type: 'int' })
   public uploaded_by_id: number;
-
-  // Reverse: download logs for this document
-  @OneToMany(() => MaToolLogDownloadFile, (l) => l.document)
-  public download_logs: MaToolLogDownloadFile[];
 }

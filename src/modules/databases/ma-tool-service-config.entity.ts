@@ -1,9 +1,12 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity } from 'typeorm';
 
-// Service-level key/value configuration for MA Tool
+// Service-level configuration for MA Tool (conversion services, storage endpoints)
 @Entity('ma_tool_service_configs')
 export class MaToolServiceConfig extends BaseSoftDeleteEntity {
+  @Column({ nullable: true })
+  public service_code: string;
+
   @Column({ nullable: true })
   public service_name: string;
 
