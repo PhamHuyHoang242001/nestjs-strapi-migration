@@ -1,5 +1,6 @@
 import { BearerGuard, IsMaintenanceGuard } from '@common/guards';
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { RequestWithInfo } from '@common/types/request-with-info';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigDataSelfServeService } from './config-data-self-serve.service';
 import {
@@ -29,14 +30,20 @@ export class ConfigDataSelfServeController {
 
   @ApiOperation({ summary: 'Create config data self-serve' })
   @Post('config-data-self-serve')
-  create(@Body() body: CreateConfigDataSelfServeDto) {
-    return this.service.create(body);
+  create(@Body() body: CreateConfigDataSelfServeDto, @Req() req: RequestWithInfo) {
+    const userId = Number(req.info?.user?.id);
+    return this.service.create(body, userId);
   }
 
   @ApiOperation({ summary: 'Update config data self-serve' })
   @Patch('config-data-self-serve/:id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateConfigDataSelfServeDto) {
-    return this.service.update(id, body);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateConfigDataSelfServeDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    const userId = Number(req.info?.user?.id);
+    return this.service.update(id, body, userId);
   }
 
   @ApiOperation({ summary: 'Delete config data self-serve' })

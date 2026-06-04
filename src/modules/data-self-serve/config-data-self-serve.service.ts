@@ -40,10 +40,14 @@ export class ConfigDataSelfServeService {
     return { data: config };
   }
 
-  async create(dto: CreateConfigDataSelfServeDto) {
+  async create(dto: CreateConfigDataSelfServeDto, userId: number) {
     await this.assertKeyUnique(dto.key);
     try {
-      const entity = this.configRepo.create(dto);
+      const entity = this.configRepo.create({
+        ...dto,
+        created_by_user_id: userId,
+        updated_by_user_id: userId,
+      });
       const saved = await this.configRepo.save(entity);
       return { data: saved };
     } catch (error) {
@@ -52,7 +56,7 @@ export class ConfigDataSelfServeService {
     }
   }
 
-  async update(id: number, dto: UpdateConfigDataSelfServeDto) {
+  async update(id: number, dto: UpdateConfigDataSelfServeDto, userId: number) {
     const config = await this.configRepo.findOne({ where: { id } });
     if (!config) throw new NotFoundException('Config not found');
 
@@ -61,7 +65,7 @@ export class ConfigDataSelfServeService {
     }
 
     try {
-      const merged = this.configRepo.merge(config, dto);
+      const merged = this.configRepo.merge(config, { ...dto, updated_by_user_id: userId });
       const saved = await this.configRepo.save(merged);
       return { data: saved };
     } catch (error) {

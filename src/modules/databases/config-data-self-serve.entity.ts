@@ -10,4 +10,10 @@ export class ConfigDataSelfServe {
 
   @Column({ type: 'jsonb', nullable: false })
   value: { user_daily_limit?: number; [key: string]: unknown };
+
+  @Column({ type: 'int', nullable: true })
+  created_by_user_id: number;
+
+  @Column({ type: 'int', nullable: true })
+  updated_by_user_id: number;
 }
