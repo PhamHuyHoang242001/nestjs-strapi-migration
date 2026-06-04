@@ -5,7 +5,7 @@ export class ConfigDataSelfServe {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'varchar', nullable: false })
+  @Column({ type: 'varchar', nullable: false, unique: true })
   key: string;
 
   @Column({ type: 'jsonb', nullable: false })

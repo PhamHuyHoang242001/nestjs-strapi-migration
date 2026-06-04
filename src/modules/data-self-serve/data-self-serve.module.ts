@@ -9,6 +9,8 @@ import { DataSelfServeValidationLog } from '@modules/databases/data-self-serve-v
 import { MaToolBranchConfig } from '@modules/databases/ma-tool-branch-config.entity';
 import { MaToolDataServiceCenter } from '@modules/databases/ma-tool-data-service-center.entity';
 import { Users } from '@modules/databases/user.entity';
+import { ConfigDataSelfServeController } from './config-data-self-serve.controller';
+import { ConfigDataSelfServeService } from './config-data-self-serve.service';
 import { DataSelfServeController } from './data-self-serve.controller';
 import { DataSelfServeListener } from './data-self-serve.listener';
 import { DataSelfServeQuotaService } from './data-self-serve-quota.service';
@@ -29,7 +31,13 @@ import { DataSelfServeStorageService } from './data-self-serve-storage.service';
       Users,
     ]),
   ],
-  controllers: [DataSelfServeController],
-  providers: [DataSelfServeService, DataSelfServeQuotaService, DataSelfServeStorageService, DataSelfServeListener],
+  controllers: [DataSelfServeController, ConfigDataSelfServeController],
+  providers: [
+    DataSelfServeService,
+    DataSelfServeQuotaService,
+    DataSelfServeStorageService,
+    DataSelfServeListener,
+    ConfigDataSelfServeService,
+  ],
 })
 export class DataSelfServeModule {}
