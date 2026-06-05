@@ -5,14 +5,13 @@ import { UserRole } from '@modules/databases/user-role.entity';
 import { BaseSoftDeleteEntity } from '../../configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 
+export enum UserType {
+  SUPER_ADMIN = 'super_admin',
+  USER = 'user',
+}
+
 @Entity('users')
 export class Users extends BaseSoftDeleteEntity {
-  @Column({ nullable: true })
-  public phone: string;
-
-  @Column({ nullable: true })
-  public phone_code: string;
-
   @Column({ nullable: true })
   public last_name: string;
 
@@ -30,6 +29,9 @@ export class Users extends BaseSoftDeleteEntity {
 
   @Column({ nullable: true })
   public phone_iso: string;
+
+  @Column({ enum: UserType, default: UserType.USER })
+  public type: UserType;
 
   @Column({ nullable: true })
   public address_line: string;
@@ -53,7 +55,27 @@ export class Users extends BaseSoftDeleteEntity {
   public password: string;
 
   @Column({ nullable: true })
+  public confirmation_token: string;
+  @Column({ nullable: true })
+  public confirmed: boolean;
+
+  @Column({ nullable: true })
+  public reset_password_token: string;
+
+  @Column({ nullable: true })
   public email: string;
+
+  @Column({ nullable: true })
+  public blocked: boolean;
+
+  @Column({ nullable: true })
+  public city: string;
+
+  @Column({ nullable: true })
+  public staff_id: string;
+
+  @Column({ nullable: true })
+  public provider: string;
 
   @Column({ nullable: true })
   public sso_id: string;

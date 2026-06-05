@@ -21,12 +21,12 @@ import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 export class DataAccessController {
   constructor(private readonly dataAccessService: DataAccessService) {}
 
-  @ApiOperation({ summary: 'List data access rules flattened 1-1 (1 subject per row) with pagination' })
+  @ApiOperation({ summary: 'List data access rules grouped by record (data_id + module_id) with pagination' })
   @Get('list')
   @RequirePermission('perm_data_access_view')
   list(
     @Query() query: SearchDataAccessDto,
-    @Sort({ allowedFields: ['created_at', 'data_id', 'table_name', 'scope_type', 'module_id'] }) sortParams: SortParams,
+    @Sort({ allowedFields: ['created_at'] }) sortParams: SortParams,
     @PaginationDecorator() pagination: PaginationParams,
   ) {
     return this.dataAccessService.list(query, sortParams, pagination);

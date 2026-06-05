@@ -8,7 +8,7 @@ import { Module as ModuleEntity } from '@modules/databases/module.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { ALLOWED_TABLES, getNameColumn } from './constants/hierarchy-config';
+import { ALLOWED_TABLES, NAME_COLUMN_MAP, getNameColumn } from './constants/hierarchy-config';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
 import { SearchRecordsDto } from './dto/search-records.dto';
@@ -59,98 +59,96 @@ export class DataAccessService {
   // ── DataAccess CRUD ─────────────────────────────────────────────────────────
 
   /**
-   * List data access rules flattened 1-1 (1 subject per row).
-   * Each rule with N roles + M users produces N+M rows.
-   * Pagination applies to the flattened result.
+   * List data access rules grouped by (data_id, module_id).
+   * Each group = 1 record with its rules array + record name from target table.
+   * Pagination applies at group level.
    */
   async list(dto: SearchDataAccessDto, sortParams: SortParams, pagination: PaginationParams) {
-    const params: any[] = [];
-    let whereClause = 'WHERE da.deleted_at IS NULL';
+    const { ctePrefix, whereClause, params } = this.buildGroupFilterClause(dto);
+    const cteLine = ctePrefix ? `${ctePrefix} ` : '';
 
-    if (dto.module_id) {
-      params.push(dto.module_id);
-      whereClause += ` AND da.module_id = $${params.length}`;
-    }
-    if (dto.scope_type) {
-      params.push(dto.scope_type);
-      whereClause += ` AND da.scope_type = $${params.length}`;
-    }
-    if (dto.subject_type === 'role') {
-      whereClause += ` AND s.subject_type = 'role'`;
-    } else if (dto.subject_type === 'user') {
-      whereClause += ` AND s.subject_type = 'user'`;
-    }
-    if (dto.role_id) {
-      params.push(dto.role_id);
-      whereClause += ` AND s.subject_type = 'role' AND s.subject_id = $${params.length}`;
-    }
-    if (dto.user_id) {
-      params.push(dto.user_id);
-      whereClause += ` AND s.subject_type = 'user' AND s.subject_id = $${params.length}`;
-    }
-    if (dto.search) {
-      params.push(`%${dto.search}%`);
-      whereClause += ` AND (CAST(da.data_id AS TEXT) ILIKE $${params.length} OR s.subject_name ILIKE $${params.length})`;
-    }
-
-    // Flatten: UNION of roles and users per rule, join modules for table_name & path
-    // User branch aggregates permissions per (rule_id, user) to avoid duplicate rows
-    const flattenCTE = `
-      WITH flattened AS (
-        SELECT da.id as rule_id, da.data_id, da.module_id,
-               m.table_name, m.path as module_path, m.name as module_name,
-               da.scope_type, da.start_date, da.end_date, da.created_at,
-               'role' as subject_type, r.id as subject_id, r.name as subject_name,
-               NULL::jsonb as permissions
-        FROM data_access da
-        JOIN modules m ON m.id = da.module_id
-        JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
-        JOIN role r ON r.id = dar.role_id
-        WHERE da.deleted_at IS NULL
-        UNION ALL
-        SELECT da.id as rule_id, da.data_id, da.module_id,
-               m.table_name, m.path as module_path, m.name as module_name,
-               da.scope_type, da.start_date, da.end_date, da.created_at,
-               'user' as subject_type, u.id as subject_id,
-               COALESCE(u.full_name, u.username) as subject_name,
-               json_agg(json_build_object('id', p.id, 'name', p.name))::jsonb as permissions
-        FROM data_access da
-        JOIN modules m ON m.id = da.module_id
-        JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
-        JOIN users u ON u.id = dau.user_id
-        JOIN permission p ON p.id = dau.permission_id AND p.deleted_at IS NULL
-        WHERE da.deleted_at IS NULL
-        GROUP BY da.id, da.data_id, da.module_id, m.table_name, m.path, m.name,
-                 da.scope_type, da.start_date, da.end_date, da.created_at, u.id, u.full_name, u.username
-      )`;
-
-    const sortField = sortParams?.sort_field || 'created_at';
-    const sortOrder = sortParams?.sort_order || 'DESC';
-    const allowedSortFields = ['created_at', 'data_id', 'table_name', 'scope_type', 'module_id'];
-    const safeSortField = allowedSortFields.includes(sortField) ? sortField : 'created_at';
-    const safeSortOrder = sortOrder === 'ASC' ? 'ASC' : 'DESC';
-
-    const flatWhere = whereClause.replace(/da\./g, 's.').replace('WHERE s.deleted_at IS NULL', 'WHERE 1=1');
-
-    // Count
-    const countQuery = `${flattenCTE} SELECT COUNT(*)::int as total FROM flattened s ${flatWhere}`;
+    // Step 1a: Count distinct groups
+    const countQuery = `${cteLine}SELECT COUNT(*)::int as total FROM (
+      SELECT DISTINCT da.data_id, da.module_id FROM data_access da
+      LEFT JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
+      LEFT JOIN role r ON r.id = dar.role_id
+      LEFT JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
+      LEFT JOIN users u ON u.id = dau.user_id
+      ${whereClause}
+    ) groups`;
     const countResult = await this.connection.query(countQuery, params);
     const total: number = countResult[0]?.total || 0;
 
-    // Paginated data
+    // Step 1b: Paginated groups with module info
     const { page, limit } = pagination;
     const offset = (page - 1) * limit;
-    const dataParams = [...params, limit, offset];
-    const dataQuery = `${flattenCTE}
-      SELECT s.rule_id, s.data_id, s.module_id, s.table_name, s.module_path, s.module_name,
-             s.scope_type, s.start_date, s.end_date, s.created_at,
-             s.subject_type, s.subject_id, s.subject_name, s.permissions
-      FROM flattened s
-      ${flatWhere}
-      ORDER BY s.${safeSortField} ${safeSortOrder}, s.rule_id DESC
-      LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`;
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+    const groupParams = [...params, limit, offset];
+    const safeSortOrder = sortParams?.sort_order === 'ASC' ? 'ASC' : 'DESC';
 
-    const data = await this.connection.query(dataQuery, dataParams);
+    const groupsQuery = `${cteLine}
+      SELECT da.data_id, da.module_id, m.table_name, m.path as module_path, m.name as module_name,
+             MAX(da.created_at) as latest_created_at
+      FROM data_access da
+      JOIN modules m ON m.id = da.module_id
+      LEFT JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
+      LEFT JOIN role r ON r.id = dar.role_id
+      LEFT JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
+      LEFT JOIN users u ON u.id = dau.user_id
+      ${whereClause}
+      GROUP BY da.data_id, da.module_id, m.table_name, m.path, m.name
+      ORDER BY latest_created_at ${safeSortOrder}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+
+    const groups: any[] = await this.connection.query(groupsQuery, groupParams);
+    if (!groups.length) {
+      return {
+        data: [],
+        meta: {
+          totalItems: total,
+          itemCount: 0,
+          itemsPerPage: limit,
+          currentPage: page,
+          totalPages: Math.ceil(total / limit) || 1,
+        },
+      };
+    }
+
+    // Step 2: Fetch flattened rules for these groups
+    const rules = await this.fetchRulesForGroups(groups);
+
+    // Step 3: Batch fetch record names from target tables
+    const recordNames = await this.batchFetchRecordNames(groups);
+
+    // Step 4: Assemble grouped response
+    const rulesByGroup = new Map<string, any[]>();
+    for (const rule of rules) {
+      const key = `${rule.data_id}-${rule.module_id}`;
+      const arr = rulesByGroup.get(key) || [];
+      arr.push({
+        rule_id: rule.rule_id,
+        scope_type: rule.scope_type,
+        subject_type: rule.subject_type,
+        subject_id: rule.subject_id,
+        subject_name: rule.subject_name,
+        permissions: rule.permissions,
+        start_date: rule.start_date,
+        end_date: rule.end_date,
+        created_at: rule.created_at,
+      });
+      rulesByGroup.set(key, arr);
+    }
+
+    const data = groups.map((g) => ({
+      data_id: g.data_id,
+      module_id: g.module_id,
+      module_name: g.module_name,
+      module_path: g.module_path,
+      record_name: recordNames.get(`${g.data_id}-${g.module_id}`) || `ID: ${g.data_id}`,
+      table_name: g.table_name,
+      rules: rulesByGroup.get(`${g.data_id}-${g.module_id}`) || [],
+    }));
 
     return {
       data,
@@ -162,6 +160,131 @@ export class DataAccessService {
         totalPages: Math.ceil(total / limit) || 1,
       },
     };
+  }
+
+  /**
+   * Build WHERE clause with params for group-level filtering.
+   * When dto.search is present, includes a name_matches CTE to search record names in target tables.
+   * Returns { ctePrefix, whereClause, params }.
+   */
+  private buildGroupFilterClause(dto: SearchDataAccessDto) {
+    const params: any[] = [];
+    let ctePrefix = '';
+    let whereClause = 'WHERE da.deleted_at IS NULL';
+
+    if (dto.module_id) {
+      params.push(dto.module_id);
+      whereClause += ` AND da.module_id = $${params.length}`;
+    }
+    if (dto.scope_type) {
+      params.push(dto.scope_type);
+      whereClause += ` AND da.scope_type = $${params.length}`;
+    }
+    // "has at least one" — groups with mixed subjects still appear under either filter
+    if (dto.subject_type === 'role') {
+      whereClause += ` AND dar.id IS NOT NULL`;
+    } else if (dto.subject_type === 'user') {
+      whereClause += ` AND dau.id IS NOT NULL`;
+    }
+    if (dto.role_id) {
+      params.push(dto.role_id);
+      whereClause += ` AND dar.role_id = $${params.length}`;
+    }
+    if (dto.user_id) {
+      params.push(dto.user_id);
+      whereClause += ` AND dau.user_id = $${params.length}`;
+    }
+    if (dto.search) {
+      params.push(`%${dto.search}%`);
+      const searchParam = `$${params.length}`;
+
+      // Build name_matches CTE: UNION across target tables for record name search
+      const nameMatchBranches = this.buildNameMatchesCTE(searchParam, dto.module_id);
+      ctePrefix = `WITH name_matches AS (\n${nameMatchBranches}\n)`;
+
+      whereClause += ` AND (CAST(da.data_id AS TEXT) ILIKE ${searchParam} OR unaccent(r.name) ILIKE unaccent(${searchParam}) OR unaccent(u.full_name) ILIKE unaccent(${searchParam}) OR (da.data_id, da.module_id) IN (SELECT data_id, module_id FROM name_matches))`;
+    }
+
+    return { ctePrefix, whereClause, params };
+  }
+
+  /** Build UNION ALL branches for searching record names across target tables */
+  private buildNameMatchesCTE(searchParam: string, moduleId?: number): string {
+    // If module_id filter is set, we only need to search that specific module's table
+    // Otherwise search all allowed tables via modules join
+    const branches: string[] = [];
+    for (const [tableName, nameCol] of Object.entries(NAME_COLUMN_MAP)) {
+      if (!ALLOWED_TABLES.has(tableName)) continue;
+      const safeCol = /^[a-z_]+$/.test(nameCol) ? nameCol : 'id';
+      branches.push(
+        `SELECT t.id as data_id, m.id as module_id FROM "${tableName}" t JOIN modules m ON m.table_name = '${tableName}' AND m.deleted_at IS NULL WHERE unaccent(CAST(t."${safeCol}" AS TEXT)) ILIKE unaccent(${searchParam}) AND t.deleted_at IS NULL${moduleId ? ` AND m.id = ${Number(moduleId)}` : ''}`,
+      );
+    }
+    return branches.join('\nUNION ALL\n');
+  }
+
+  /** Fetch flattened rules (role + user branches) for a set of groups */
+  private async fetchRulesForGroups(groups: { data_id: number; module_id: number }[]) {
+    const validGroups = groups.filter((g) => Number.isInteger(g.data_id) && Number.isInteger(g.module_id));
+    if (!validGroups.length) return [];
+    const tuples = validGroups.map((g) => `(${Number(g.data_id)}, ${Number(g.module_id)})`).join(', ');
+    const rulesQuery = `
+      WITH flattened AS (
+        SELECT da.id as rule_id, da.data_id, da.module_id,
+               da.scope_type, da.start_date, da.end_date, da.created_at,
+               'role' as subject_type, r.id as subject_id, r.name as subject_name,
+               NULL::jsonb as permissions
+        FROM data_access da
+        JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
+        JOIN role r ON r.id = dar.role_id
+        WHERE da.deleted_at IS NULL AND (da.data_id, da.module_id) IN (${tuples})
+        UNION ALL
+        SELECT da.id as rule_id, da.data_id, da.module_id,
+               da.scope_type, da.start_date, da.end_date, da.created_at,
+               'user' as subject_type, u.id as subject_id,
+               COALESCE(u.full_name, u.username) as subject_name,
+               json_agg(json_build_object('id', p.id, 'name', p.name))::jsonb as permissions
+        FROM data_access da
+        JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
+        JOIN users u ON u.id = dau.user_id
+        JOIN permission p ON p.id = dau.permission_id AND p.deleted_at IS NULL
+        WHERE da.deleted_at IS NULL AND (da.data_id, da.module_id) IN (${tuples})
+        GROUP BY da.id, da.data_id, da.module_id,
+                 da.scope_type, da.start_date, da.end_date, da.created_at, u.id, u.full_name, u.username
+      )
+      SELECT * FROM flattened ORDER BY rule_id DESC`;
+
+    return this.connection.query(rulesQuery);
+  }
+
+  /** Batch-fetch display names from target tables, grouped by table_name */
+  private async batchFetchRecordNames(groups: { data_id: number; module_id: number; table_name: string }[]) {
+    // Group entries by table_name, preserving each entry's module_id
+    const byTable = new Map<string, { data_id: number; module_id: number }[]>();
+    for (const g of groups) {
+      if (!g.table_name || !ALLOWED_TABLES.has(g.table_name)) continue;
+      const entries = byTable.get(g.table_name) || [];
+      entries.push({ data_id: g.data_id, module_id: g.module_id });
+      byTable.set(g.table_name, entries);
+    }
+
+    const nameMap = new Map<string, string>();
+    for (const [tableName, entries] of byTable) {
+      const nameCol = getNameColumn(tableName);
+      const ids = entries.map((e) => e.data_id);
+      const rows: { id: number; display_name: string }[] = await this.connection.query(
+        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = ANY($1) AND deleted_at IS NULL`,
+        [ids],
+      );
+      // Map each row back using the entry's own module_id (handles same table, different modules)
+      const rowMap = new Map(rows.map((r) => [r.id, r.display_name]));
+      for (const entry of entries) {
+        const displayName = rowMap.get(entry.data_id);
+        nameMap.set(`${entry.data_id}-${entry.module_id}`, displayName || `ID: ${entry.data_id}`);
+      }
+    }
+
+    return nameMap;
   }
 
   async details(id: number) {
