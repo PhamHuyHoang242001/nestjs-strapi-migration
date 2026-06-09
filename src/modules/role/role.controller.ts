@@ -8,6 +8,7 @@ import { BearerGuard, IsMaintenanceGuard } from '@common/guards';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { Put, Query } from '@nestjs/common/decorators';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SearchRecordsDto } from '@modules/data-access/dto/search-records.dto';
 import { ListRoleDto } from './dto';
 import { AssignUsersRoleDto } from './dto/assign-users-role.dto';
 import { CloneRoleDto } from './dto/clone-role.dto';
@@ -116,5 +117,16 @@ export class RoleController {
   @RequirePermission('perm_role_update')
   removeUsers(@Param('roleId') roleId: number, @Body() body: AssignUsersRoleDto) {
     return this.roleService.removeUsers(roleId, body);
+  }
+
+  @ApiOperation({ summary: 'List all records from a root table for owner assignment (no owner scoping)' })
+  @Get('owner-resources/:tableName')
+  @RequirePermission('perm_role_create', 'perm_role_update')
+  listOwnerResources(
+    @Param('tableName') tableName: string,
+    @Query() query: SearchRecordsDto,
+    @PaginationDecorator() pagination: PaginationParams,
+  ) {
+    return this.roleService.listOwnerResources(tableName, query, pagination);
   }
 }

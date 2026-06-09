@@ -3,6 +3,7 @@ import { SortParams } from '@common/decorators/sort.decorator';
 import { execQueryAll, execQueryPaignation } from '@common/utils';
 import { NOT_FOUND } from '@constant/error-messages';
 import { Module as ModuleEntity } from '@modules/databases/module.entity';
+import { ROOT_OWNER_CONFIG } from '@modules/data-access/constants/hierarchy-config';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { ListModuleDto } from './dto/list-module.dto';
@@ -19,7 +20,22 @@ export class ModuleManagementService {
    */
   async getTree(): Promise<{ data: ModuleEntity[] }> {
     const roots = await this.moduleRepository.findTrees({ relations: ['permissions'] });
+    // Annotate nodes with ownerResourceType from ROOT_OWNER_CONFIG
+    for (const root of roots) {
+      this.annotateOwnerResourceType(root);
+    }
     return { data: roots };
+  }
+
+  private annotateOwnerResourceType(node: ModuleEntity) {
+    if (node.table_name && ROOT_OWNER_CONFIG[node.table_name]) {
+      (node as any).ownerResourceType = ROOT_OWNER_CONFIG[node.table_name].resourceType;
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        this.annotateOwnerResourceType(child);
+      }
+    }
   }
 
   /**

@@ -12,14 +12,17 @@ import { PermissionRepository } from '@modules/permission/repository/permission.
 import { UserRepository } from '@modules/users/repository/users.repository';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, Not } from 'typeorm';
+import { ROOT_OWNER_CONFIG, getNameColumn } from '@modules/data-access/constants/hierarchy-config';
 import { ListRoleDto } from './dto';
 import { AssignUsersRoleDto } from './dto/assign-users-role.dto';
 import { CloneRoleDto } from './dto/clone-role.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { OwnerAssignmentDto } from './dto/owner-assignment.dto';
 import { RoleRepository } from './repository/role.repository';
 import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
 import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE } from '@common/enums';
+import { SearchRecordsDto } from '@modules/data-access/dto/search-records.dto';
 
 @Injectable()
 export class RoleService {
@@ -61,8 +64,101 @@ export class RoleService {
         new_value: { name: data.name, permissions: permCodes },
       })
       .catch(() => {});
+    // Save owner assignments if provided
+    if (payload.owner_assignments?.length) {
+      await this.saveOwnerAssignments(rowCreated.id, payload.owner_assignments);
+    }
     return { id: rowCreated.id };
   }
+
+  // ── Owner Resources ───────────────────────────────────────────────
+
+  async listOwnerResources(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams) {
+    if (!ROOT_OWNER_CONFIG[tableName]) {
+      throw new BadRequestException('table_not_owner_root');
+    }
+    const nameCol = getNameColumn(tableName);
+    const params: any[] = [];
+    let whereClause = 'WHERE deleted_at IS NULL';
+
+    if (dto.keyword) {
+      params.push(`%${dto.keyword}%`);
+      whereClause += ` AND (CAST(id AS TEXT) ILIKE $${params.length} OR CAST("${nameCol}" AS TEXT) ILIKE $${params.length})`;
+    }
+
+    const countResult = await this.connection.query(
+      `SELECT COUNT(*)::int as total FROM "${tableName}" ${whereClause}`,
+      params,
+    );
+    const total: number = countResult[0]?.total || 0;
+
+    const offset = (pagination.page - 1) * pagination.limit;
+    params.push(pagination.limit, offset);
+    const data = await this.connection.query(
+      `SELECT id, "${nameCol}" as display_name FROM "${tableName}" ${whereClause} ORDER BY id ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return {
+      data,
+      meta: {
+        totalItems: total,
+        itemCount: data.length,
+        itemsPerPage: pagination.limit,
+        currentPage: pagination.page,
+        totalPages: Math.ceil(total / pagination.limit) || 1,
+      },
+    };
+  }
+
+  async saveOwnerAssignments(roleId: number, assignments: OwnerAssignmentDto[]) {
+    if (!assignments?.length) return;
+
+    // Validate all resource_types exist in ROOT_OWNER_CONFIG
+    const validTypes = new Set(Object.values(ROOT_OWNER_CONFIG).map((c) => c.resourceType));
+    for (const a of assignments) {
+      if (!validTypes.has(a.resource_type)) {
+        throw new BadRequestException(`invalid_resource_type: ${a.resource_type}`);
+      }
+    }
+
+    // Soft-delete existing owner assignments for this role
+    await this.connection.query(
+      'UPDATE resource_owners SET deleted_at = NOW() WHERE role_id = $1 AND deleted_at IS NULL',
+      [roleId],
+    );
+
+    // Insert new assignments
+    const rows: { resource_type: string; resource_id: number; role_id: number }[] = [];
+    for (const a of assignments) {
+      for (const rid of a.resource_ids) {
+        rows.push({ resource_type: a.resource_type, resource_id: Number(rid), role_id: Number(roleId) });
+      }
+    }
+    if (rows.length) {
+      const values = rows.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(', ');
+      const params = rows.flatMap((r) => [r.resource_type, r.resource_id, r.role_id]);
+      await this.connection.query(
+        `INSERT INTO resource_owners (resource_type, resource_id, role_id) VALUES ${values}`,
+        params,
+      );
+    }
+  }
+
+  private async getOwnerAssignments(roleId: number): Promise<OwnerAssignmentDto[]> {
+    const ownerRows: { resource_type: string; resource_id: number }[] = await this.connection.query(
+      'SELECT resource_type, resource_id FROM resource_owners WHERE role_id = $1 AND deleted_at IS NULL ORDER BY resource_type, resource_id',
+      [roleId],
+    );
+    const ownerMap = new Map<string, number[]>();
+    for (const row of ownerRows) {
+      const ids = ownerMap.get(row.resource_type) || [];
+      ids.push(row.resource_id);
+      ownerMap.set(row.resource_type, ids);
+    }
+    return Array.from(ownerMap.entries()).map(([resource_type, resource_ids]) => ({ resource_type, resource_ids }));
+  }
+
   checkPermissionSelected(permission_selected: Permission[], permission: { id: number }) {
     if (permission_selected.find((u) => u.id == permission.id)) return true;
     return false;
@@ -78,7 +174,8 @@ export class RoleService {
         permissions_by_module[moduleKey].push(perm);
       }
     }
-    return { ...role, permissions_by_module };
+    const owner_assignments = await this.getOwnerAssignments(id);
+    return { ...role, permissions_by_module, owner_assignments };
   }
 
   async clone(id: number, dto: CloneRoleDto, user_id: number) {
@@ -235,7 +332,7 @@ export class RoleService {
 
   async update(id: number, payload: UpdateRoleDto) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { permission, permission_ids, user_ids, screen: _screen, sub_screen: _sub_screen, ...data } = payload;
+    const { permission, permission_ids, user_ids, owner_assignments, screen: _screen, sub_screen: _sub_screen, ...data } = payload;
 
     // Capture old record with permissions before update for change history
     const oldRecord = await this.roleRepository.findOne({ where: { id }, relations: ['permissions'] });
@@ -302,6 +399,11 @@ export class RoleService {
         }
       }
     });
+
+    // Save owner assignments if provided
+    if (owner_assignments !== undefined) {
+      await this.saveOwnerAssignments(id, owner_assignments);
+    }
 
     // Build history log with permission codes instead of IDs
     const logNewValue: Record<string, any> = { ...data };

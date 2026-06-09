@@ -1,8 +1,9 @@
 import { Trim } from '@common/decorators/transforms.decorator';
 import { MAX_STR_LENGTH, MAX_TEXT_LENGTH, MIN_STR_LENGTH } from '@constant/index';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { OwnerAssignmentDto } from './owner-assignment.dto';
 
 export class CreateRoleDto {
   @ApiProperty({ required: true })
@@ -42,4 +43,11 @@ export class CreateRoleDto {
   @IsOptional()
   @IsBoolean()
   readonly allow_duplicate_area: boolean;
+
+  @ApiPropertyOptional({ description: 'Owner assignments for this role', type: [OwnerAssignmentDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OwnerAssignmentDto)
+  owner_assignments?: OwnerAssignmentDto[];
 }
