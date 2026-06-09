@@ -46,6 +46,16 @@ export const NAME_COLUMN_MAP: Record<string, string> = {
   bi_payment_other_files: 'name',
 };
 
+/** Maps root table → resource_type discriminator for polymorphic owner scoping */
+export interface RootOwnerEntry {
+  resourceType: string;
+}
+
+export const ROOT_OWNER_CONFIG: Record<string, RootOwnerEntry> = {
+  bi_hub_bicc_departments: { resourceType: 'bicc_department' },
+  ma_tool_workspaces: { resourceType: 'workspace' },
+};
+
 /** Safe column name lookup with regex validation */
 export function getNameColumn(tableName: string): string {
   const col = NAME_COLUMN_MAP[tableName] || 'id';
