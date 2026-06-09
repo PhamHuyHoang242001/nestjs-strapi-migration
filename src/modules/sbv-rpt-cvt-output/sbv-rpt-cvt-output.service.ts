@@ -40,7 +40,7 @@ export class SbvRptCvtOutputService {
 
   async searchReport(query: SearchReportQueryDto, user: Record<string, any>) {
     const userId = Number(user['id']);
-    const { reportDate, frq_code, rptCode, branchId, isOldVersion, startDate, endDate, onlyNoData } = query;
+    const { reportDate, frq_code, rptCode, branchId, isOldVersion, startDate, endDate, onlyNoData, keyword } = query;
 
     if (!reportDate) throw new BadRequestException('reportDate is required');
 
@@ -90,6 +90,14 @@ export class SbvRptCvtOutputService {
           });
         }
       }
+    }
+
+    // Keyword search: filter by rpt_code or file_name
+    if (keyword && keyword.trim()) {
+      const kw = keyword.trim();
+      qb.andWhere('(o.rpt_code ILIKE :keyword OR o.file_name ILIKE :keyword)', {
+        keyword: `%${kw}%`,
+      });
     }
 
     // Fetch user's assigned branches + reports in parallel

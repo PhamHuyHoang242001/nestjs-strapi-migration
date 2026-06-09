@@ -360,7 +360,7 @@ describe('DataAccessService.list() — grouped', () => {
   describe('search by record_name', () => {
     it('search keyword triggers name_matches CTE in count query', async () => {
       const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
-      const dto: SearchDataAccessDto = { search: 'Revenue' };
+      const dto: SearchDataAccessDto = { keyword: 'Revenue' };
       await service.list(dto, defaultSort, defaultPagination);
 
       const countSQL = queryMock.mock.calls[0][0] as string;
@@ -370,7 +370,7 @@ describe('DataAccessService.list() — grouped', () => {
 
     it('search matches across data_id, subject_name, AND record_name (OR logic)', async () => {
       const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
-      const dto: SearchDataAccessDto = { search: 'test' };
+      const dto: SearchDataAccessDto = { keyword: 'test' };
       await service.list(dto, defaultSort, defaultPagination);
 
       const countSQL = queryMock.mock.calls[0][0] as string;
@@ -381,7 +381,7 @@ describe('DataAccessService.list() — grouped', () => {
 
     it('when module_id filter present, name_matches only queries that module table', async () => {
       const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
-      const dto: SearchDataAccessDto = { search: 'test', module_id: 5 };
+      const dto: SearchDataAccessDto = { keyword: 'test', module_id: 5 };
       await service.list(dto, defaultSort, defaultPagination);
 
       const countSQL = queryMock.mock.calls[0][0] as string;
@@ -391,7 +391,7 @@ describe('DataAccessService.list() — grouped', () => {
 
     it('search without module_id queries all allowed tables', async () => {
       const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
-      const dto: SearchDataAccessDto = { search: 'test' };
+      const dto: SearchDataAccessDto = { keyword: 'test' };
       await service.list(dto, defaultSort, defaultPagination);
 
       const countSQL = queryMock.mock.calls[0][0] as string;

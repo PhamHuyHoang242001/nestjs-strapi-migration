@@ -5,7 +5,7 @@ export class SearchRecordsDto {
   @ApiPropertyOptional({ description: 'Search keyword (matches id or name column)' })
   @IsOptional()
   @IsString()
-  search?: string;
+  keyword?: string;
 
   @ApiPropertyOptional({ description: 'Filter records created from this date' })
   @IsOptional()

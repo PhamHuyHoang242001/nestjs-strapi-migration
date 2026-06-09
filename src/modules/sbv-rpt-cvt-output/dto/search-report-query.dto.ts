@@ -7,6 +7,11 @@ export class SearchReportQueryDto {
   @IsString()
   reportDate: string;
 
+  @ApiProperty({ required: false, description: 'Search keyword by report code or file name' })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
   @ApiProperty({ required: false, description: 'Frequency code: D, M, Q, Y, M3, Y2' })
   @IsOptional()
   @IsString()

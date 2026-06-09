@@ -9,6 +9,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ALLOWED_TABLES, NAME_COLUMN_MAP, getNameColumn } from './constants/hierarchy-config';
+import { buildOwnerJoinChain, buildAccessibleCTE } from './helpers/owner-scope-helpers';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
 import { SearchRecordsDto } from './dto/search-records.dto';
@@ -16,6 +17,12 @@ import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 import { HierarchyValidationService } from './hierarchy-validation.service';
 import { DataAccessRepository } from './repository/data-access.repository';
 import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
+
+/** User context for owner scoping */
+export interface ScopeUserInfo {
+  userId?: number;
+  client?: string | null;
+}
 
 @Injectable()
 export class DataAccessService {
@@ -63,28 +70,78 @@ export class DataAccessService {
    * Each group = 1 record with its rules array + record name from target table.
    * Pagination applies at group level.
    */
-  async list(dto: SearchDataAccessDto, sortParams: SortParams, pagination: PaginationParams) {
-    const { ctePrefix, whereClause, params } = this.buildGroupFilterClause(dto);
-    const cteLine = ctePrefix ? `${ctePrefix} ` : '';
+  async list(dto: SearchDataAccessDto, sortParams: SortParams, pagination: PaginationParams, userInfo?: ScopeUserInfo) {
+    const isAdmin = !userInfo || userInfo.client === 'admin';
+
+    // Non-admin: resolve owner scope via accessible CTE
+    let ownerCtePrefix = '';
+    let ownerWhereClause = '';
+    let ownerParams: any[] = [];
+
+    if (!isAdmin) {
+      const roleRows: { role_id: number }[] = await this.connection.query(
+        'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
+        [userInfo.userId],
+      );
+      const roleIds = roleRows.map((r) => r.role_id);
+      if (!roleIds.length) {
+        return {
+          data: [],
+          meta: {
+            totalItems: 0,
+            itemCount: 0,
+            itemsPerPage: pagination.limit,
+            currentPage: pagination.page,
+            totalPages: 1,
+          },
+        };
+      }
+
+      ownerParams = [roleIds];
+      const { cteSql } = buildAccessibleCTE('$1');
+      ownerCtePrefix = `accessible AS (\n${cteSql}\n)`;
+      ownerWhereClause = ` AND (m.table_name, da.data_id) IN (SELECT table_name, data_id FROM accessible)`;
+    }
+
+    const { ctePrefix, whereClause, params } = this.buildGroupFilterClause(dto, ownerParams.length);
+
+    // Merge CTEs: owner accessible + search name_matches
+    let mergedCtePrefix: string;
+    if (ownerCtePrefix && ctePrefix) {
+      // ctePrefix starts with "WITH name_matches AS (...)" — strip "WITH" and combine
+      const searchCte = ctePrefix.replace(/^WITH\s+/, '');
+      mergedCtePrefix = `WITH ${ownerCtePrefix}, ${searchCte}`;
+    } else if (ownerCtePrefix) {
+      mergedCtePrefix = `WITH ${ownerCtePrefix}`;
+    } else {
+      mergedCtePrefix = ctePrefix;
+    }
+
+    // Merge params: owner params first, then shift search params
+    const mergedParams = [...ownerParams, ...params];
+    const mergedWhereClause = whereClause + ownerWhereClause;
+
+    const cteLine = mergedCtePrefix ? `${mergedCtePrefix} ` : '';
 
     // Step 1a: Count distinct groups
     const countQuery = `${cteLine}SELECT COUNT(*)::int as total FROM (
       SELECT DISTINCT da.data_id, da.module_id FROM data_access da
+      JOIN modules m ON m.id = da.module_id
       LEFT JOIN data_access_roles dar ON dar.data_access_id = da.id AND dar.deleted_at IS NULL
       LEFT JOIN role r ON r.id = dar.role_id
       LEFT JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
       LEFT JOIN users u ON u.id = dau.user_id
-      ${whereClause}
+      ${mergedWhereClause}
     ) groups`;
-    const countResult = await this.connection.query(countQuery, params);
+    const countResult = await this.connection.query(countQuery, mergedParams);
     const total: number = countResult[0]?.total || 0;
 
     // Step 1b: Paginated groups with module info
     const { page, limit } = pagination;
     const offset = (page - 1) * limit;
-    const limitIdx = params.length + 1;
-    const offsetIdx = params.length + 2;
-    const groupParams = [...params, limit, offset];
+    const limitIdx = mergedParams.length + 1;
+    const offsetIdx = mergedParams.length + 2;
+    const groupParams = [...mergedParams, limit, offset];
     const safeSortOrder = sortParams?.sort_order === 'ASC' ? 'ASC' : 'DESC';
 
     const groupsQuery = `${cteLine}
@@ -96,7 +153,7 @@ export class DataAccessService {
       LEFT JOIN role r ON r.id = dar.role_id
       LEFT JOIN data_access_users dau ON dau.data_access_id = da.id AND dau.deleted_at IS NULL
       LEFT JOIN users u ON u.id = dau.user_id
-      ${whereClause}
+      ${mergedWhereClause}
       GROUP BY da.data_id, da.module_id, m.table_name, m.path, m.name
       ORDER BY latest_created_at ${safeSortOrder}
       LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
@@ -164,21 +221,23 @@ export class DataAccessService {
 
   /**
    * Build WHERE clause with params for group-level filtering.
-   * When dto.search is present, includes a name_matches CTE to search record names in target tables.
+   * When dto.keyword is present, includes a name_matches CTE to search record names in target tables.
    * Returns { ctePrefix, whereClause, params }.
    */
-  private buildGroupFilterClause(dto: SearchDataAccessDto) {
+  private buildGroupFilterClause(dto: SearchDataAccessDto, paramOffset = 0) {
     const params: any[] = [];
     let ctePrefix = '';
     let whereClause = 'WHERE da.deleted_at IS NULL';
 
+    const idx = () => params.length + paramOffset;
+
     if (dto.module_id) {
       params.push(dto.module_id);
-      whereClause += ` AND da.module_id = $${params.length}`;
+      whereClause += ` AND da.module_id = $${idx()}`;
     }
     if (dto.scope_type) {
       params.push(dto.scope_type);
-      whereClause += ` AND da.scope_type = $${params.length}`;
+      whereClause += ` AND da.scope_type = $${idx()}`;
     }
     // "has at least one" — groups with mixed subjects still appear under either filter
     if (dto.subject_type === 'role') {
@@ -188,21 +247,33 @@ export class DataAccessService {
     }
     if (dto.role_id) {
       params.push(dto.role_id);
-      whereClause += ` AND dar.role_id = $${params.length}`;
+      whereClause += ` AND dar.role_id = $${idx()}`;
     }
     if (dto.user_id) {
       params.push(dto.user_id);
-      whereClause += ` AND dau.user_id = $${params.length}`;
+      whereClause += ` AND dau.user_id = $${idx()}`;
     }
-    if (dto.search) {
-      params.push(`%${dto.search}%`);
-      const searchParam = `$${params.length}`;
+    if (dto.keyword) {
+      const kw = dto.keyword.trim();
+      const isNumeric = /^\d+$/.test(kw);
+
+      // For record name search: always use ILIKE partial match
+      params.push(`%${kw}%`);
+      const likeParam = `$${idx()}`;
 
       // Build name_matches CTE: UNION across target tables for record name search
-      const nameMatchBranches = this.buildNameMatchesCTE(searchParam, dto.module_id);
+      const nameMatchBranches = this.buildNameMatchesCTE(likeParam, dto.module_id);
       ctePrefix = `WITH name_matches AS (\n${nameMatchBranches}\n)`;
 
-      whereClause += ` AND (CAST(da.data_id AS TEXT) ILIKE ${searchParam} OR unaccent(r.name) ILIKE unaccent(${searchParam}) OR unaccent(u.full_name) ILIKE unaccent(${searchParam}) OR (da.data_id, da.module_id) IN (SELECT data_id, module_id FROM name_matches))`;
+      if (isNumeric) {
+        // Exact match on data_id when keyword is a number, OR partial match on record name
+        params.push(Number(kw));
+        const exactParam = `$${idx()}`;
+        whereClause += ` AND (da.data_id = ${exactParam} OR (da.data_id, da.module_id) IN (SELECT data_id, module_id FROM name_matches))`;
+      } else {
+        // Non-numeric: only search record name via name_matches CTE
+        whereClause += ` AND (da.data_id, da.module_id) IN (SELECT data_id, module_id FROM name_matches)`;
+      }
     }
 
     return { ctePrefix, whereClause, params };
@@ -715,17 +786,25 @@ export class DataAccessService {
 
   // ── Records Browser ─────────────────────────────────────────────────────────
 
-  async getRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams) {
+  async getRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams, userInfo?: ScopeUserInfo) {
     if (!ALLOWED_TABLES.has(tableName)) {
       throw new BadRequestException('table_not_allowed');
     }
 
+    const isAdmin = !userInfo || userInfo.client === 'admin';
+
+    // Non-admin: resolve owner scope
+    if (!isAdmin) {
+      return this.getScopedRecords(tableName, dto, pagination, userInfo);
+    }
+
+    // Admin: return all records (existing behavior)
     const nameCol = getNameColumn(tableName);
     const params: any[] = [];
     let whereClause = 'WHERE deleted_at IS NULL';
 
-    if (dto.search) {
-      params.push(`%${dto.search}%`);
+    if (dto.keyword) {
+      params.push(`%${dto.keyword}%`);
       whereClause += ` AND (CAST(id AS TEXT) ILIKE $${params.length} OR CAST(${nameCol} AS TEXT) ILIKE $${params.length})`;
     }
 
@@ -739,15 +818,84 @@ export class DataAccessService {
       whereClause += ` AND created_at <= $${params.length}`;
     }
 
-    // Count total matching rows
     const countQuery = `SELECT COUNT(*)::int as total FROM "${tableName}" ${whereClause}`;
     const countResult = await this.connection.query<{ total: number }[]>(countQuery, params);
     const total: number = countResult[0]?.total || 0;
 
-    // Fetch paginated data
     params.push(pagination.limit, pagination.skip || 0);
     const dataQuery = `SELECT id, ${nameCol} as display_name, created_at FROM "${tableName}" ${whereClause} ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
     const data = await this.connection.query<Record<string, unknown>[]>(dataQuery, params);
+
+    return {
+      data,
+      meta: {
+        totalItems: total,
+        itemCount: data.length,
+        itemsPerPage: pagination.limit,
+        currentPage: pagination.page,
+        totalPages: Math.ceil(total / pagination.limit) || 1,
+      },
+    };
+  }
+
+  /** Owner-scoped getRecords for non-admin users */
+  private async getScopedRecords(
+    tableName: string,
+    dto: SearchRecordsDto,
+    pagination: PaginationParams,
+    userInfo: ScopeUserInfo,
+  ) {
+    const emptyResult = {
+      data: [],
+      meta: {
+        totalItems: 0,
+        itemCount: 0,
+        itemsPerPage: pagination.limit,
+        currentPage: pagination.page,
+        totalPages: 1,
+      },
+    };
+
+    // Get user's active role IDs
+    const roleRows: { role_id: number }[] = await this.connection.query(
+      'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
+      [userInfo.userId],
+    );
+    const roleIds = roleRows.map((r) => r.role_id);
+    if (!roleIds.length) return emptyResult;
+
+    // Build owner join chain
+    const ownerChain = buildOwnerJoinChain(tableName, `$1`);
+    if (!ownerChain) return emptyResult;
+
+    const nameCol = getNameColumn(tableName);
+    const params: any[] = [roleIds];
+    let whereExtra = '';
+
+    if (dto.keyword) {
+      params.push(`%${dto.keyword}%`);
+      whereExtra += ` AND (CAST(t0.id AS TEXT) ILIKE $${params.length} OR CAST(t0."${nameCol}" AS TEXT) ILIKE $${params.length})`;
+    }
+
+    if (dto.date_from) {
+      params.push(dto.date_from);
+      whereExtra += ` AND t0.created_at >= $${params.length}`;
+    }
+
+    if (dto.date_to) {
+      params.push(dto.date_to);
+      whereExtra += ` AND t0.created_at <= $${params.length}`;
+    }
+
+    // Count scoped records
+    const countQuery = `SELECT COUNT(DISTINCT t0.id)::int as total FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL${whereExtra}`;
+    const countResult = await this.connection.query(countQuery, params);
+    const total: number = countResult[0]?.total || 0;
+
+    // Fetch paginated scoped data
+    params.push(pagination.limit, pagination.skip || 0);
+    const dataQuery = `SELECT DISTINCT t0.id, t0."${nameCol}" as display_name, t0.created_at FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL${whereExtra} ORDER BY t0.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    const data = await this.connection.query(dataQuery, params);
 
     return {
       data,

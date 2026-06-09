@@ -7,7 +7,7 @@ export class SearchDataAccessDto {
   @ApiPropertyOptional({ description: 'Search by data_id, role name, or user full_name' })
   @IsOptional()
   @IsString()
-  search?: string;
+  keyword?: string;
 
   @ApiPropertyOptional({ description: 'Filter by module ID' })
   @IsOptional()

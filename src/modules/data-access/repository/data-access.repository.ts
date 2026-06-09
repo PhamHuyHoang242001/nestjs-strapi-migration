@@ -43,11 +43,19 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
       query.andWhere('da.scope_type = :scope_type', { scope_type: dto.scope_type });
     }
 
-    if (dto.search) {
-      query.andWhere(
-        '(CAST(da.data_id AS TEXT) ILIKE :search OR unaccent(role.name) ILIKE unaccent(:search) OR unaccent(user.full_name) ILIKE unaccent(:search))',
-        { search: `%${dto.search}%` },
-      );
+    if (dto.keyword) {
+      const kw = dto.keyword.trim();
+      const isNumeric = /^\d+$/.test(kw);
+      if (isNumeric) {
+        // Exact match on data_id when keyword is a number
+        query.andWhere('da.data_id = :dataId', { dataId: Number(kw) });
+      } else {
+        // Non-numeric: partial match on role name or user full_name
+        query.andWhere(
+          '(unaccent(role.name) ILIKE unaccent(:keyword) OR unaccent(user.full_name) ILIKE unaccent(:keyword))',
+          { keyword: `%${kw}%` },
+        );
+      }
     }
 
     const sortField = sortParams?.sort_field ? `da.${sortParams.sort_field}` : 'da.created_at';

@@ -178,7 +178,7 @@ describe('DataAccessService.getRecords()', () => {
       .mockResolvedValueOnce([{ id: 1, display_name: 'Revenue', created_at: '2026-01-01' }]);
 
     const { service } = createService({ query });
-    await service.getRecords('bi_hub_reports', { search: 'Revenue' }, { page: 1, limit: 20, skip: 0 });
+    await service.getRecords('bi_hub_reports', { keyword: 'Revenue' }, { page: 1, limit: 20, skip: 0 });
 
     const countSQL = query.mock.calls[0][0] as string;
     expect(countSQL).toContain('ILIKE');
