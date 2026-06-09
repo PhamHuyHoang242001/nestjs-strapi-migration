@@ -1,4 +1,5 @@
 import { DynamicModule, Module, Provider } from '@nestjs/common';
+import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { TransformFileController } from './transform-file.controller';
 import { TransformFileService } from './transform-file.service';
 
@@ -11,6 +12,7 @@ export class TransformFileModule {
       controllers: [TransformFileController],
       providers: [
         TransformFileService,
+        AdminRepository,
         ...options.resolvers,
         {
           provide: 'TRANSFORM_FILE_RESOLVERS',

@@ -5,8 +5,9 @@ import { Sort, SortParams } from '@common/decorators/sort.decorator';
 import { UserScope } from '@common/decorators/user.decorator';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RequestWithInfo } from '@common/types/request-with-info';
 import { DataAccessService } from './data-access.service';
 import { CreateBulkDataAccessDto } from './dto/create-bulk-data-access.dto';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
@@ -28,8 +29,13 @@ export class DataAccessController {
     @Query() query: SearchDataAccessDto,
     @Sort({ allowedFields: ['created_at'] }) sortParams: SortParams,
     @PaginationDecorator() pagination: PaginationParams,
+    @Req() req: RequestWithInfo,
   ) {
-    return this.dataAccessService.list(query, sortParams, pagination);
+    const user = req.info?.user;
+    return this.dataAccessService.list(query, sortParams, pagination, {
+      userId: user?.id as number | undefined,
+      client: req.info?.client,
+    });
   }
 
   @ApiOperation({ summary: 'Get data access rule details with relations' })

@@ -67,7 +67,7 @@ export class BIHubDiagnosticReport extends BaseAuthorAdminSoftDeleteColumn {
   @Column({ type: 'int', nullable: true, default: 0 })
   total_view: number;
 
-  @Column({ type: 'text', nullable: false })
+  @Column({ type: 'text', nullable: true })
   txt_diagnostic_scope: string;
 
   @Column({ type: 'text', nullable: true })

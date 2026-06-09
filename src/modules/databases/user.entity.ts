@@ -28,6 +28,12 @@ export class Users extends BaseSoftDeleteEntity {
   public country_iso: string;
 
   @Column({ nullable: true })
+  public phone_code: string;
+
+  @Column({ nullable: true })
+  public phone: string;
+
+  @Column({ nullable: true })
   public phone_iso: string;
 
   @Column({ enum: UserType, default: UserType.USER })

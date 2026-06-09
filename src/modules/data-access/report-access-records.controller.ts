@@ -3,8 +3,9 @@ import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { RequestWithInfo } from '@common/types/request-with-info';
 import { DataAccessService } from './data-access.service';
 import { SearchRecordsDto } from './dto/search-records.dto';
 
@@ -23,7 +24,12 @@ export class ReportAccessRecordsController {
     @Param('tableName') tableName: string,
     @Query() query: SearchRecordsDto,
     @PaginationDecorator() pagination: PaginationParams,
+    @Req() req: RequestWithInfo,
   ) {
-    return this.dataAccessService.getRecords(tableName, query, pagination);
+    const user = req.info?.user;
+    return this.dataAccessService.getRecords(tableName, query, pagination, {
+      userId: user?.id as number | undefined,
+      client: req.info?.client,
+    });
   }
 }

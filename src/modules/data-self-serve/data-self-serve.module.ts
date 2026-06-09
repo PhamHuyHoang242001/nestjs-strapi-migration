@@ -16,6 +16,7 @@ import { DataSelfServeListener } from './data-self-serve.listener';
 import { DataSelfServeQuotaService } from './data-self-serve-quota.service';
 import { DataSelfServeService } from './data-self-serve.service';
 import { DataSelfServeStorageService } from './data-self-serve-storage.service';
+import { AdminRepository } from '@modules/admins/repository/admin.repository';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { DataSelfServeStorageService } from './data-self-serve-storage.service';
     DataSelfServeStorageService,
     DataSelfServeListener,
     ConfigDataSelfServeService,
+    AdminRepository,
   ],
 })
 export class DataSelfServeModule {}
