@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Access List API — Before vs After</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+:root {
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'SF Mono', monospace;
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --surface2: #e8eef4;
+  --surface-elevated: #f5f8fb;
+  --border: rgba(30, 60, 100, 0.1);
+  --border-bright: rgba(30, 60, 100, 0.2);
+  --text: #1a2a3a;
+  --text-dim: #5a7090;
+  --text-bright: #0d1b2a;
+  --accent: #1a5fa8;
+  --accent-dim: rgba(26, 95, 168, 0.08);
+  --node-a: #c2410c;
+  --node-a-dim: rgba(194, 65, 12, 0.07);
+  --node-b: #0f766e;
+  --node-b-dim: rgba(15, 118, 110, 0.07);
+  --node-c: #1a5fa8;
+  --node-c-dim: rgba(26, 95, 168, 0.07);
+  --green: #059669;
+  --green-dim: rgba(5, 150, 105, 0.08);
+  --red: #dc2626;
+  --red-dim: rgba(220, 38, 38, 0.08);
+  --amber: #d97706;
+  --amber-dim: rgba(217, 119, 6, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1421;
+    --surface: #111d2e;
+    --surface2: #162438;
+    --surface-elevated: #1a2940;
+    --border: rgba(100, 160, 220, 0.12);
+    --border-bright: rgba(100, 160, 220, 0.22);
+    --text: #c8d8e8;
+    --text-dim: #607080;
+    --text-bright: #e8f0f8;
+    --accent: #4a90d9;
+    --accent-dim: rgba(74, 144, 217, 0.1);
+    --node-a: #fb923c;
+    --node-a-dim: rgba(251, 146, 60, 0.12);
+    --node-b: #5eead4;
+    --node-b-dim: rgba(94, 234, 212, 0.1);
+    --node-c: #60a5fa;
+    --node-c-dim: rgba(96, 165, 250, 0.1);
+    --green: #34d399;
+    --green-dim: rgba(52, 211, 153, 0.1);
+    --red: #f87171;
+    --red-dim: rgba(248, 113, 113, 0.1);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251, 191, 36, 0.1);
+  }
+}
+[data-theme="dark"] {
+  --bg: #0d1421;
+  --surface: #111d2e;
+  --surface2: #162438;
+  --surface-elevated: #1a2940;
+  --border: rgba(100, 160, 220, 0.12);
+  --border-bright: rgba(100, 160, 220, 0.22);
+  --text: #c8d8e8;
+  --text-dim: #607080;
+  --text-bright: #e8f0f8;
+  --accent: #4a90d9;
+  --accent-dim: rgba(74, 144, 217, 0.1);
+  --node-a: #fb923c;
+  --node-a-dim: rgba(251, 146, 60, 0.12);
+  --node-b: #5eead4;
+  --node-b-dim: rgba(94, 234, 212, 0.1);
+  --node-c: #60a5fa;
+  --node-c-dim: rgba(96, 165, 250, 0.1);
+  --green: #34d399;
+  --green-dim: rgba(52, 211, 153, 0.1);
+  --red: #f87171;
+  --red-dim: rgba(248, 113, 113, 0.1);
+  --amber: #fbbf24;
+  --amber-dim: rgba(251, 191, 36, 0.1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--text);
+  padding: 40px;
+  overflow-wrap: break-word;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.theme-toggle {
+  position: fixed; top: 16px; right: 16px; z-index: 300;
+  width: 36px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: background 0.15s, color 0.15s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.theme-toggle:hover { background: var(--surface2); color: var(--text); }
+
+.wrap {
+  max-width: 1400px; margin: 0 auto;
+  display: grid; grid-template-columns: 170px 1fr; gap: 0 40px;
+}
+.main { min-width: 0; }
+
+/* TOC */
+.toc {
+  position: sticky; top: 24px; align-self: start;
+  padding: 14px 0; grid-row: 1 / -1;
+  max-height: calc(100dvh - 48px); overflow-y: auto;
+}
+.toc::-webkit-scrollbar { width: 3px; }
+.toc::-webkit-scrollbar-thumb { background: var(--surface-elevated); border-radius: 2px; }
+.toc-title {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--text-dim); padding: 0 0 10px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.toc a {
+  display: block; font-size: 11px; color: var(--text-dim);
+  text-decoration: none; padding: 4px 8px; border-radius: 5px;
+  border-left: 2px solid transparent; transition: all 0.15s;
+  line-height: 1.4; margin-bottom: 1px;
+}
+.toc a:hover { color: var(--text); background: var(--surface2); }
+.toc a.active { color: var(--text); border-left-color: var(--accent); }
+
+@media (max-width: 1000px) {
+  .wrap { grid-template-columns: 1fr; padding-top: 0; }
+  body { padding-top: 0; }
+  .toc {
+    position: sticky; top: 0; z-index: 200; max-height: none;
+    display: flex; gap: 4px; align-items: center;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 10px 0; margin: 0 -40px; padding-left: 40px; padding-right: 40px;
+    grid-row: auto;
+  }
+  .toc::-webkit-scrollbar { display: none; }
+  .toc-title { display: none; }
+  .toc a {
+    white-space: nowrap; flex-shrink: 0; border-left: none;
+    border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0;
+    padding: 6px 10px; font-size: 10px;
+  }
+  .toc a.active { border-left: none; border-bottom-color: var(--accent); background: var(--surface); }
+  .main { padding-top: 20px; }
+  .sec-head { scroll-margin-top: 52px; }
+}
+
+h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: var(--text-bright); letter-spacing: -0.5px; }
+.subtitle { font-size: 15px; color: var(--text-dim); margin-bottom: 32px; line-height: 1.5; }
+
+.sec-head {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--accent); margin: 40px 0 16px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.sec-head::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0;
+}
+
+.ve-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px 24px; margin-bottom: 16px;
+  animation: fadeUp 0.4s ease-out both;
+  animation-delay: calc(var(--i, 0) * 0.05s);
+}
+.ve-card--elevated {
+  background: var(--surface-elevated);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+.ve-card--hero {
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border-color: color-mix(in srgb, var(--border) 50%, var(--accent) 50%);
+}
+.ve-card--accent-a { border-left: 3px solid var(--node-a); }
+.ve-card--accent-b { border-left: 3px solid var(--node-b); }
+.ve-card__label {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+}
+.ve-card__label--a { color: var(--node-a); }
+.ve-card__label--b { color: var(--node-b); }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Diff panels */
+.diff-panels {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  margin-bottom: 16px;
+}
+.diff-panels > * { min-width: 0; overflow-wrap: break-word; }
+.diff-panel__header {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1px; padding: 10px 16px;
+}
+.diff-panel__header--before {
+  background: var(--red-dim); color: var(--red);
+  border-bottom: 2px solid var(--red);
+}
+.diff-panel__header--after {
+  background: var(--green-dim); color: var(--green);
+  border-bottom: 2px solid var(--green);
+  border-left: 1px solid var(--border);
+}
+.diff-panel__body {
+  padding: 16px; background: var(--surface);
+  font-size: 14px; line-height: 1.7;
+}
+.diff-panel__body:last-child { border-left: 1px solid var(--border); }
+@media (max-width: 768px) {
+  .diff-panels { grid-template-columns: 1fr; }
+  .diff-panel__body:last-child, .diff-panel__header--after { border-left: none; }
+}
+
+/* Code */
+.code-block {
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.5;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+  overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+  margin: 10px 0;
+}
+
+/* Mermaid */
+.mermaid-wrap {
+  position: relative; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 32px 24px; overflow: auto;
+  display: flex; justify-content: center; align-items: center;
+  min-height: 350px; margin-bottom: 16px;
+}
+.diagram-hint {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-dim); margin-bottom: 8px; opacity: 0.7;
+}
+
+/* Flow arrow */
+.flow-arrow {
+  display: flex; justify-content: center; align-items: center; gap: 8px;
+  color: var(--text-dim); font-family: var(--font-mono); font-size: 12px;
+  padding: 6px 0;
+}
+.flow-arrow svg { width: 20px; height: 20px; fill: none; stroke: var(--border-bright); stroke-width: 2; stroke-linecap: round; }
+
+/* KPI row */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi-card {
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.kpi-card__value {
+  font-size: 28px; font-weight: 700; letter-spacing: -1px;
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.kpi-card__label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text-dim); margin-top: 4px;
+}
+
+/* Tags */
+.tag {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  padding: 2px 7px; border-radius: 4px; display: inline-block;
+}
+.tag--a { background: var(--node-a-dim); color: var(--node-a); }
+.tag--b { background: var(--node-b-dim); color: var(--node-b); }
+.tag--c { background: var(--node-c-dim); color: var(--node-c); }
+
+p { font-size: 15px; line-height: 1.7; margin-bottom: 12px; }
+strong { color: var(--text-bright); }
+ul, ol { padding-left: 1.5em; margin-bottom: 12px; font-size: 15px; line-height: 1.7; }
+code { font-family: var(--font-mono); font-size: 12px; background: var(--accent-dim); color: var(--accent); padding: 1px 5px; border-radius: 3px; }
+
+.step-grid { display: grid; grid-template-columns: 40px 1fr; gap: 0 16px; margin: 12px 0; }
+.step-num {
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+  color: var(--accent); width: 32px; height: 32px;
+  border: 2px solid var(--accent); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.step-content { padding-top: 4px; }
+.step-connector { width: 2px; height: 20px; background: var(--border); margin: 0 auto; }
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle light/dark theme"></button>
+<script>
+(function() {
+  var toggle = document.getElementById('themeToggle');
+  var saved = localStorage.getItem('theme');
+  var initial = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  if (saved) document.documentElement.setAttribute('data-theme', initial);
+  toggle.textContent = initial === 'dark' ? '\u2600' : '\u263E';
+  toggle.addEventListener('click', function() {
+    var current = document.documentElement.getAttribute('data-theme')
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    toggle.textContent = next === 'dark' ? '\u2600' : '\u263E';
+  });
+})();
+</script>
+
+<div class="wrap">
+  <nav class="toc" id="toc">
+    <div class="toc-title">Contents</div>
+    <a href="#s1">1. Overview</a>
+    <a href="#s2">2. Flow cu (Before)</a>
+    <a href="#s3">3. Flow moi (After)</a>
+    <a href="#s4">4. So sanh Response</a>
+    <a href="#s5">5. Khac biet chinh</a>
+  </nav>
+
+  <div class="main">
+    <h1>GET /v1/data-access/list</h1>
+    <p class="subtitle">So sanh flow lay data truoc va sau khi refactor tu flat rows sang grouped response</p>
+
+    <!-- ═══ S1: OVERVIEW ═══ -->
+    <div id="s1" class="sec-head">1 &mdash; Overview</div>
+
+    <div class="ve-card ve-card--hero" style="--i:0">
+      <p><strong>Van de:</strong> Endpoint <code>/list</code> cu tra ve flat rows (1 row = 1 subject). Rule co N roles + M users tao ra N+M rows. Pagination ap dung tren flat rows, khong the hien duoc "bao nhieu record duoc cap quyen".</p>
+      <p><strong>Giai phap:</strong> Group by <code>(data_id, module_id)</code>. Moi group = 1 record voi mang rules cua no. Pagination o cap group. Bo sung <code>record_name</code> tu target table.</p>
+    </div>
+
+    <div class="kpi-row" style="--i:1">
+      <div class="kpi-card">
+        <div class="kpi-card__value" style="color:var(--node-a)">2</div>
+        <div class="kpi-card__label">DB Queries (Before)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__value" style="color:var(--node-b)">3-5</div>
+        <div class="kpi-card__label">DB Queries (After)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-card__value" style="color:var(--accent)">0</div>
+        <div class="kpi-card__label">N+1 Problems</div>
+      </div>
+    </div>
+
+    <!-- ═══ S2: BEFORE ═══ -->
+    <div id="s2" class="sec-head">2 &mdash; Flow cu (Before)</div>
+
+    <div class="ve-card ve-card--accent-a" style="--i:2">
+      <div class="ve-card__label ve-card__label--a">Query Strategy</div>
+      <p>Dung <strong>1 CTE lon</strong> (flattened) chua 2 branch UNION ALL: role branch va user branch. Ket qua la flat rows, moi row = 1 subject voi 1 rule. Pagination ap dung truc tiep tren flat result.</p>
+    </div>
+
+    <p class="diagram-hint">Flow xu ly cua <code>list()</code> method cu:</p>
+    <div class="mermaid-wrap">
+      <pre class="mermaid">
+flowchart TD
+    A["Client goi GET /list?filters"] --> B["Build WHERE clause<br/>module_id, scope_type, role_id, user_id, search"]
+    B --> C["Build CTE flattened<br/>UNION ALL: role branch + user branch"]
+    C --> D["Query 1: COUNT flat rows<br/>SELECT COUNT(*) FROM flattened WHERE ..."]
+    D --> E["Query 2: Paginated flat rows<br/>SELECT * FROM flattened WHERE ...<br/>ORDER BY created_at DESC<br/>LIMIT X OFFSET Y"]
+    E --> F["Tra ve truc tiep<br/>{ data: flatRows, meta: pagination }"]
+
+    style A fill:#fff3e0,stroke:#c2410c,color:#1a2a3a
+    style C fill:#e3f2fd,stroke:#1a5fa8,color:#1a2a3a
+    style D fill:#fce4ec,stroke:#c2410c,color:#1a2a3a
+    style E fill:#fce4ec,stroke:#c2410c,color:#1a2a3a
+    style F fill:#e8f5e9,stroke:#059669,color:#1a2a3a
+      </pre>
+    </div>
+
+    <div class="ve-card" style="--i:3">
+      <div class="ve-card__label ve-card__label--a">CTE Flattened Structure</div>
+      <pre class="code-block">WITH flattened AS (
+  -- Role branch: 1 row per (rule, role)
+  SELECT da.id as rule_id, da.data_id, ...,
+         'role' as subject_type, r.id as subject_id,
+         r.name as subject_name, NULL::jsonb as permissions
+  FROM data_access da
+  JOIN data_access_roles dar ON dar.data_access_id = da.id
+  JOIN role r ON r.id = dar.role_id
+
+  UNION ALL
+
+  -- User branch: 1 row per (rule, user) voi permissions aggregated
+  SELECT da.id as rule_id, da.data_id, ...,
+         'user' as subject_type, u.id as subject_id,
+         u.full_name as subject_name,
+         json_agg(json_build_object('id', p.id, 'name', p.name))
+  FROM data_access da
+  JOIN data_access_users dau ON ...
+  JOIN users u ON ...
+  JOIN permission p ON ...
+  GROUP BY ..., u.id
+)</pre>
+      <p style="margin-top:10px;color:var(--text-dim);font-size:13px;">Rule co 3 roles + 2 users &rarr; 5 flat rows. Pagination count = tong flat rows (khong phai tong records).</p>
+    </div>
+
+    <!-- ═══ S3: AFTER ═══ -->
+    <div id="s3" class="sec-head">3 &mdash; Flow moi (After)</div>
+
+    <div class="ve-card ve-card--accent-b" style="--i:4">
+      <div class="ve-card__label ve-card__label--b">Query Strategy</div>
+      <p>Dung <strong>4 buoc tuan tu</strong>: (1) Count + paginate groups, (2) Fetch rules cho groups do, (3) Batch lay record names, (4) Assemble response. Pagination o cap group, khong o cap flat row.</p>
+    </div>
+
+    <p class="diagram-hint">Flow xu ly cua <code>list()</code> method moi:</p>
+    <div class="mermaid-wrap">
+      <pre class="mermaid">
+flowchart TD
+    A["Client goi GET /list?filters"] --> B["buildGroupFilterClause()<br/>Build WHERE + name_matches CTE"]
+    B --> Q1["Step 1a: COUNT distinct groups<br/>SELECT COUNT(DISTINCT data_id, module_id)<br/>FROM data_access da ..."]
+    Q1 --> Q2["Step 1b: Paginated groups<br/>SELECT data_id, module_id, table_name,<br/>module_path, module_name,<br/>MAX(created_at) as latest_created_at<br/>GROUP BY ... ORDER BY latest_created_at<br/>LIMIT X OFFSET Y"]
+    Q2 --> CHK{"Groups empty?"}
+    CHK -->|"Co"| RET0["Return { data: [], meta }"]
+    CHK -->|"Khong"| Q3["Step 2: fetchRulesForGroups()<br/>Reuse CTE flattened, filter by<br/>(data_id, module_id) IN tuples"]
+    Q3 --> Q4["Step 3: batchFetchRecordNames()<br/>Group data_ids by table_name<br/>Query moi table 1 lan"]
+    Q4 --> ASM["Step 4: Assemble<br/>Map rules vao groups<br/>Attach record_name"]
+    ASM --> RET["Tra ve<br/>{ data: groupedItems, meta }"]
+
+    style A fill:#e0f2f1,stroke:#0f766e,color:#1a2a3a
+    style Q1 fill:#e3f2fd,stroke:#1a5fa8,color:#1a2a3a
+    style Q2 fill:#e3f2fd,stroke:#1a5fa8,color:#1a2a3a
+    style Q3 fill:#fff3e0,stroke:#c2410c,color:#1a2a3a
+    style Q4 fill:#f3e5f5,stroke:#7b1fa2,color:#1a2a3a
+    style ASM fill:#e8f5e9,stroke:#059669,color:#1a2a3a
+    style RET fill:#e8f5e9,stroke:#059669,color:#1a2a3a
+    style RET0 fill:#fafafa,stroke:#999,color:#1a2a3a
+      </pre>
+    </div>
+
+    <div class="step-grid" style="--i:5">
+      <div><div class="step-num">1</div></div>
+      <div class="step-content">
+        <strong>Count + Paginate Groups</strong>
+        <p>Query <code>SELECT DISTINCT data_id, module_id</code> voi cac filter (module_id, scope_type, role_id, user_id, search + record_name). Pagination ap dung o day &mdash; <code>LIMIT/OFFSET</code> tren groups, khong tren flat rows.</p>
+      </div>
+      <div><div class="step-connector"></div></div><div></div>
+      <div><div class="step-num">2</div></div>
+      <div class="step-content">
+        <strong>Fetch Rules cho Groups</strong>
+        <p>Reuse CTE flattened (UNION role + user), nhung them dieu kien <code>WHERE (data_id, module_id) IN (...)</code> chi lay rules cua groups trong trang hien tai. Khong fetch toan bo.</p>
+      </div>
+      <div><div class="step-connector"></div></div><div></div>
+      <div><div class="step-num">3</div></div>
+      <div class="step-content">
+        <strong>Batch Record Names</strong>
+        <p>Group cac <code>data_id</code> theo <code>table_name</code>, query moi target table 1 lan. VD: <code>SELECT id, "name" FROM bi_hub_reports WHERE id = ANY($1)</code>. Khong N+1.</p>
+      </div>
+      <div><div class="step-connector"></div></div><div></div>
+      <div><div class="step-num">4</div></div>
+      <div class="step-content">
+        <strong>Assemble Response</strong>
+        <p>Map rules vao tung group theo key <code>data_id-module_id</code>. Attach <code>record_name</code> tu batch lookup. Fallback <code>"ID: {data_id}"</code> neu record da bi xoa.</p>
+      </div>
+    </div>
+
+    <!-- ═══ S4: RESPONSE COMPARISON ═══ -->
+    <div id="s4" class="sec-head">4 &mdash; So sanh Response Shape</div>
+
+    <div class="diff-panels" style="--i:6">
+      <div>
+        <div class="diff-panel__header diff-panel__header--before">Before &mdash; Flat Rows</div>
+        <div class="diff-panel__body">
+          <pre class="code-block">{
+  "data": [
+    {
+      "rule_id": 1,
+      "data_id": 42,
+      "module_id": 5,
+      "table_name": "bi_hub_reports",
+      "module_path": "/BI Hub/Reports",
+      "module_name": "Reports",
+      "scope_type": "allow",
+      "subject_type": "role",
+      "subject_id": 3,
+      "subject_name": "Manager",
+      "permissions": null,
+      ...
+    },
+    {
+      "rule_id": 1,
+      "data_id": 42,  // TRUNG LAP
+      "module_id": 5,  // TRUNG LAP
+      "subject_type": "user",
+      "subject_id": 12,
+      "subject_name": "John Doe",
+      "permissions": [{"id":1,"name":"View"}],
+      ...
+    }
+  ],
+  "meta": {
+    "totalItems": 150, // flat count
+    "itemsPerPage": 20,
+    ...
+  }
+}</pre>
+          <p style="margin-top:8px;color:var(--text-dim);font-size:13px;">1 record (data_id=42) xuat hien nhieu rows. <code>totalItems</code> = tong flat rows.</p>
+        </div>
+      </div>
+      <div>
+        <div class="diff-panel__header diff-panel__header--after">After &mdash; Grouped</div>
+        <div class="diff-panel__body">
+          <pre class="code-block">{
+  "data": [
+    {
+      "data_id": 42,
+      "module_id": 5,
+      "module_name": "Reports",
+      "module_path": "/BI Hub/Reports",
+      "record_name": "Q2 Revenue",
+      "table_name": "bi_hub_reports",
+      "rules": [
+        {
+          "rule_id": 1,
+          "scope_type": "allow",
+          "subject_type": "role",
+          "subject_id": 3,
+          "subject_name": "Manager",
+          "permissions": null,
+          ...
+        },
+        {
+          "rule_id": 1,
+          "scope_type": "allow",
+          "subject_type": "user",
+          "subject_id": 12,
+          "subject_name": "John Doe",
+          "permissions": [{"id":1}],
+          ...
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "totalItems": 50, // group count
+    "itemsPerPage": 10,
+    ...
+  }
+}</pre>
+          <p style="margin-top:8px;color:var(--text-dim);font-size:13px;">1 record = 1 group. <code>totalItems</code> = so records duoc cap quyen. Them <code>record_name</code>.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ S5: KEY DIFFERENCES ═══ -->
+    <div id="s5" class="sec-head">5 &mdash; Khac biet chinh</div>
+
+    <div class="ve-card ve-card--elevated" style="--i:7">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--border-bright);font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);"></th>
+            <th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--border-bright);font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--node-a);">Before</th>
+            <th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--border-bright);font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--node-b);">After</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">Pagination unit</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">Flat row (1 subject)</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">Group (1 record)</td></tr>
+          <tr><td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">totalItems</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">Tong flat rows</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">Tong distinct records</td></tr>
+          <tr><td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">record_name</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);"><span class="tag tag--a">Khong co</span></td><td style="padding:10px 12px;border-bottom:1px solid var(--border);"><span class="tag tag--b">Co &mdash; batch fetch</span></td></tr>
+          <tr><td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">DB queries</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">2 (count + data)</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">3-5 (count + groups + rules + record names)</td></tr>
+          <tr><td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">Search record name</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);"><span class="tag tag--a">Khong</span></td><td style="padding:10px 12px;border-bottom:1px solid var(--border);"><span class="tag tag--b">Co &mdash; name_matches CTE</span></td></tr>
+          <tr><td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:600;">Data trung lap</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">data_id, module_id lap lai moi row</td><td style="padding:10px 12px;border-bottom:1px solid var(--border);">Moi record xuat hien 1 lan</td></tr>
+          <tr><td style="padding:10px 12px;font-weight:600;">Sort</td><td style="padding:10px 12px;">Per flat row created_at</td><td style="padding:10px 12px;">MAX(created_at) per group</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="ve-card" style="--i:8">
+      <div class="ve-card__label ve-card__label--b">Diem manh cua approach moi</div>
+      <ul>
+        <li><strong>UX tot hon:</strong> FE hien thi danh sach records, moi record expand ra xem rules</li>
+        <li><strong>Pagination chinh xac:</strong> "Trang 1 co 10 records" thay vi "10 rows co the la 3 records"</li>
+        <li><strong>Thong tin record:</strong> Hien thi ten report/document ngay trong list, khong can click vao details</li>
+        <li><strong>Tim kiem manh hon:</strong> Tim theo ten record ngoai data_id va ten user/role</li>
+        <li><strong>Khong N+1:</strong> Batch fetch record names theo table_name, moi table query 1 lan</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    fontSize: '14px',
+    primaryColor: '#e3f2fd',
+    primaryTextColor: '#1a2a3a',
+    primaryBorderColor: '#1a5fa8',
+    lineColor: '#5a7090',
+    fontFamily: 'DM Sans, system-ui, sans-serif'
+  }
+});
+</script>
+
+<script>
+(function() {
+  var toc = document.getElementById('toc');
+  var links = toc.querySelectorAll('a');
+  var sections = [];
+  links.forEach(function(link) {
+    var id = link.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) sections.push({ id: id, el: el, link: link });
+  });
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        links.forEach(function(l) { l.classList.remove('active'); });
+        var match = sections.find(function(s) { return s.el === entry.target; });
+        if (match) {
+          match.link.classList.add('active');
+          if (window.innerWidth <= 1000) {
+            match.link.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          }
+        }
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  sections.forEach(function(s) { observer.observe(s.el); });
+  links.forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      var id = link.getAttribute('href').slice(1);
+      var el = document.getElementById(id);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + id); }
+    });
+  });
+})();
+</script>
+</body>
+</html>
