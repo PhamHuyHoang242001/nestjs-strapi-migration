@@ -10,6 +10,7 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DownloadDiagnosticReportDto } from './dto';
 import { REPORT_SORT_MAP } from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
+import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 
 // Excel column config for diagnostic report download
 const DOWNLOAD_COLUMNS: ExcelColumn[] = [
@@ -32,6 +33,7 @@ export class BiHubDiagnosticReportWriteService {
   constructor(
     private readonly readService: BiHubDiagnosticReportService,
     private readonly dataSource: DataSource,
+    private readonly creatorAccessGrant: CreatorAccessGrantService,
   ) {}
 
   private get reportRepo() {
@@ -40,7 +42,9 @@ export class BiHubDiagnosticReportWriteService {
 
   // ── Create report with transaction ─────────────────────────────
   async create(dto: CreateDiagnosticReportDto, userId: number) {
-    return this.dataSource.transaction(async (manager) => {
+    let accessGranted = false;
+
+    const result = await this.dataSource.transaction(async (manager) => {
       const report = manager.create(BIHubDiagnosticReport, {
         name: dto.name,
         summary: dto.summary,
@@ -75,8 +79,22 @@ export class BiHubDiagnosticReportWriteService {
       }
 
       await this.createHistoryRecord(manager, saved.id, undefined, undefined, userId);
+
+      accessGranted = await this.creatorAccessGrant.grantCreatorAccess(manager, {
+        tableName: 'bi_hub_diagnostic_reports',
+        dataId: saved.id,
+        userId,
+      });
+
       return { id: saved.id };
     });
+
+    // Invalidate cache AFTER transaction commits to avoid stale cache race condition
+    if (accessGranted) {
+      this.creatorAccessGrant.invalidateUserCache(userId).catch(() => {});
+    }
+
+    return result;
   }
 
   // ── Update report ──────────────────────────────────────────────

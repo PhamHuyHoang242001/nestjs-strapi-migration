@@ -4,14 +4,17 @@ import { execQueryPaignation } from '@common/utils';
 import { BiHubBiccDepartment } from '@modules/databases/bi-hub-bicc-department.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CreateBiccDepartmentDto, SearchBiccDepartmentDto, UpdateBiccDepartmentDto } from './dto';
+import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 
 @Injectable()
 export class BiccDepartmentService {
   constructor(
     @InjectRepository(BiHubBiccDepartment)
     private readonly biccDeptRepo: Repository<BiHubBiccDepartment>,
+    private readonly dataSource: DataSource,
+    private readonly creatorAccessGrant: CreatorAccessGrantService,
   ) {}
 
   async search(
@@ -53,15 +56,35 @@ export class BiccDepartmentService {
     return dept;
   }
 
-  async create(dto: CreateBiccDepartmentDto) {
+  async create(dto: CreateBiccDepartmentDto, userId?: number) {
     if (dto.code) {
       const existing = await this.biccDeptRepo.findOne({ where: { code: dto.code } });
       if (existing) throw new BadRequestException('Department code already exists');
     }
 
-    const entity = this.biccDeptRepo.create(dto);
-    const saved = await this.biccDeptRepo.save(entity);
-    return { id: saved.id };
+    let accessGranted = false;
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const entity = manager.create(BiHubBiccDepartment, dto as Partial<BiHubBiccDepartment>);
+      const saved = await manager.save(entity);
+
+      if (userId) {
+        accessGranted = await this.creatorAccessGrant.grantCreatorAccess(manager, {
+          tableName: 'bi_hub_bicc_departments',
+          dataId: saved.id,
+          userId,
+        });
+      }
+
+      return { id: saved.id };
+    });
+
+    // Invalidate cache AFTER transaction commits to avoid stale cache race condition
+    if (accessGranted && userId) {
+      this.creatorAccessGrant.invalidateUserCache(userId).catch(() => {});
+    }
+
+    return result;
   }
 
   async update(id: number, dto: UpdateBiccDepartmentDto) {

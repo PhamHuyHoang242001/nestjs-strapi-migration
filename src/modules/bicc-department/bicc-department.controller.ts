@@ -45,8 +45,9 @@ export class BiccDepartmentController {
   @Post('create')
   @HttpCode(200)
   @RequirePermission('bh_bicc_dept_create')
-  create(@Body() body: CreateBiccDepartmentDto) {
-    return this.biccDepartmentService.create(body);
+  create(@Body() body: CreateBiccDepartmentDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number | undefined;
+    return this.biccDepartmentService.create(body, userId ? +userId : undefined);
   }
 
   @ApiOperation({ summary: 'Update BICC department' })

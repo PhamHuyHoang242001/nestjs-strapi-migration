@@ -13,6 +13,7 @@ import { BiHubBiccDepartmentHelperService } from './bi-hub-bicc-department-helpe
 import { DiagnosticTransformFileResolver } from './diagnostic-transform-file.resolver';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { UserRepository } from '@modules/users/repository/users.repository';
+import { DataAccessModule } from '@modules/data-access/data-access.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UserRepository } from '@modules/users/repository/users.repository';
       BIHubDiagnosticHistoryReport,
       BiDiagnosticLog,
     ]),
+    DataAccessModule,
   ],
   controllers: [
     BiHubDiagnosticReportUserController,

@@ -11,6 +11,7 @@ import { HierarchyValidationService } from './hierarchy-validation.service';
 import { DataAccessRepository } from './repository/data-access.repository';
 import { ReportAccessRecordsController } from './report-access-records.controller';
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
+import { CreatorAccessGrantService } from './services/creator-access-grant.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { ChangeHistoryModule } from '@modules/change-history/change-history.modu
       ChangeHistoryModule,
     ],
   controllers: [DataAccessController, ReportAccessRecordsController],
-  providers: [DataAccessService, DataAccessRepository, AdminRepository, HierarchyValidationService],
-  exports: [DataAccessService, DataAccessRepository],
+  providers: [DataAccessService, DataAccessRepository, AdminRepository, HierarchyValidationService, CreatorAccessGrantService],
+  exports: [DataAccessService, DataAccessRepository, CreatorAccessGrantService],
 })
 export class DataAccessModule {}

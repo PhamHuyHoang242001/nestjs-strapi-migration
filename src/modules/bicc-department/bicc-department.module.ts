@@ -5,9 +5,10 @@ import { BiccDepartmentController } from './bicc-department.controller';
 import { BiccDepartmentService } from './bicc-department.service';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { UserRepository } from '@modules/users/repository/users.repository';
+import { DataAccessModule } from '@modules/data-access/data-access.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BiHubBiccDepartment])],
+  imports: [TypeOrmModule.forFeature([BiHubBiccDepartment]), DataAccessModule],
   controllers: [BiccDepartmentController],
   providers: [BiccDepartmentService, AdminRepository, UserRepository],
   exports: [BiccDepartmentService],
