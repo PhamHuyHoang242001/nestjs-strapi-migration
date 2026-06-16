@@ -7,6 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { CreateBiccDepartmentDto, SearchBiccDepartmentDto, UpdateBiccDepartmentDto } from './dto';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
+import type { DataScope } from '@common/authorization/types/data-scope.types';
+import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
+
+const BICC_DEPT_TABLE = 'bi_hub_bicc_departments';
 
 @Injectable()
 export class BiccDepartmentService {
@@ -21,19 +25,13 @@ export class BiccDepartmentService {
     query: SearchBiccDepartmentDto,
     sortParams: SortParams,
     pagination: PaginationParams,
-    accessibleDataIds?: number[],
+    scope: DataScope | null,
   ) {
     const qb = this.biccDeptRepo
       .createQueryBuilder('dept')
       .where('dept.deleted_at IS NULL');
 
-    // Record-level access filtering
-    if (accessibleDataIds && accessibleDataIds.length > 0) {
-      qb.andWhere('dept.id IN (:...accessibleDataIds)', { accessibleDataIds });
-    } else if (accessibleDataIds && accessibleDataIds.length === 0) {
-      // User has no accessible records — return empty
-      return { data: [], meta: { totalItems: 0, itemCount: 0, itemsPerPage: pagination.limit, totalPages: 0, currentPage: pagination.page } };
-    }
+    applyDataScope(qb, 'dept', BICC_DEPT_TABLE, scope);
 
     if (query.keyword) {
       const keyword = query.keyword.trim();
@@ -47,11 +45,15 @@ export class BiccDepartmentService {
     return execQueryPaignation(qb, pagination.page, pagination.limit);
   }
 
-  async details(id: number) {
-    const dept = await this.biccDeptRepo.findOne({
-      where: { id },
-      relations: ['reports', 'diagnostic_reports'],
-    });
+  // 404 covers both "missing" and "out-of-scope" to avoid existence leak.
+  async details(id: number, scope: DataScope | null) {
+    const qb = this.biccDeptRepo
+      .createQueryBuilder('dept')
+      .leftJoinAndSelect('dept.reports', 'reports')
+      .leftJoinAndSelect('dept.diagnostic_reports', 'diagnostic_reports')
+      .where('dept.id = :id', { id });
+    applyDataScope(qb, 'dept', BICC_DEPT_TABLE, scope);
+    const dept = await qb.getOne();
     if (!dept) throw new NotFoundException('BICC Department not found');
     return dept;
   }
