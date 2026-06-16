@@ -1,0 +1,636 @@
+<mxfile host="app.diagrams.net" modified="2026-06-15T15:00:00.000Z" agent="claude-code" version="24.0.0">
+  <diagram name="1. Overview" id="page-overview">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="o-title" value="SO Permission System — End-to-End Pipeline" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="600" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="o-sub" value="src/common/authorization/*  ·  Plan 260615 datascope-split  ·  Updated 2026-06-15" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="380" y="56" width="640" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-pipeline-header" value="Pipeline (top → bottom, per request)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="360" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-req" value="HTTP Request" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="120" y="120" width="200" height="36" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-bearer" value="&lt;b&gt;BearerGuard&lt;/b&gt; (auth)&lt;br/&gt;sets req.info.user, req.info.client" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="180" width="320" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-g1" value="&lt;b&gt;G1 · PermissionGuard&lt;/b&gt;  (verb gate, global yes/no)&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;in&lt;/span&gt;: requiredCodes[] from @RequirePermission · req.info.user&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;out&lt;/span&gt;: pass | 403&lt;br/&gt;&lt;br/&gt;Bypass: user.type==='super_admin'&lt;br/&gt;Else loop verbs: explicit-perm cache hit? → next; miss → load impliedVerbs (lazy, 1× per req)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="250" width="380" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-g2" value="&lt;b&gt;G2 · OwnerScopeGuard&lt;/b&gt;  (write-only structural)&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;in&lt;/span&gt;: @RequireOwnerScope meta · req.body / req.params · userId&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;out&lt;/span&gt;: pass | 403&lt;br/&gt;&lt;br/&gt;targetId from scopeFromBody/scopeFromParam&lt;br/&gt;isInOwnedScope: walk-up HIERARCHY_MAP, EXISTS = ANY(ownedRootIds)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="390" width="380" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-i3" value="&lt;b&gt;I3 · DataAccessInterceptor&lt;/b&gt;  (build per-req scope, never throws)&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;in&lt;/span&gt;: @RequireDataAccess meta · userId&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;out&lt;/span&gt;: req.info.dataScope = {explicit, ownedRoots|null, denies}&lt;br/&gt;&lt;br/&gt;Parallel: explicit (cache) · ownedRoots (cache) · denies (no cache)&lt;br/&gt;Every authenticated user (incl super_admin) goes through scope" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="530" width="380" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-s4" value="&lt;b&gt;S4 · applyDataScope(qb, alias, table, scope)&lt;/b&gt;  (SQL emitter)&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;in&lt;/span&gt;: TypeORM qb · alias · table · req.info.dataScope&lt;br/&gt;&lt;span style=&quot;color:#555&quot;&gt;out&lt;/span&gt;: same qb with WHERE predicate appended&lt;br/&gt;&lt;br/&gt;both branches empty → AND 1=0&lt;br/&gt;else → AND (explicit OR owner_EXISTS) AND id&amp;lt;&amp;gt;ALL(denies)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="670" width="380" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actors-header" value="Actor matrix — what passes / what blocks" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="460" y="90" width="500" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-SA" value="&lt;b&gt;SA · Super-admin&lt;/b&gt; &lt;span style=&quot;color:#888&quot;&gt;users.type === 'super_admin'&lt;/span&gt;&lt;br/&gt;G1 bypass &lt;b&gt;ONLY&lt;/b&gt; · G2 normal · I3 builds scope · S4 normal&lt;br/&gt;→ visibility still constrained by SO + explicit grants" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="120" width="500" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-U" value="&lt;b&gt;U · Plain user&lt;/b&gt; (no verb, no grant, no SO)&lt;br/&gt;G1 → 403  (stops there)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="244" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-R" value="&lt;b&gt;R · User with role-tick verbs&lt;/b&gt; (no grant, no SO)&lt;br/&gt;G1 pass via role.permissions · reads return empty · writes 403 at G2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="298" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-G" value="&lt;b&gt;G · User with explicit data_access grants only&lt;/b&gt;&lt;br/&gt;Verb code lifted from data_access_users via getUserPermissions — G1 pass&lt;br/&gt;Reads filtered to grant ids · writes blocked at G2 (no SO)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="352" width="500" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-S" value="&lt;b&gt;S · SO of root(s)&lt;/b&gt; (has resource_owners row)&lt;br/&gt;G1 via impliedVerbs (subtree of owned roots) · full CRUD inside owned subtree" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="422" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-SG" value="&lt;b&gt;S+G · SO + cross-scope grant&lt;/b&gt;&lt;br/&gt;Reads union (explicit ∪ owner_EXISTS) · writes still blocked at G2" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="476" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-actor-D" value="&lt;b&gt;D · OVERRIDE_OWNER deny&lt;/b&gt; (kill-switch, not cached)&lt;br/&gt;Subtracted last via id&amp;lt;&amp;gt;ALL(denies) — beats both explicit and SO" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;verticalAlign=middle;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="530" width="500" height="44" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-insight" value="&lt;b&gt;Mental model — 2 independent axes&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Verb axis&lt;/b&gt; (G1) — &quot;CAN the user do this action AT ALL?&quot;  · global yes/no  · sourced from: role.permissions ∪ data_access_users(ALLOW) ∪ impliedVerbs(subtree of owned roots)&lt;br/&gt;&lt;br/&gt;&lt;b/&gt;Record axis&lt;/b&gt; (G2 for writes · I3+S4 for queries) — &quot;ON WHICH records?&quot;  · per-record  · sourced from: explicit data_access ids ∪ owner-subtree walk&lt;br/&gt;&lt;br/&gt;Verbs and records are decoupled. Granting a verb on a role does NOT widen record reach. Owning a root grants both axes inside its subtree.&lt;br/&gt;&lt;br/&gt;Why O(roots) wire payload? ownedRoots ships bounded ROOT IDs, not flattened leaves. EXISTS subquery walks FK chain up on the SQL side." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="460" y="600" width="500" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-legend-h" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="90" width="200" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg1" value="Guard (G1, G2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="120" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg2" value="Interceptor" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="156" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg3" value="SQL helper / Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="192" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg4" value="Decision" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="228" width="200" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg5" value="403 / Reject" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="278" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg6" value="Note / SQL snippet" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="314" width="200" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="o-leg7" value="Start / End" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="350" width="200" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-pages" value="&lt;b&gt;Pages&lt;/b&gt;&lt;br/&gt;1. Overview (this)&lt;br/&gt;2. Function I/O Reference&lt;br/&gt;3. VIEW Flow (GET list / single)&lt;br/&gt;4. CREATE Flow&lt;br/&gt;5. UPDATE / DELETE-single&lt;br/&gt;6. DELETE-bulk" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#999999;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="400" width="200" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o-e1" style="endArrow=classic;html=1;" edge="1" parent="1" source="o-req" target="o-bearer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="o-e2" style="endArrow=classic;html=1;" edge="1" parent="1" source="o-bearer" target="o-g1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="o-e3" style="endArrow=classic;html=1;" edge="1" parent="1" source="o-g1" target="o-g2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="o-e4" style="endArrow=classic;html=1;" edge="1" parent="1" source="o-g2" target="o-i3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="o-e5" style="endArrow=classic;html=1;" edge="1" parent="1" source="o-i3" target="o-s4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="2. Function I/O Reference" id="page-functions">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="2100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="f-title" value="Function I/O Reference — answers &quot;how does impliedVerbs know it's GET list?&quot;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="20" width="1000" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="f-sub" value="Each row: signature  ·  Input  ·  Output  ·  Cache key (TTL)  ·  SQL behavior  ·  Note" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="200" y="56" width="1000" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-keyq" value="&lt;b&gt;Key question: &quot;Làm sao impliedVerbs biết tôi đang GET list?&quot;&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;Answer: &lt;b&gt;It doesn't — and it doesn't need to.&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;impliedVerbs returns a single &lt;b&gt;Set&amp;lt;string&amp;gt;&lt;/b&gt; of ALL permission codes the user implicitly holds (= all codes on any module whose path falls under any owned root's module). It's per-USER, not per-endpoint.&lt;br/&gt;&lt;br/&gt;The endpoint declares which verb it needs via &lt;b&gt;@RequirePermission('bh_diag_report_view')&lt;/b&gt;. PermissionGuard iterates required codes and tests each one against the same impliedVerbs Set:&lt;br/&gt;&lt;br/&gt;&amp;nbsp;&amp;nbsp;for (const code of requiredCodes)  if (!impliedVerbs.has(code))  throw 403&lt;br/&gt;&lt;br/&gt;So &quot;GET list&quot; vs &quot;CREATE&quot; differs only in the required code string — view vs create vs edit vs delete are different permission codes seeded against the same modules table." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=10;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="1320" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-h1" value="Signature" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#444444;strokeColor=#222222;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="310" width="320" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="f-h2" value="Input" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#444444;strokeColor=#222222;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="360" y="310" width="240" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="f-h3" value="Output" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#444444;strokeColor=#222222;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="600" y="310" width="240" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="f-h4" value="Cache (TTL)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#444444;strokeColor=#222222;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="840" y="310" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="f-h5" value="Behavior / SQL" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#444444;strokeColor=#222222;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="310" width="320" height="34" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r1-sig" value="&lt;b&gt;PermissionGuard.canActivate&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#777&quot;&gt;guards/permission.guard.ts&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="344" width="320" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r1-in" value="• requiredCodes: string[] (from @RequirePermission)&lt;br/&gt;• req.info.user.{id,type}&lt;br/&gt;• req.info.client" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="344" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r1-out" value="• true → pass to next guard&lt;br/&gt;• ForbiddenException 403 (any missing code)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="344" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r1-cache" value="—  (uses sub-services' caches)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="344" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r1-beh" value="1. No requiredCodes → pass&lt;br/&gt;2. user.type===SUPER_ADMIN → pass&lt;br/&gt;3. For each code: cache.hasPermission(code)? next. Else load impliedVerbs once (lazy); check has(code), else 403." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="344" width="320" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r2-sig" value="&lt;b&gt;OwnerScopeResolverService.getUserImpliedVerbs(userId)&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#777&quot;&gt;services/owner-scope-resolver.service.ts&lt;/span&gt;&lt;br/&gt;&lt;br/&gt;&lt;b&gt;⭐ Answers user's question&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="464" width="320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r2-in" value="• userId: number" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="464" width="240" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r2-out" value="&lt;b&gt;Set&amp;lt;string&amp;gt;&lt;/b&gt; — ALL permission codes the user implicitly holds via SO subtree.&lt;br/&gt;&lt;br/&gt;NOT filtered by endpoint. The caller (Guard) decides which codes matter." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="464" width="240" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r2-cache" value="Redis &lt;b&gt;perm:user:{id}:owner_verbs&lt;/b&gt; &lt;br/&gt;TTL 120s&lt;br/&gt;Invalidated on resource_owners change&lt;br/&gt;&lt;br/&gt;Empty array cached when scope is empty (avoids re-query)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="464" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r2-beh" value="1. getUserOwnerScope(userId) → entries[]&lt;br/&gt;2. rootTables = unique(entries.rootTable)&lt;br/&gt;3. SELECT DISTINCT p.code FROM modules root_mod JOIN modules sub ON sub.path LIKE root_mod.path||'%' JOIN permission p ON p.module_id=sub.id WHERE root_mod.table_name=ANY($1)&lt;br/&gt;→ all verbs under owned subtree" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="464" width="320" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r3-sig" value="&lt;b&gt;OwnerScopeResolverService.getUserOwnerScope(userId)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="644" width="320" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r3-in" value="• userId: number" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="644" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r3-out" value="OwnerScopeEntry[] = { rootTable, rootId, resourceType, roleId }[]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="644" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r3-cache" value="Redis &lt;b&gt;perm:user:{id}:owner_scope&lt;/b&gt;&lt;br/&gt;TTL 120s" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="644" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r3-beh" value="SELECT ro.resource_type, ro.resource_id, ro.role_id FROM resource_owners ro JOIN user_roles ur ON ur.role_id=ro.role_id JOIN role r ON r.id=ro.role_id AND r.status='active' WHERE ur.user_id=$1&lt;br/&gt;Drift-safe: skips unknown resource_type" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="644" width="320" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r4-sig" value="&lt;b&gt;OwnerScopeResolverService.getOwnedRoots(userId, rootTable)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="764" width="320" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r4-in" value="• userId: number&lt;br/&gt;• rootTable: string (e.g. 'bi_hub_bicc_departments')" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="764" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r4-out" value="number[] — root ids owned under that rootTable&lt;br/&gt;[] if user owns nothing for this root" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="764" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r4-cache" value="No own cache.&lt;br/&gt;Reads cached getUserOwnerScope, filters in-memory.&lt;br/&gt;→ &lt;b&gt;0 DB hits&lt;/b&gt; on cache warm" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="764" width="200" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r4-beh" value="return scope.filter(s =&gt; s.rootTable===rootTable).map(s =&gt; s.rootId)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="764" width="320" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r5-sig" value="&lt;b&gt;OwnerScopeResolverService.isInOwnedScope(userId, tableName, recordId)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="864" width="320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r5-in" value="• userId: number&lt;br/&gt;• tableName: string  (e.g. 'bi_hub_diagnostic_reports')&lt;br/&gt;• recordId: number" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="864" width="240" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r5-out" value="boolean&lt;br/&gt;true ↔ record walks up HIERARCHY_MAP to a root the user owns" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="864" width="240" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r5-cache" value="No own cache (always fresh SQL).&lt;br/&gt;Uses cached getUserOwnerScope for ownedRootIds." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="864" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r5-beh" value="1. Look up HIERARCHY_MAP[tableName]&lt;br/&gt;2. Build chain from tableName up to rootTable&lt;br/&gt;3. SELECT 1 FROM &quot;{tableName}&quot; t0 INNER JOIN parents tN ON tN.id=tN-1.fk_col WHERE t0.id=$1 AND tRoot.id=ANY($2) LIMIT 1&lt;br/&gt;→ exists? true" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="864" width="320" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r6-sig" value="&lt;b&gt;PermissionCacheService.hasPermission(userId, code)&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#777&quot;&gt;wraps PermissionQueryService.getUserPermissions&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1024" width="320" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r6-in" value="• userId: number&lt;br/&gt;• code: string (verb e.g. 'bh_diag_report_view')" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1024" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r6-out" value="boolean" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1024" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r6-cache" value="Redis &lt;b&gt;perm:user:{id}:codes&lt;/b&gt;&lt;br/&gt;TTL 300s" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1024" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r6-beh" value="getUserPermissions →&lt;br/&gt;ROLE codes: user_roles → role.permissions&lt;br/&gt;UNION&lt;br/&gt;EXCEPTION codes: data_access_users ALLOW (active date range)&lt;br/&gt;Returns union as Set. Then .has(code).&lt;br/&gt;DENY rules NOT subtracted here — only filter records, not codes." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1024" width="320" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r7-sig" value="&lt;b&gt;PermissionCacheService.getAccessibleRecords(userId, table, code?)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1164" width="320" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r7-in" value="• userId: number&lt;br/&gt;• tableName: string&lt;br/&gt;• permissionCode?: string (optional — narrows by verb)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1164" width="240" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r7-out" value="number[] = (allow_role ∪ allow_user) − (deny_role ∪ deny_user)&lt;br/&gt;= explicit IDs only (NOT SO ids)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1164" width="240" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r7-cache" value="Redis &lt;b&gt;perm:user:{id}:da:{table}:{code?}&lt;/b&gt;&lt;br/&gt;TTL 120s&lt;br/&gt;Different key per (table, code) combination" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1164" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r7-beh" value="4 parallel queries: allow_role, allow_user, deny_role, deny_user&lt;br/&gt;Each filters: scope_type ∈ {ALLOW|DENY}, module.table_name=table, optional permission code, date range&lt;br/&gt;Set arithmetic in JS: (allowR ∪ allowU) \ (denyR ∪ denyU)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1164" width="320" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r8-sig" value="&lt;b&gt;PermissionCacheService.getOverrideOwnerDenies(userId, table, code?)&lt;/b&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1324" width="320" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r8-in" value="• userId, tableName, permissionCode?" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1324" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r8-out" value="number[] — IDs blocked via OVERRIDE_OWNER deny (kill-switch)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1324" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r8-cache" value="&lt;b&gt;NOT cached.&lt;/b&gt;&lt;br/&gt;Kill-switch needs near-real-time admin control (Red Team C3)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1324" width="200" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r8-beh" value="Same parallel allow/deny query shape but scope_type=OVERRIDE_OWNER. Union of role-side and user-side." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1324" width="320" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r9-sig" value="&lt;b&gt;DataAccessInterceptor.intercept&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#777&quot;&gt;interceptors/data-access.interceptor.ts&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1424" width="320" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r9-in" value="• @RequireDataAccess(tableName, code?) meta&lt;br/&gt;• req.info.user.id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1424" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r9-out" value="Sets &lt;b&gt;req.info.dataScope&lt;/b&gt;:&lt;br/&gt;{explicit:number[], ownedRoots:{rootTable,rootIds}|null, denies:number[]}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1424" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r9-cache" value="—  (uses 3 sub-fetches' caches)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1424" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r9-beh" value="No meta → handle()&lt;br/&gt;userId missing → 403&lt;br/&gt;Else Promise.all([getAccessibleRecords, getOwnedRoots(rootTable), getOverrideOwnerDenies])&lt;br/&gt;ownedRoots=null when no root in HIERARCHY_MAP or empty&lt;br/&gt;Never throws on resolution failure" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1424" width="320" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r10-sig" value="&lt;b&gt;applyDataScope(qb, alias, table, scope)&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#777&quot;&gt;data-access-scope.helper.ts (new variant)&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1564" width="320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r10-in" value="• qb: SelectQueryBuilder&amp;lt;T&amp;gt;&lt;br/&gt;• alias: string (e.g. 'report')&lt;br/&gt;• tableName: string&lt;br/&gt;• scope: DataScope | null" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1564" width="240" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r10-out" value="Same qb mutated with WHERE predicate appended (returns qb for chaining)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1564" width="240" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r10-cache" value="—  (pure SQL emission, stateless)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1564" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r10-beh" value="explicit=[] AND ownedRoots=null → AND 1=0  -- no record visible&lt;br/&gt;Else:&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND ({alias}.id=ANY($explicit)&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;OR EXISTS(SELECT 1 FROM &quot;{root}&quot; WHERE root.id={alias}.{fk_chain} AND root.id=ANY($rootIds)))&lt;br/&gt;denies.length&gt;0 → AND {alias}.id&amp;lt;&amp;gt;ALL($denies)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1564" width="320" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-r11-sig" value="&lt;b&gt;OwnerScopeGuard.canActivate&lt;/b&gt;&lt;br/&gt;&lt;span style=&quot;color:#777&quot;&gt;guards/owner-scope.guard.ts&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1744" width="320" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r11-in" value="• @RequireOwnerScope({ table, scopeFromBody? scopeFromParam? })&lt;br/&gt;• req.info.user.id · req.body · req.params" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="1744" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r11-out" value="true → next  ·  403 if out-of-scope or missing target" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1744" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r11-cache" value="—  (delegates to isInOwnedScope)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1744" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="f-r11-beh" value="No meta → pass (decorator absent on this endpoint)&lt;br/&gt;Resolve targetId from body/param&lt;br/&gt;isInOwnedScope(userId, table, targetId)? → pass; else 403&lt;br/&gt;NOTE: super_admin is NOT bypassed here — must satisfy ownership" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1744" width="320" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-impl-sql" value="&lt;b&gt;impliedVerbs SQL (full, copy-paste-runnable)&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;SELECT DISTINCT p.code AS code&lt;br/&gt;FROM modules root_mod&lt;br/&gt;INNER JOIN modules sub&lt;br/&gt;&amp;nbsp;&amp;nbsp;ON sub.path LIKE root_mod.path || '%'&lt;br/&gt;&amp;nbsp;AND sub.deleted_at IS NULL&lt;br/&gt;INNER JOIN permission p&lt;br/&gt;&amp;nbsp;&amp;nbsp;ON p.module_id = sub.id&lt;br/&gt;&amp;nbsp;AND p.is_active = true&lt;br/&gt;&amp;nbsp;AND p.deleted_at IS NULL&lt;br/&gt;WHERE root_mod.table_name = ANY($1)  -- $1 = unique root tables of user's resource_owners&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND root_mod.deleted_at IS NULL&lt;br/&gt;&lt;br/&gt;Returns: rows of code (e.g. 'bh_diag_report_view', '..._create', '..._edit', '..._delete', 'bh_bicc_dept_view', ...)&lt;br/&gt;→ wrapped in Set, stored in Redis as JSON array" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1900" width="660" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f-impl-walk" value="&lt;b&gt;Worked example — &quot;GET list of diagnostic reports&quot;&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;User: SO of bicc_department id=1. No role tick on the verbs.&lt;br/&gt;&lt;br/&gt;1. Endpoint: @RequirePermission('bh_diag_report_view')&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;requiredCodes = ['bh_diag_report_view']&lt;br/&gt;&lt;br/&gt;2. PermissionGuard loop:&lt;br/&gt;&amp;nbsp;&amp;nbsp;cache.hasPermission(uid, 'bh_diag_report_view') → false (no role tick, no data_access ALLOW)&lt;br/&gt;&amp;nbsp;&amp;nbsp;Load impliedVerbs (1×) → Set{ 'bh_bicc_dept_view', 'bh_diag_report_view', 'bh_diag_report_create', ... } (subtree under bicc_departments module)&lt;br/&gt;&amp;nbsp;&amp;nbsp;impliedVerbs.has('bh_diag_report_view') → true → pass&lt;br/&gt;&lt;br/&gt;3. DataAccessInterceptor → dataScope = {explicit:[], ownedRoots:{rootTable:'bi_hub_bicc_departments', rootIds:[1]}, denies:[]}&lt;br/&gt;&lt;br/&gt;4. Service → applyDataScope → AND EXISTS(...dept.id=ANY([1]))&lt;br/&gt;&lt;br/&gt;5. Returns rows under dept=1 only.&lt;br/&gt;&lt;br/&gt;If endpoint was POST (verb 'bh_diag_report_create') — same impliedVerbs Set, just .has('bh_diag_report_create') → true → pass." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="720" y="1900" width="640" height="180" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="3. VIEW Flow" id="page-view">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="v-title" value="VIEW Flow — GET /diagnostic/report  ·  GET /diagnostic/report/:id" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="20" width="840" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="v-deco" value="@RequirePermission('bh_diag_report_view') + @RequireDataAccess(BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="200" y="52" width="1000" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-req" value="HTTP Request" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="490" y="170" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-d2" value="user.type=== &#39;super_admin&#39;?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="490" y="250" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-bypass-SA" value="G1 bypass ONLY&#xa;Still run I3 below" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="840" y="270" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-g1" value="&lt;b&gt;G1 PermissionGuard&lt;/b&gt;&lt;br/&gt;Loop required verbs (['bh_diag_report_view']):&lt;br/&gt;1. cache.hasPermission(uid, code)? → continue&lt;br/&gt;2. Lazy load impliedVerbs (1× per req) → Set&lt;br/&gt;3. impliedVerbs.has(code)? → continue; else 403" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="450" y="380" width="380" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-403" value="403&#xa;Missing required permission" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="405" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-i3" value="&lt;b&gt;I3 DataAccessInterceptor&lt;/b&gt;&lt;br/&gt;Promise.all([&lt;br/&gt;&amp;nbsp;&amp;nbsp;explicit = cache.getAccessibleRecords(uid, table, verb),&lt;br/&gt;&amp;nbsp;&amp;nbsp;ownedRootIds = ownerScope.getOwnedRoots(uid, rootTable),&lt;br/&gt;&amp;nbsp;&amp;nbsp;denies = cache.getOverrideOwnerDenies(uid, table, verb)&lt;br/&gt;])&lt;br/&gt;→ req.info.dataScope = { explicit, ownedRoots, denies }" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="410" y="520" width="460" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-svc" value="&lt;b&gt;Service.findAll(query, scope)&lt;/b&gt;  ·  Service.findOne(id, scope)&lt;br/&gt;Build qb + business filters" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=middle;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="450" y="680" width="380" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-helper" value="&lt;b&gt;applyDataScope(qb, 'report', table, scope)&lt;/b&gt;&lt;br/&gt;Emit WHERE predicate" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=middle;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="450" y="750" width="380" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-sql" value="SQL execute&#xa;qb.getMany() / getOne()" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="490" y="820" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-resp" value="200 OK — rows" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="540" y="900" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-sql-note" value="&lt;b&gt;Emitted SQL — by scope shape&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Pass-G1 user, no grant, no SO (R):&lt;/b&gt;&lt;br/&gt;... AND 1 = 0  -- 0 rows&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Pure SO (rootIds=[1]):&lt;/b&gt;&lt;br/&gt;... AND (&lt;br/&gt;&amp;nbsp;&amp;nbsp;EXISTS (SELECT 1 FROM bi_hub_bicc_departments dept&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;WHERE dept.id = report.bicc_department_id&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;AND dept.deleted_at IS NULL&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;AND dept.id = ANY($1))&lt;br/&gt;)&lt;br/&gt;&lt;br/&gt;&lt;b&gt;SO + cross-grant ([999]):&lt;/b&gt;&lt;br/&gt;... AND (report.id = ANY($1) OR EXISTS(...))&lt;br/&gt;&lt;br/&gt;&lt;b&gt;With OVERRIDE_OWNER denies ([777]):&lt;/b&gt;&lt;br/&gt;... AND report.id &amp;lt;&amp;gt; ALL($3)&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Super-admin&lt;/b&gt;: same as any user — no separate path. Visibility = explicit ∪ ownedRoots." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="890" y="380" width="490" height="500" as="geometry" />
+        </mxCell>
+
+        <mxCell id="v-impnote" value="&lt;b&gt;impliedVerbs SQL (cached 120s)&lt;/b&gt;&lt;br/&gt;Input: userId&lt;br/&gt;Output: Set&amp;lt;string&amp;gt; of ALL verbs in subtree of owned roots&lt;br/&gt;&lt;br/&gt;SELECT DISTINCT p.code&lt;br/&gt;FROM modules root_mod&lt;br/&gt;JOIN modules sub ON sub.path LIKE root_mod.path||'%'&lt;br/&gt;JOIN permission p ON p.module_id=sub.id AND p.is_active=true&lt;br/&gt;WHERE root_mod.table_name = ANY($1)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="30" y="520" width="360" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ve1" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-req" target="v-d2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve4" value="yes" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="v-d2" target="v-bypass-SA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve5" value="no" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="v-d2" target="v-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve6" value="verb miss" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="v-g1" target="v-403"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve7" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-g1" target="v-i3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve8" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-bypass-SA" target="v-i3"><mxGeometry relative="1" as="geometry" /><Array as="points"><mxPoint x="940" y="475" /></Array></mxCell>
+        <mxCell id="ve10" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-i3" target="v-svc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve11" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-svc" target="v-helper"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve12" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-helper" target="v-sql"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ve13" style="endArrow=classic;html=1;" edge="1" parent="1" source="v-sql" target="v-resp"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="4. CREATE Flow" id="page-create">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="c-title" value="CREATE Flow — POST /admin/diagnostic/report" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="20" width="640" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c-deco" value="@RequirePermission('bh_diag_report_create') + @RequireOwnerScope({table:'bi_hub_bicc_departments', scopeFromBody:'biccDepartment'})" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="120" y="52" width="1160" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-req" value="POST { biccDepartment: 1, ... }" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="450" y="160" width="240" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-d2" value="user.type=== &#39;super_admin&#39;?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="470" y="230" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-bypass-SA" value="G1 bypass only.&#xa;G2 still runs ↓" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="820" y="250" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-g1" value="&lt;b&gt;G1 PermissionGuard&lt;/b&gt;&lt;br/&gt;verb: 'bh_diag_report_create'&lt;br/&gt;role tick OR impliedVerbs?" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="380" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-403-g1" value="403&#xa;Missing required permission" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="395" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-g2" value="&lt;b&gt;G2 OwnerScopeGuard&lt;/b&gt;&lt;br/&gt;in: meta.table='bi_hub_bicc_departments', targetId=body.biccDepartment&lt;br/&gt;&lt;b&gt;isInOwnedScope(uid, table, 1)&lt;/b&gt;:&lt;br/&gt;table === rootTable → 0-hop walk-up (just check ownership)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="420" y="490" width="320" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-403-g2" value="403&#xa;Out of owner scope for&#xa;bi_hub_bicc_departments/X" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="510" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-svc" value="&lt;b&gt;Service.create(body, userId)&lt;/b&gt;&lt;br/&gt;INSERT bi_hub_diagnostic_reports (bicc_department_id, ..., created_by)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="630" width="280" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-resp" value="201 Created — new record" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="460" y="740" width="240" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-walknote" value="&lt;b&gt;isInOwnedScope SQL (0-hop for root table)&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;SELECT 1&lt;br/&gt;FROM bi_hub_bicc_departments t0&lt;br/&gt;WHERE t0.id = $1  -- recordId from body&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND t0.deleted_at IS NULL&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND t0.id = ANY($2) -- ownedRoots (from cached getUserOwnerScope)&lt;br/&gt;LIMIT 1&lt;br/&gt;&lt;br/&gt;Returns ≥1 row → owned → pass. 0 rows → 403." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="800" y="470" width="380" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c-keynote" value="&lt;b&gt;Why no I3 / no applyDataScope?&lt;/b&gt;&lt;br/&gt;Record doesn't exist yet — nothing to filter. Authorization decided fully at G2: &quot;is the PARENT root owned by user?&quot;&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Why scopeFromBody vs scopeFromParam?&lt;/b&gt;&lt;br/&gt;CREATE takes parent ID from body (where to place new record). UPDATE/DELETE take record ID from URL param." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="630" width="340" height="190" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ce1" style="endArrow=classic;html=1;" edge="1" parent="1" source="c-req" target="c-d2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce4" value="yes" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-d2" target="c-bypass-SA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce5" value="no" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-d2" target="c-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce6" value="miss" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-g1" target="c-403-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce7" style="endArrow=classic;html=1;" edge="1" parent="1" source="c-g1" target="c-g2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce8" style="endArrow=classic;html=1;" edge="1" parent="1" source="c-bypass-SA" target="c-g2"><mxGeometry relative="1" as="geometry" /><Array as="points"><mxPoint x="920" y="540" /></Array></mxCell>
+        <mxCell id="ce9" value="not owned" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c-g2" target="c-403-g2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce10" style="endArrow=classic;html=1;" edge="1" parent="1" source="c-g2" target="c-svc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce11" style="endArrow=classic;html=1;" edge="1" parent="1" source="c-svc" target="c-resp"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="5. UPDATE / DELETE-single" id="page-update">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="u-title" value="UPDATE / DELETE-single — PATCH or DELETE /admin/diagnostic/report/:id" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="20" width="840" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="u-deco" value="@RequirePermission(verb) + @RequireDataAccess(table, verb) + @RequireOwnerScope({table:'bi_hub_diagnostic_reports', scopeFromParam:'id'})" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="80" y="52" width="1240" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-req" value="Request — recordId from URL :id" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="460" y="160" width="240" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-d2" value="user.type=== &#39;super_admin&#39;?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="480" y="230" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-bypass-SA" value="G1 bypass.&#xa;G2 + I3 still run ↓" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="820" y="250" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-g1" value="&lt;b&gt;G1 PermissionGuard&lt;/b&gt;&lt;br/&gt;verb: 'bh_diag_report_edit' OR 'bh_diag_report_delete'" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="440" y="380" width="280" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-403-g1" value="403&#xa;Missing required permission" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="385" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-g2" value="&lt;b&gt;G2 OwnerScopeGuard&lt;/b&gt;&lt;br/&gt;in: meta.table='bi_hub_diagnostic_reports', targetId=param.id&lt;br/&gt;&lt;b&gt;isInOwnedScope&lt;/b&gt;: walk-up 1 hop:&lt;br/&gt;report → bicc_department → check root ∈ user's ownedRoots" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="430" y="480" width="320" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-403-g2" value="403&#xa;Out of owner scope for&#xa;bi_hub_diagnostic_reports/X" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="500" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-i3" value="&lt;b&gt;I3 DataAccessInterceptor&lt;/b&gt;&lt;br/&gt;Build dataScope (explicit, ownedRoots, denies)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=middle;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="610" width="280" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-svc" value="&lt;b&gt;Service.update(id, dto, userId, scope) / deleteOne(id, scope)&lt;/b&gt;&lt;br/&gt;1. assertReportInScope(id, scope) — defense-in-depth SQL probe:&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;SELECT 1 FROM report WHERE id=:id + applyDataScope filter&lt;br/&gt;2. probe hits → UPDATE / soft-delete; else throw ForbiddenException" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="370" y="710" width="440" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-403-svc" value="403&#xa;Blocked by denies / probe empty" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="80" y="730" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-resp" value="200 OK — updated/deleted" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="460" y="860" width="240" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-walknote" value="&lt;b&gt;G2 walk-up SQL (1-hop chain)&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;SELECT 1&lt;br/&gt;FROM bi_hub_diagnostic_reports t0&lt;br/&gt;INNER JOIN bi_hub_bicc_departments t1&lt;br/&gt;&amp;nbsp;&amp;nbsp;ON t1.id = t0.bicc_department_id&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND t1.deleted_at IS NULL&lt;br/&gt;WHERE t0.id = $1  -- recordId&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND t0.deleted_at IS NULL&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND t1.id = ANY($2) -- ownedRoots&lt;br/&gt;LIMIT 1&lt;br/&gt;&lt;br/&gt;Chain builder walks HIERARCHY_MAP[t0] → t1 → ... → tRoot, adds INNER JOIN per hop. Final WHERE uses tRoot.id = ANY(ownedRootIds)." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="830" y="430" width="380" height="280" as="geometry" />
+        </mxCell>
+
+        <mxCell id="u-keynote" value="&lt;b&gt;Belt-and-suspenders: G2 + service probe&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;• G2 = structural check on hierarchy walk-up (fails fast)&lt;br/&gt;• Service applyDataScope probe adds:&lt;br/&gt;&amp;nbsp;&amp;nbsp;– denies subtraction (OVERRIDE_OWNER kill-switch)&lt;br/&gt;&amp;nbsp;&amp;nbsp;– explicit branch (for cross-scope grant if ever wired for writes)&lt;br/&gt;&lt;br/&gt;Edge: record under owned root BUT in OVERRIDE_OWNER deny list → G2 passes, service probe blocks.&lt;br/&gt;&lt;br/&gt;Cross-scope explicit edit grant on this endpoint?&lt;br/&gt;→ G2 STILL BLOCKS (G2 is SO-only check)." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="830" y="730" width="400" height="240" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ue1" style="endArrow=classic;html=1;" edge="1" parent="1" source="u-req" target="u-d2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue4" value="yes" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u-d2" target="u-bypass-SA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue5" value="no" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u-d2" target="u-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue6" value="miss" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u-g1" target="u-403-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue7" style="endArrow=classic;html=1;" edge="1" parent="1" source="u-g1" target="u-g2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue8" style="endArrow=classic;html=1;" edge="1" parent="1" source="u-bypass-SA" target="u-g2"><mxGeometry relative="1" as="geometry" /><Array as="points"><mxPoint x="920" y="530" /></Array></mxCell>
+        <mxCell id="ue9" value="not owned" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u-g2" target="u-403-g2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue10" style="endArrow=classic;html=1;" edge="1" parent="1" source="u-g2" target="u-i3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue11" style="endArrow=classic;html=1;" edge="1" parent="1" source="u-i3" target="u-svc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue12" value="probe empty" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="u-svc" target="u-403-svc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ue13" style="endArrow=classic;html=1;" edge="1" parent="1" source="u-svc" target="u-resp"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram name="6. DELETE-bulk" id="page-bulk">
+    <mxGraphModel dx="1422" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="b-title" value="DELETE-bulk — DELETE /admin/diagnostic/report?ids=10,11,999" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="20" width="840" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="b-deco" value="@RequirePermission('bh_diag_report_delete') + @RequireDataAccess(table, 'bh_diag_report_delete')  —  NO OwnerScopeGuard" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=2;fontColor=#666666;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="120" y="52" width="1160" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-req" value="DELETE ?ids=10,11,999" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="450" y="160" width="240" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-d2" value="user.type=== &#39;super_admin&#39;?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="470" y="230" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-bypass-SA" value="G1 bypass only;&#xa;I3 still builds scope ↓" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="820" y="250" width="240" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-g1" value="&lt;b&gt;G1 PermissionGuard&lt;/b&gt; — verb 'bh_diag_report_delete'" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=middle;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="380" width="280" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-403-g1" value="403" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="120" y="385" width="160" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-i3" value="&lt;b&gt;I3 DataAccessInterceptor&lt;/b&gt; — build dataScope" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=middle;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="460" width="280" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-svc" value="&lt;b&gt;Service.deleteMany(idsStr, scope)&lt;/b&gt;&lt;br/&gt;1. requestedIds = parse 'ids' query → [10, 11, 999]&lt;br/&gt;2. SELECT id FROM table WHERE id=ANY(requestedIds) AND is_deleted=false&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;+ applyDataScope(qb, ..., scope) — SQL-side scope filter&lt;br/&gt;3. deletableIds = rows.map(r =&gt; r.id)&lt;br/&gt;4. UPDATE table SET is_deleted=true WHERE id IN (deletableIds)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="360" y="540" width="440" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-resp" value="200 OK&#xa;{ success: N, error: requestedIds.length - N }" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="410" y="710" width="340" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-sqlnote" value="&lt;b&gt;Probe SQL (SO scope, owns dept=1)&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;SELECT report.id AS id&lt;br/&gt;FROM bi_hub_diagnostic_reports report&lt;br/&gt;WHERE report.id = ANY([10,11,999])&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND report.is_deleted = false&lt;br/&gt;&amp;nbsp;&amp;nbsp;AND EXISTS(&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;SELECT 1 FROM bi_hub_bicc_departments dept&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;WHERE dept.id = report.bicc_department_id&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;AND dept.deleted_at IS NULL&lt;br/&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;AND dept.id = ANY([1]))&lt;br/&gt;&lt;br/&gt;→ Returns [10, 11]  (999 dropped: cross-scope)&lt;br/&gt;→ UPDATE sets is_deleted=true on [10,11]&lt;br/&gt;→ Response: { success: 2, error: 1 }" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=10;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="40" y="430" width="300" height="320" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b-keynote" value="&lt;b&gt;Differences vs DELETE-single&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;• NO @RequireOwnerScope → no fail-fast 403 per ID.&lt;br/&gt;• Out-of-scope IDs silently dropped from delete set.&lt;br/&gt;• Response is partial: { success: N, error: M }.&lt;br/&gt;• Snapshot race CLOSED: scope filter happens SQL-side at T₁, NOT JS-side on pre-fetched accessibleDataIds list.&lt;br/&gt;• Wire payload: O(|requestedIds| + |ownedRoots|), not O(leaf records).&lt;br/&gt;&lt;br/&gt;Idea: caller can compute &amp;quot;error&amp;quot; = requestedIds \ deletableIds for partial-failure UX." style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="830" y="430" width="380" height="290" as="geometry" />
+        </mxCell>
+
+        <mxCell id="be1" style="endArrow=classic;html=1;" edge="1" parent="1" source="b-req" target="b-d2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="be4" value="yes" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="b-d2" target="b-bypass-SA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="be5" value="no" style="endArrow=classic;html=1;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="b-d2" target="b-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="be6" value="miss" style="endArrow=classic;html=1;strokeColor=#b85450;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="b-g1" target="b-403-g1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="be7" style="endArrow=classic;html=1;" edge="1" parent="1" source="b-g1" target="b-i3"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="be8" style="endArrow=classic;html=1;" edge="1" parent="1" source="b-bypass-SA" target="b-i3"><mxGeometry relative="1" as="geometry" /><Array as="points"><mxPoint x="940" y="485" /></Array></mxCell>
+        <mxCell id="be9" style="endArrow=classic;html=1;" edge="1" parent="1" source="b-i3" target="b-svc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="be11" style="endArrow=classic;html=1;" edge="1" parent="1" source="b-svc" target="b-resp"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
