@@ -56,6 +56,33 @@ export const ROOT_OWNER_CONFIG: Record<string, RootOwnerEntry> = {
   ma_tool_workspaces: { resourceType: 'workspace' },
 };
 
+/**
+ * Reverse lookup: resource_type discriminator → root table name.
+ * Used by OwnerScopeResolverService to map resource_owners rows back to a root table for hierarchy walk.
+ * Invariant enforced at module load: keys === values(ROOT_OWNER_CONFIG).resourceType.
+ */
+export const RESOURCE_TYPE_TO_ROOT_TABLE: Record<string, string> = Object.entries(ROOT_OWNER_CONFIG).reduce(
+  (acc, [rootTable, entry]) => {
+    acc[entry.resourceType] = rootTable;
+    return acc;
+  },
+  {} as Record<string, string>,
+);
+
+// Invariant guard: detect drift between forward + reverse maps at module load
+{
+  const forwardTypes = new Set(Object.values(ROOT_OWNER_CONFIG).map((e) => e.resourceType));
+  const reverseTypes = new Set(Object.keys(RESOURCE_TYPE_TO_ROOT_TABLE));
+  if (forwardTypes.size !== reverseTypes.size) {
+    throw new Error('hierarchy-config: RESOURCE_TYPE_TO_ROOT_TABLE drift from ROOT_OWNER_CONFIG');
+  }
+  for (const t of forwardTypes) {
+    if (!reverseTypes.has(t)) {
+      throw new Error(`hierarchy-config: resource_type "${t}" missing from RESOURCE_TYPE_TO_ROOT_TABLE`);
+    }
+  }
+}
+
 /** Safe column name lookup with regex validation */
 export function getNameColumn(tableName: string): string {
   const col = NAME_COLUMN_MAP[tableName] || 'id';

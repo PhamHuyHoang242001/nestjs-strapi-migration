@@ -42,18 +42,17 @@ const defaultPagination: PaginationParams = { page: 1, limit: 20, skip: 0 };
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('DataAccessService.getRecords() — owner scoping', () => {
-  describe('admin bypass', () => {
-    it('admin sees all records (no owner join injected)', async () => {
+  describe('unscoped path (no userInfo — internal callers)', () => {
+    it('sees all records (no owner join injected)', async () => {
       const { service, queryMock } = createService([
         [{ total: 2 }],
         [{ id: 1, display_name: 'A', created_at: '2026-01-01' }, { id: 2, display_name: 'B', created_at: '2026-01-02' }],
       ]);
 
-      const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, { client: 'admin' });
+      const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, undefined);
 
       expect(result.data).toHaveLength(2);
       expect(result.meta.totalItems).toBe(2);
-      // Admin query should NOT contain owner junction
       const countSQL = queryMock.mock.calls[0][0] as string;
       expect(countSQL).not.toContain('resource_owners');
     });

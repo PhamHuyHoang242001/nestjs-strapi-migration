@@ -71,14 +71,14 @@ export class DataAccessService {
    * Pagination applies at group level.
    */
   async list(dto: SearchDataAccessDto, sortParams: SortParams, pagination: PaginationParams, userInfo?: ScopeUserInfo) {
-    const isAdmin = !userInfo || userInfo.client === 'admin';
+    const isUnscoped = !userInfo;
 
-    // Non-admin: resolve owner scope via accessible CTE
+    // Scoped path: resolve owner scope via accessible CTE
     let ownerCtePrefix = '';
     let ownerWhereClause = '';
     let ownerParams: any[] = [];
 
-    if (!isAdmin) {
+    if (!isUnscoped) {
       const roleRows: { role_id: number }[] = await this.connection.query(
         'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
         [userInfo.userId],
@@ -791,14 +791,14 @@ export class DataAccessService {
       throw new BadRequestException('table_not_allowed');
     }
 
-    const isAdmin = !userInfo || userInfo.client === 'admin';
+    const isUnscoped = !userInfo;
 
-    // Non-admin: resolve owner scope
-    if (!isAdmin) {
+    // Scoped path: resolve owner scope
+    if (!isUnscoped) {
       return this.getScopedRecords(tableName, dto, pagination, userInfo);
     }
 
-    // Admin: return all records (existing behavior)
+    // Unscoped (no user context — internal callers): return all records
     const nameCol = getNameColumn(tableName);
     const params: any[] = [];
     let whereClause = 'WHERE deleted_at IS NULL';

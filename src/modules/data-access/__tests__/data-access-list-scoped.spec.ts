@@ -44,8 +44,8 @@ const defaultPagination: PaginationParams = { page: 1, limit: 20, skip: 0 };
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('DataAccessService.list() — owner scoping', () => {
-  describe('admin bypass', () => {
-    it('admin query does NOT contain accessible CTE', async () => {
+  describe('unscoped path (no userInfo — internal callers)', () => {
+    it('query does NOT contain accessible CTE', async () => {
       const { service, queryMock } = createService([
         [{ total: 2 }],  // count
         [                  // groups
@@ -55,7 +55,7 @@ describe('DataAccessService.list() — owner scoping', () => {
         [],  // record names
       ]);
 
-      await service.list({}, defaultSort, defaultPagination, { client: 'admin' });
+      await service.list({}, defaultSort, defaultPagination, undefined);
 
       const countSQL = queryMock.mock.calls[0][0] as string;
       expect(countSQL).not.toContain('accessible');
