@@ -5,6 +5,8 @@ import {
   PERMISSION_CACHE_TTL,
   dataAccessCacheKey,
   permissionCacheKey,
+  userImpliedVerbsKey,
+  userOwnerScopeKey,
 } from '../constants/authorization.constant';
 import { PermissionQueryService } from './permission-query.service';
 
@@ -80,6 +82,37 @@ export class PermissionCacheService {
       await RedisAdapter.unlinkKeyByPattern('perm:user:*');
     } catch (err) {
       this.logger.error(`Redis invalidate all failed: ${this.errorMsg(err)}`);
+    }
+  }
+
+  // ── Owner-scope cache invalidation (used by OwnerScopeResolverService) ──
+  // Cache lives ONLY in Redis; no in-process memoization. Eventual-consistency window =
+  // network RTT + 1 read cycle across instances. See plan Red Team H3.
+
+  async invalidateOwnerScopeUser(userId: number): Promise<void> {
+    try {
+      await Promise.all([
+        RedisAdapter.unlinkKeyByPattern(userOwnerScopeKey(userId)),
+        RedisAdapter.unlinkKeyByPattern(userImpliedVerbsKey(userId)),
+      ]);
+    } catch (err) {
+      this.logger.error(`Redis owner-scope invalidate user ${userId} failed: ${this.errorMsg(err)}`);
+    }
+  }
+
+  async invalidateOwnerScopeByRole(roleId: number): Promise<void> {
+    const userIds = await this.queryService.getUserIdsByRole(roleId);
+    await Promise.all(userIds.map((uid) => this.invalidateOwnerScopeUser(uid)));
+  }
+
+  async invalidateOwnerScopeAll(): Promise<void> {
+    try {
+      await Promise.all([
+        RedisAdapter.unlinkKeyByPattern('perm:user:*:owner_scope'),
+        RedisAdapter.unlinkKeyByPattern('perm:user:*:owner_verbs'),
+      ]);
+    } catch (err) {
+      this.logger.error(`Redis owner-scope invalidate all failed: ${this.errorMsg(err)}`);
     }
   }
 

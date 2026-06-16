@@ -1,4 +1,5 @@
 import { RequestInfo } from '@common/types/request-with-info';
+import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { TransformFileModel } from './transform-file-link.helper';
 
 export interface TransformFileRequest {
@@ -6,7 +7,7 @@ export interface TransformFileRequest {
   model?: string;
   reportCode?: string;
   info: RequestInfo;
-  accessibleDataIds?: number[];
+  dataScope?: DataScope | null;
 }
 
 export interface TransformFileResult {

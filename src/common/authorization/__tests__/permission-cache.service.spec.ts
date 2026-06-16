@@ -65,4 +65,41 @@ describe('PermissionCacheService', () => {
     await expect(service.getAccessibleRecords(7, 'bi_hub_reports')).resolves.toEqual([]);
     expect(queryService.getAccessibleRecords).not.toHaveBeenCalled();
   });
+
+  it('invalidateUser unlinks user pattern', async () => {
+    (RedisAdapter.unlinkKeyByPattern as jest.Mock).mockResolvedValue([]);
+
+    await service.invalidateUser(42);
+
+    expect(RedisAdapter.unlinkKeyByPattern).toHaveBeenCalledWith('perm:user:42:*');
+  });
+
+  it('invalidateByTable unlinks table-scoped data-access pattern', async () => {
+    (RedisAdapter.unlinkKeyByPattern as jest.Mock).mockResolvedValue([]);
+
+    await service.invalidateByTable('bi_hub_reports');
+
+    expect(RedisAdapter.unlinkKeyByPattern).toHaveBeenCalledWith('perm:user:*:da:bi_hub_reports*');
+  });
+
+  it('invalidateAll unlinks global perm pattern', async () => {
+    (RedisAdapter.unlinkKeyByPattern as jest.Mock).mockResolvedValue([]);
+
+    await service.invalidateAll();
+
+    expect(RedisAdapter.unlinkKeyByPattern).toHaveBeenCalledWith('perm:user:*');
+  });
+
+  it('swallows Redis errors during invalidate (does not throw)', async () => {
+    (RedisAdapter.unlinkKeyByPattern as jest.Mock).mockRejectedValueOnce(new Error('redis down'));
+
+    await expect(service.invalidateUser(1)).resolves.toBeUndefined();
+  });
+
+  it('falls back to query when Redis read fails on getPermissions', async () => {
+    (RedisAdapter.get as jest.Mock).mockRejectedValue(new Error('redis down'));
+    queryService.getUserPermissions.mockResolvedValue(['report_view']);
+
+    await expect(service.getPermissions(7)).resolves.toEqual(new Set(['report_view']));
+  });
 });
