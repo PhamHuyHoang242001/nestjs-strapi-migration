@@ -6,6 +6,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { SearchDiagnosticReportDto, SearchDiagnosticHistoryDto, SearchUpdatedUserDto } from './dto';
 import { REPORT_SORT_MAP, HISTORY_SORT_MAP, formatReport, formatHistory } from './diagnostic-report-format.helper';
+import type { DataScope } from '@common/authorization/types/data-scope.types';
+import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
+
+const REPORT_TABLE = 'bi_hub_diagnostic_reports';
 
 // User-facing read operations for diagnostic reports
 @Injectable()
@@ -19,7 +23,7 @@ export class BiHubDiagnosticReportService {
   ) {}
 
   // ── List reports with pagination + data-access filtering ───────
-  async findAll(query: SearchDiagnosticReportDto, accessibleDataIds?: number[]) {
+  async findAll(query: SearchDiagnosticReportDto, scope: DataScope | null) {
     const page = +(query.page || 1);
     const limit = Math.min(+(query.limit || 10), 100);
 
@@ -29,9 +33,6 @@ export class BiHubDiagnosticReportService {
     if (query.sortValue && !['ASC', 'DESC'].includes(query.sortValue.toUpperCase())) {
       throw new BadRequestException('Invalid sortValue');
     }
-    if (accessibleDataIds && accessibleDataIds.length === 0) {
-      return { data: [], meta: standardizePagination(0, 0, limit, page) };
-    }
 
     const qb = this.reportRepo
       .createQueryBuilder('report')
@@ -40,9 +41,8 @@ export class BiHubDiagnosticReportService {
       .where('report.deleted_at IS NULL')
       .andWhere('report.is_deleted = false');
 
-    if (accessibleDataIds && accessibleDataIds.length > 0) {
-      qb.andWhere('report.id IN (:...accessibleDataIds)', { accessibleDataIds });
-    }
+    applyDataScope(qb, 'report', REPORT_TABLE, scope);
+
     if (query.reportCategoryId) {
       qb.andWhere('report.bicc_department_id = :deptId', { deptId: +query.reportCategoryId });
     }
@@ -78,15 +78,18 @@ export class BiHubDiagnosticReportService {
   }
 
   // ── View single report ─────────────────────────────────────────
-  async findOne(id: number, accessibleDataIds?: number[]) {
-    if (accessibleDataIds && !accessibleDataIds.includes(id)) {
-      throw new ForbiddenException('No permission');
-    }
+  // 404 covers both "missing" and "out-of-scope" to avoid existence leak.
+  async findOne(id: number, scope: DataScope | null) {
+    const qb = this.reportRepo
+      .createQueryBuilder('report')
+      .leftJoinAndSelect('report.labels', 'labels')
+      .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'files')
+      .leftJoinAndSelect('report.bicc_department', 'bicc_department')
+      .where('report.id = :id', { id })
+      .andWhere('report.is_deleted = false');
+    applyDataScope(qb, 'report', REPORT_TABLE, scope);
 
-    const report = await this.reportRepo.findOne({
-      where: { id, is_deleted: false },
-      relations: ['labels', 'bi_hub_diagnostic_files', 'bicc_department'],
-    });
+    const report = await qb.getOne();
     if (!report) throw new NotFoundException('Report not found');
 
     report.bi_hub_diagnostic_files = report.bi_hub_diagnostic_files?.filter((f) => f.lastest_version) || [];
@@ -94,12 +97,10 @@ export class BiHubDiagnosticReportService {
   }
 
   // ── List users who updated a report ────────────────────────────
-  async findUpdatedUsers(query: SearchUpdatedUserDto, accessibleDataIds?: number[]) {
+  async findUpdatedUsers(query: SearchUpdatedUserDto, scope: DataScope | null) {
     const reportId = +query.reportId;
     if (!reportId) throw new BadRequestException('reportId is required');
-    if (accessibleDataIds && !accessibleDataIds.includes(reportId)) {
-      throw new ForbiddenException('No permission');
-    }
+    await this.assertReportInScope(reportId, scope);
 
     const page = +(query.page || 1);
     const limit = Math.min(+(query.limit || 10), 100);
@@ -129,12 +130,10 @@ export class BiHubDiagnosticReportService {
   }
 
   // ── History of a report ────────────────────────────────────────
-  async findHistory(query: SearchDiagnosticHistoryDto, accessibleDataIds?: number[]) {
+  async findHistory(query: SearchDiagnosticHistoryDto, scope: DataScope | null) {
     const reportId = +query.reportId;
     if (!reportId) throw new BadRequestException('reportId is required');
-    if (accessibleDataIds && !accessibleDataIds.includes(reportId)) {
-      throw new ForbiddenException('No permission');
-    }
+    await this.assertReportInScope(reportId, scope);
 
     const page = +(query.page || 1);
     const limit = Math.min(+(query.limit || 10), 100);
@@ -175,14 +174,24 @@ export class BiHubDiagnosticReportService {
   }
 
   // ── Increase view count ────────────────────────────────────────
-  async increaseView(reportId: number, accessibleDataIds?: number[]) {
-    if (accessibleDataIds && !accessibleDataIds.includes(reportId)) {
-      throw new ForbiddenException('No permission');
-    }
+  async increaseView(reportId: number, scope: DataScope | null) {
+    await this.assertReportInScope(reportId, scope);
     const report = await this.reportRepo.findOne({ where: { id: reportId, is_deleted: false } });
     if (!report) throw new NotFoundException('Report not found');
 
     await this.reportRepo.update(reportId, { total_view: () => 'total_view + 1' } as any);
     return { id: report.id, total_view: (report.total_view || 0) + 1 };
+  }
+
+  // ── Scope-check helper — single SQL existence probe ────────────
+  private async assertReportInScope(reportId: number, scope: DataScope | null): Promise<void> {
+    if (scope === null) return; // admin bypass
+    const qb = this.reportRepo
+      .createQueryBuilder('report')
+      .select('1', 'one')
+      .where('report.id = :id', { id: reportId });
+    applyDataScope(qb, 'report', REPORT_TABLE, scope);
+    const ok = await qb.getRawOne();
+    if (!ok) throw new ForbiddenException('No permission');
   }
 }

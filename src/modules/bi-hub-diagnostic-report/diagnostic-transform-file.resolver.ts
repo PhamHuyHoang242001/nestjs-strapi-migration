@@ -19,6 +19,7 @@ import {
 } from '@modules/databases/bi-diagnostic-log.entity';
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
+import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -42,36 +43,33 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
   }
 
   async authorize(request: TransformFileRequest): Promise<void> {
-    // Admin bypass — same as DataAccessInterceptor behavior
-    if (request.info?.client === 'admin') return;
-
     const userId = Number(request.info?.user?.id);
     if (!userId) throw new ForbiddenException('User not authenticated');
 
     const hasPermission = await this.permissionCache.hasPermission(userId, 'bh_diag_report_view');
     if (!hasPermission) throw new ForbiddenException('No permission');
 
-    request.accessibleDataIds = await this.permissionCache.getAccessibleRecords(
+    const explicit = await this.permissionCache.getAccessibleRecords(
       userId,
       DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS,
       'bh_diag_report_view',
     );
+    // Resolver tracks explicit grants only — owner-scope branch is handled by
+    // DataAccessInterceptor on REST endpoints. Transform endpoint preserves
+    // its pre-existing semantics (explicit grants gate access).
+    request.dataScope = { explicit, ownedRoots: null };
   }
 
   async transform(request: TransformFileRequest): Promise<TransformFileResult> {
     if (request.model === TransformFileModel.BI_DIAGNOSTIC_REPORT) {
-      return this.transformReport(request.id, request.info, request.accessibleDataIds);
+      return this.transformReport(request.id, request.info, request.dataScope ?? null);
     }
 
-    return this.transformHistory(request.id, request.info, request.accessibleDataIds);
+    return this.transformHistory(request.id, request.info, request.dataScope ?? null);
   }
 
-  private async transformReport(
-    id: number,
-    info: RequestInfo,
-    accessibleDataIds?: number[],
-  ): Promise<TransformFileResult> {
-    this.assertCanAccess(id, accessibleDataIds);
+  private async transformReport(id: number, info: RequestInfo, scope: DataScope | null): Promise<TransformFileResult> {
+    this.assertCanAccess(id, scope);
 
     const report = await this.reportRepo.findOne({
       where: { id, is_deleted: false },
@@ -94,11 +92,7 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
     };
   }
 
-  private async transformHistory(
-    id: number,
-    info: RequestInfo,
-    accessibleDataIds?: number[],
-  ): Promise<TransformFileResult> {
+  private async transformHistory(id: number, info: RequestInfo, scope: DataScope | null): Promise<TransformFileResult> {
     const history = await this.historyRepo.findOne({
       where: { id },
       relations: ['bi_hub_diagnostic_report'],
@@ -107,7 +101,7 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
       throw new NotFoundException('History report not found');
     }
 
-    this.assertCanAccess(history.bi_hub_diagnostic_report_id, accessibleDataIds);
+    this.assertCanAccess(history.bi_hub_diagnostic_report_id, scope);
     if (!history.diagnostic_files_url) throw new NotFoundException('History file not found');
 
     await this.writeDownloadLog(info, {
@@ -132,8 +126,9 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
     return files?.find((file) => file.lastest_version) || files?.[0] || null;
   }
 
-  private assertCanAccess(reportId: number, accessibleDataIds?: number[]) {
-    if (accessibleDataIds && !accessibleDataIds.includes(reportId)) {
+  private assertCanAccess(reportId: number, scope: DataScope | null) {
+    if (scope === null) return; // admin
+    if (!scope.explicit.includes(reportId)) {
       throw new ForbiddenException('No permission');
     }
   }
@@ -148,8 +143,7 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
         this.logRepo.create({
           action: BiDiagnosticLogActionEnum.DOWNLOAD,
           client_email: (user?.email as string | undefined) || null,
-          client_type:
-            info.client === 'admin' ? BiDiagnosticLogClientTypeEnum.ADMIN : BiDiagnosticLogClientTypeEnum.USER,
+          client_type: BiDiagnosticLogClientTypeEnum.USER,
           ip_address: info.ip || null,
           uri: info.url || null,
           log_status: BiDiagnosticLogStatusEnum.SUCCESS,

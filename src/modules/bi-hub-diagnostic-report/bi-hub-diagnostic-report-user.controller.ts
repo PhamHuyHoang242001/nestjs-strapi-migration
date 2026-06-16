@@ -25,7 +25,7 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   findAll(@Query() query: SearchDiagnosticReportDto, @Req() req: RequestWithInfo) {
-    return this.service.findAll(query, req.info?.accessibleDataIds);
+    return this.service.findAll(query, req.info?.dataScope ?? null);
   }
 
   // Static paths BEFORE :id to avoid NestJS route collision
@@ -34,7 +34,7 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   findUpdatedUsers(@Query() query: SearchUpdatedUserDto, @Req() req: RequestWithInfo) {
-    return this.service.findUpdatedUsers(query, req.info?.accessibleDataIds);
+    return this.service.findUpdatedUsers(query, req.info?.dataScope ?? null);
   }
 
   @ApiOperation({ summary: 'List history of a diagnostic report' })
@@ -42,7 +42,7 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   findHistory(@Query() query: SearchDiagnosticHistoryDto, @Req() req: RequestWithInfo) {
-    return this.service.findHistory(query, req.info?.accessibleDataIds);
+    return this.service.findHistory(query, req.info?.dataScope ?? null);
   }
 
   @ApiOperation({ summary: 'Increase view count of a report' })
@@ -51,7 +51,7 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   increaseView(@Body() body: IncreaseViewDto, @Req() req: RequestWithInfo) {
-    return this.service.increaseView(body.reportId, req.info?.accessibleDataIds);
+    return this.service.increaseView(body.reportId, req.info?.dataScope ?? null);
   }
 
   @ApiOperation({ summary: 'Get diagnostic report details' })
@@ -59,6 +59,6 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   findOne(@Param('id') id: number, @Req() req: RequestWithInfo) {
-    return this.service.findOne(+id, req.info?.accessibleDataIds);
+    return this.service.findOne(+id, req.info?.dataScope ?? null);
   }
 }

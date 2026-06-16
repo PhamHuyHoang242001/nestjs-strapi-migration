@@ -43,19 +43,6 @@ describe('DiagnosticTransformFileResolver', () => {
 
   // ── authorize() tests ──────────────────────────────────────────
 
-  it('authorize() allows admin without permission check', async () => {
-    const { resolver, permissionCache } = createResolver();
-
-    await resolver.authorize({
-      id: 7,
-      model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
-      info: { user: { id: 1 }, client: 'admin' },
-    });
-
-    expect(permissionCache.hasPermission).not.toHaveBeenCalled();
-    expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
-  });
-
   it('authorize() throws ForbiddenException when user lacks permission', async () => {
     const { resolver, permissionCache } = createResolver();
     permissionCache.hasPermission.mockResolvedValue(false);
@@ -81,7 +68,7 @@ describe('DiagnosticTransformFileResolver', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('authorize() loads accessibleDataIds for authorized user', async () => {
+  it('authorize() builds dataScope.explicit for authorized user', async () => {
     const { resolver, permissionCache } = createResolver();
     permissionCache.hasPermission.mockResolvedValue(true);
     permissionCache.getAccessibleRecords.mockResolvedValue([7, 8]);
@@ -93,12 +80,12 @@ describe('DiagnosticTransformFileResolver', () => {
     };
     await resolver.authorize(request);
 
-    expect(request.accessibleDataIds).toEqual([7, 8]);
+    expect(request.dataScope).toEqual({ explicit: [7, 8], ownedRoots: null });
   });
 
   // ── transform() tests ─────────────────────────────────────────
 
-  it('blocks report transform when accessibleDataIds excludes report', async () => {
+  it('blocks report transform when dataScope.explicit excludes report', async () => {
     const { resolver, reportRepo } = createResolver();
 
     await expect(
@@ -106,7 +93,7 @@ describe('DiagnosticTransformFileResolver', () => {
         id: 7,
         model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
         info: { user: { id: 1 }, client: 'user' },
-        accessibleDataIds: [8],
+        dataScope: { explicit: [8], ownedRoots: null },
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
@@ -126,7 +113,7 @@ describe('DiagnosticTransformFileResolver', () => {
       id: 7,
       model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
       info: { user: { id: 1, email: 'user@example.com' }, client: 'user' },
-      accessibleDataIds: [7],
+      dataScope: { explicit: [7], ownedRoots: null },
     });
 
     expect(result).toEqual({ url: '/uploads/report.pdf', type: 'pdf' });

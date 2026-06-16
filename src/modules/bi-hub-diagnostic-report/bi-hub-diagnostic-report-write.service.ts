@@ -11,6 +11,10 @@ import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DownloadDiagnosti
 import { REPORT_SORT_MAP } from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
+import type { DataScope } from '@common/authorization/types/data-scope.types';
+import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
+
+const REPORT_TABLE = 'bi_hub_diagnostic_reports';
 
 // Excel column config for diagnostic report download
 const DOWNLOAD_COLUMNS: ExcelColumn[] = [
@@ -98,8 +102,8 @@ export class BiHubDiagnosticReportWriteService {
   }
 
   // ── Update report ──────────────────────────────────────────────
-  async update(id: number, dto: UpdateDiagnosticReportDto, userId: number, accessibleDataIds?: number[]) {
-    if (accessibleDataIds && !accessibleDataIds.includes(id)) throw new ForbiddenException('No permission');
+  async update(id: number, dto: UpdateDiagnosticReportDto, userId: number, scope: DataScope | null) {
+    await this.assertReportInScope(id, scope);
 
     const existing = await this.reportRepo.findOne({
       where: { id, is_deleted: false },
@@ -156,8 +160,8 @@ export class BiHubDiagnosticReportWriteService {
   }
 
   // ── Delete single report ───────────────────────────────────────
-  async deleteOne(id: number, accessibleDataIds?: number[]) {
-    if (accessibleDataIds && !accessibleDataIds.includes(id)) throw new ForbiddenException('No permission');
+  async deleteOne(id: number, scope: DataScope | null) {
+    await this.assertReportInScope(id, scope);
     const report = await this.reportRepo.findOne({ where: { id, is_deleted: false } });
     if (!report) throw new NotFoundException('Report not found');
     await this.reportRepo.update(id, { is_deleted: true });
@@ -165,21 +169,26 @@ export class BiHubDiagnosticReportWriteService {
   }
 
   // ── Delete multiple reports ────────────────────────────────────
-  async deleteMany(idsStr: string, accessibleDataIds?: number[]) {
-    const reportIds = idsStr.split(',').map(Number).filter(Boolean);
-    if (!reportIds.length) throw new BadRequestException('Invalid IDs');
+  // SQL-filter requested IDs by scope predicate before delete (defense-in-depth).
+  async deleteMany(idsStr: string, scope: DataScope | null) {
+    const requestedIds = idsStr.split(',').map(Number).filter(Boolean);
+    if (!requestedIds.length) throw new BadRequestException('Invalid IDs');
 
-    const reports = await this.reportRepo.find({ where: { id: In(reportIds), is_deleted: false } });
-    const deletableIds = accessibleDataIds
-      ? reports.filter((r) => accessibleDataIds.includes(r.id)).map((r) => r.id)
-      : reports.map((r) => r.id);
+    const qb = this.reportRepo
+      .createQueryBuilder('report')
+      .select('report.id', 'id')
+      .where('report.id = ANY(:requestedIds)', { requestedIds })
+      .andWhere('report.is_deleted = false');
+    applyDataScope(qb, 'report', REPORT_TABLE, scope);
+    const rows = await qb.getRawMany<{ id: number }>();
+    const deletableIds = rows.map((r) => Number(r.id));
 
     if (deletableIds.length > 0) await this.reportRepo.update({ id: In(deletableIds) }, { is_deleted: true });
-    return { success: deletableIds.length, error: reports.length - deletableIds.length };
+    return { success: deletableIds.length, error: requestedIds.length - deletableIds.length };
   }
 
   // ── Download reports as Excel ───────────────────────────────────
-  async download(query: DownloadDiagnosticReportDto, res: Response, accessibleDataIds?: number[]) {
+  async download(query: DownloadDiagnosticReportDto, res: Response, scope: DataScope | null) {
     const qb = this.reportRepo.createQueryBuilder('report')
       .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'file', 'file.lastest_version = true')
       .leftJoinAndSelect('report.labels', 'label')
@@ -190,25 +199,17 @@ export class BiHubDiagnosticReportWriteService {
       .andWhere('report.is_deleted = :isDeleted', { isDeleted: query.isDeleted === 'true' });
 
     if (query.download_type === 'ALL') {
-      if (accessibleDataIds?.length > 0) qb.andWhere('report.id IN (:...accessibleDataIds)', { accessibleDataIds });
-      else if (accessibleDataIds?.length === 0) {
-        return exportExcelToResponse(res, { sheetName: 'Diagnostic_Reports', columns: DOWNLOAD_COLUMNS, rows: [] });
-      }
+      applyDataScope(qb, 'report', REPORT_TABLE, scope);
       if (query.keyword?.trim()) qb.andWhere('(report.name ILIKE :kw OR report.summary ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
       const sortCol = REPORT_SORT_MAP[query.sortField || 'createdAt'] || 'created_at';
       const sortDir = ['ASC', 'DESC'].includes(query.sortValue?.toUpperCase()) ? (query.sortValue.toUpperCase() as 'ASC' | 'DESC') : 'DESC';
       qb.orderBy(`report.${sortCol}`, sortDir);
     } else if (query.download_type === 'MULTIPLE') {
       if (!query.ids) throw new BadRequestException('Missing IDs');
-      let idArr = query.ids.split(',').map(Number).filter(Boolean);
+      const idArr = query.ids.split(',').map(Number).filter(Boolean);
       if (!idArr.length) throw new BadRequestException('Invalid IDs');
-      if (accessibleDataIds) {
-        idArr = idArr.filter((id) => accessibleDataIds.includes(id));
-        if (!idArr.length) {
-          return exportExcelToResponse(res, { sheetName: 'Diagnostic_Reports', columns: DOWNLOAD_COLUMNS, rows: [] });
-        }
-      }
       qb.andWhere('report.id IN (:...idArr)', { idArr });
+      applyDataScope(qb, 'report', REPORT_TABLE, scope);
     } else {
       throw new BadRequestException('Invalid download_type');
     }
@@ -236,6 +237,18 @@ export class BiHubDiagnosticReportWriteService {
     }));
 
     await exportExcelToResponse(res, { sheetName: 'Diagnostic_Reports', columns: DOWNLOAD_COLUMNS, rows });
+  }
+
+  // ── Scope-check helper — single SQL existence probe ────────────
+  private async assertReportInScope(reportId: number, scope: DataScope | null): Promise<void> {
+    if (scope === null) return; // admin bypass
+    const qb = this.reportRepo
+      .createQueryBuilder('report')
+      .select('1', 'one')
+      .where('report.id = :id', { id: reportId });
+    applyDataScope(qb, 'report', REPORT_TABLE, scope);
+    const ok = await qb.getRawOne();
+    if (!ok) throw new ForbiddenException('No permission');
   }
 
   // ── Sync group BI manager ──────────────────────────────────────
