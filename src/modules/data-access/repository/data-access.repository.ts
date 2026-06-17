@@ -52,7 +52,7 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
       } else {
         // Non-numeric: partial match on role name or user full_name
         query.andWhere(
-          '(unaccent(role.name) ILIKE unaccent(:keyword) OR unaccent(user.full_name) ILIKE unaccent(:keyword))',
+          '(role.name ILIKE :keyword OR user.full_name ILIKE :keyword)',
           { keyword: `%${kw}%` },
         );
       }

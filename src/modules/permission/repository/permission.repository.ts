@@ -14,7 +14,7 @@ export class PermissionRepository extends BaseRepository<Permission> {
 
   buildQueryBuilderPermission({ search }: ListPermissionDto, sortParams: SortParams): SelectQueryBuilder<Permission> {
     const query = this.createQueryBuilder('permission');
-    if (search) query.where('unaccent(permission.name) ILIKE unaccent(:name)', { name: `%${search}%` });
+    if (search) query.where('permission.name ILIKE :name', { name: `%${search}%` });
     if (sortParams.sort_field) query.orderBy(`permission.${sortParams.sort_field}`, sortParams.sort_order);
     query.leftJoinAndSelect('permission.screen', 'screen');
     return query;

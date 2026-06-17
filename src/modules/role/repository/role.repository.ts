@@ -14,7 +14,7 @@ export class RoleRepository extends BaseRepository<Role> {
 
   buildQueryBuilderRole({ search }: ListRoleDto, sortParams: SortParams): SelectQueryBuilder<Role> {
     const query = this.createQueryBuilder('role');
-    if (search) query.where('unaccent(name) ILIKE unaccent(:name)', { name: `%${search}%` });
+    if (search) query.where('name ILIKE :name', { name: `%${search}%` });
     if (sortParams.sort_field) query.orderBy(`${sortParams.sort_field}`, sortParams.sort_order);
     // query;
     return query;

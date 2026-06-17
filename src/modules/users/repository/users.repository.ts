@@ -153,7 +153,7 @@ export class UserRepository extends BaseRepository<Users> {
 
     if (dto.search) {
       query.andWhere(
-        '(unaccent(user.full_name) ILIKE unaccent(:s) OR user.email ILIKE :s OR user.username ILIKE :s OR CAST(user.id AS TEXT) = :exact)',
+        '(user.full_name ILIKE :s OR user.email ILIKE :s OR user.username ILIKE :s OR CAST(user.id AS TEXT) = :exact)',
         { s: `%${dto.search}%`, exact: dto.search },
       );
     }

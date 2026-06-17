@@ -288,7 +288,7 @@ export class DataAccessService {
       if (!ALLOWED_TABLES.has(tableName)) continue;
       const safeCol = /^[a-z_]+$/.test(nameCol) ? nameCol : 'id';
       branches.push(
-        `SELECT t.id as data_id, m.id as module_id FROM "${tableName}" t JOIN modules m ON m.table_name = '${tableName}' AND m.deleted_at IS NULL WHERE unaccent(CAST(t."${safeCol}" AS TEXT)) ILIKE unaccent(${searchParam}) AND t.deleted_at IS NULL${moduleId ? ` AND m.id = ${Number(moduleId)}` : ''}`,
+        `SELECT t.id as data_id, m.id as module_id FROM "${tableName}" t JOIN modules m ON m.table_name = '${tableName}' AND m.deleted_at IS NULL WHERE CAST(t."${safeCol}" AS TEXT) ILIKE ${searchParam} AND t.deleted_at IS NULL${moduleId ? ` AND m.id = ${Number(moduleId)}` : ''}`,
       );
     }
     return branches.join('\nUNION ALL\n');

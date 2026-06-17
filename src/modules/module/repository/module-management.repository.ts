@@ -13,7 +13,7 @@ export class ModuleManagementRepository extends TreeRepository<Module> {
 
   buildQueryBuilder({ search }: ListModuleDto, sortParams: SortParams): SelectQueryBuilder<Module> {
     const query = this.createQueryBuilder('module');
-    if (search) query.where('unaccent(module.name) ILIKE unaccent(:name)', { name: `%${search}%` });
+    if (search) query.where('module.name ILIKE :name', { name: `%${search}%` });
     if (sortParams.sort_field) query.orderBy(`module.${sortParams.sort_field}`, sortParams.sort_order);
     return query;
   }

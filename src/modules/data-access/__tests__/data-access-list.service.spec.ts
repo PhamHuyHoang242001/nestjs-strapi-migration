@@ -379,6 +379,15 @@ describe('DataAccessService.list() — grouped', () => {
       expect(countSQL).toContain('name_matches');
     });
 
+    it('count SQL does NOT call unaccent (extension-free deployment)', async () => {
+      const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
+      const dto: SearchDataAccessDto = { keyword: 'test' };
+      await service.list(dto, defaultSort, defaultPagination);
+
+      const countSQL = queryMock.mock.calls[0][0] as string;
+      expect(countSQL).not.toMatch(/unaccent\s*\(/i);
+    });
+
     it('when module_id filter present, name_matches only queries that module table', async () => {
       const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
       const dto: SearchDataAccessDto = { keyword: 'test', module_id: 5 };

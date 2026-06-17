@@ -169,6 +169,24 @@ describe('OwnerScopeResolverService', () => {
       expect(dsQuery).not.toHaveBeenCalled();
     });
 
+    it('excludes root-level create verb from implied set (SO cannot create sibling roots)', async () => {
+      dsQuery
+        .mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }])
+        .mockResolvedValueOnce([
+          { code: 'bh_bicc_dept_view' },
+          { code: 'bh_bicc_dept_edit' },
+          { code: 'bh_bicc_dept_delete' },
+          { code: 'bh_report_create' },
+        ]);
+
+      const result = await service.getUserImpliedVerbs(100);
+
+      expect(result.has('bh_bicc_dept_create')).toBe(false);
+      expect(result.has('bh_report_create')).toBe(true);
+      const sql = dsQuery.mock.calls[1][0] as string;
+      expect(sql).toMatch(/NOT \(sub\.id = root_mod\.id AND p\.action = 'create'\)/);
+    });
+
     it('warms verbs cache on miss', async () => {
       dsQuery
         .mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }])

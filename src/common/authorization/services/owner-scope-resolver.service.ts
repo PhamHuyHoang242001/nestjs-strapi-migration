@@ -93,6 +93,9 @@ export class OwnerScopeResolverService {
 
     const rootTables = Array.from(new Set(scope.map((s) => s.rootTable)));
 
+    // Exclude root-level 'create' verb: owning a root record does not imply
+    // permission to create sibling roots. Child-level 'create' (e.g. reports
+    // under an owned bicc_department) remains in scope.
     const rows = await this.ds.query<{ code: string }[]>(
       `
       SELECT DISTINCT p.code AS code
@@ -106,6 +109,7 @@ export class OwnerScopeResolverService {
              AND p.deleted_at IS NULL
       WHERE root_mod.table_name = ANY($1)
         AND root_mod.deleted_at IS NULL
+        AND NOT (sub.id = root_mod.id AND p.action = 'create')
       `,
       [rootTables],
     );

@@ -223,7 +223,7 @@ export class RoleService {
 
     if (search) {
       query.andWhere(
-        '(unaccent(user.full_name) ILIKE unaccent(:search) OR unaccent(user.email) ILIKE unaccent(:search) OR unaccent(user.username) ILIKE unaccent(:search))',
+        '(user.full_name ILIKE :search OR user.email ILIKE :search OR user.username ILIKE :search)',
         { search: `%${search}%` },
       );
     }

@@ -124,7 +124,7 @@ User G has `user_data_access` rows:
 ## Group 5 — User S (SO of dept=1, no role tick)
 
 S's owned roots: `[(bi_hub_bicc_departments, 1)]`.
-ImpliedVerbs (via module subtree query): all verbs in `bi_hub_bicc_departments` + sub-modules (`bi_hub_diagnostic_reports`, `bi_hub_reports`) — vd: `{view, edit, delete, create, download, …}`.
+ImpliedVerbs (via module subtree query): all verbs in `bi_hub_bicc_departments` + sub-modules (`bi_hub_diagnostic_reports`, `bi_hub_reports`) — vd: `{bh_bicc_dept_view, bh_bicc_dept_edit, bh_bicc_dept_delete, bh_report_*, bh_diag_report_*}`. Root-level `create` verb (`bh_bicc_dept_create`) is intentionally excluded — owning a root record does NOT imply permission to create sibling roots.
 
 | # | Actor | Endpoint | Target | Result | Why |
 |---|---|---|---|---|---|

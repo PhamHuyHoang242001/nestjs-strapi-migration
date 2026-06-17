@@ -17,12 +17,12 @@ export class ChangeHistoryRepository extends BaseRepository<ChangeHistory> {
     if (dto.entity_type) query.andWhere('ch.entity_type = :et', { et: dto.entity_type });
     if (dto.action_type) query.andWhere('ch.action_type = :at', { at: dto.action_type });
     if (dto.performed_by)
-      query.andWhere('unaccent(ch.performed_by) ILIKE unaccent(:pb)', { pb: `%${dto.performed_by}%` });
+      query.andWhere('ch.performed_by ILIKE :pb', { pb: `%${dto.performed_by}%` });
     if (dto.date_from) query.andWhere('ch.created_at >= :df', { df: dto.date_from });
     if (dto.date_to) query.andWhere('ch.created_at <= :dt', { dt: dto.date_to });
     if (dto.search)
       query.andWhere(
-        '(unaccent(ch.entity_name) ILIKE unaccent(:s) OR CAST(ch.entity_id AS TEXT) ILIKE :s OR unaccent(ch.performed_by) ILIKE unaccent(:s))',
+        '(ch.entity_name ILIKE :s OR CAST(ch.entity_id AS TEXT) ILIKE :s OR ch.performed_by ILIKE :s)',
         { s: `%${dto.search}%` },
       );
 
