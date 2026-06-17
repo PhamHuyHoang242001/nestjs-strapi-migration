@@ -190,6 +190,79 @@ describe('DataAccessInterceptor — dataScope shape', () => {
     expect(info.accessibleDataIds).toBeUndefined();
   });
 
+  // ── Option B: verbFromExplicit gating ──────────────────────────
+  // PermissionGuard sets req.info.verbFromExplicit. When `false`, caller resolved
+  // every required verb only via the owner-implied path, so the interceptor must
+  // suppress the explicit branch entirely — otherwise an owner-only caller could
+  // reach records granted by unrelated admin allow-grants.
+  it('verbFromExplicit=false → explicit fetch skipped, dataScope.explicit forced to []', async () => {
+    reflector.getAllAndOverride.mockReturnValue({
+      tableName: 'bi_hub_diagnostic_reports',
+      permissionCode: 'bh_diag_report_download',
+    });
+    permissionCache.getAccessibleRecords.mockResolvedValue([99]); // should NOT be consulted
+    ownerScope.getOwnedRoots.mockResolvedValue([7]);
+
+    const info: Record<string, unknown> = { user: { id: 1 }, client: 'user', verbFromExplicit: false };
+    await interceptor.intercept(context(info), next);
+
+    expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
+    expect(info.dataScope).toEqual({
+      explicit: [],
+      ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [7] },
+    });
+  });
+
+  it('verbFromExplicit=false + no owned roots → both branches empty (zero access)', async () => {
+    reflector.getAllAndOverride.mockReturnValue({
+      tableName: 'bi_hub_diagnostic_reports',
+      permissionCode: 'bh_diag_report_download',
+    });
+    ownerScope.getOwnedRoots.mockResolvedValue([]);
+
+    const info: Record<string, unknown> = { user: { id: 1 }, client: 'user', verbFromExplicit: false };
+    await interceptor.intercept(context(info), next);
+
+    expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
+    expect(info.dataScope).toEqual({ explicit: [], ownedRoots: null });
+  });
+
+  it('verbFromExplicit=true → both branches fetched (role/super_admin path)', async () => {
+    reflector.getAllAndOverride.mockReturnValue({
+      tableName: 'bi_hub_diagnostic_reports',
+      permissionCode: 'bh_diag_report_view',
+    });
+    permissionCache.getAccessibleRecords.mockResolvedValue([42]);
+    ownerScope.getOwnedRoots.mockResolvedValue([7]);
+
+    const info: Record<string, unknown> = { user: { id: 1 }, client: 'user', verbFromExplicit: true };
+    await interceptor.intercept(context(info), next);
+
+    expect(permissionCache.getAccessibleRecords).toHaveBeenCalled();
+    expect(info.dataScope).toEqual({
+      explicit: [42],
+      ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [7] },
+    });
+  });
+
+  it('verbFromExplicit=undefined (no @RequirePermission) → defaults to full union (legacy behavior)', async () => {
+    reflector.getAllAndOverride.mockReturnValue({
+      tableName: 'bi_hub_diagnostic_reports',
+      permissionCode: 'bh_diag_report_view',
+    });
+    permissionCache.getAccessibleRecords.mockResolvedValue([42]);
+    ownerScope.getOwnedRoots.mockResolvedValue([7]);
+
+    const info: Record<string, unknown> = { user: { id: 1 }, client: 'user' }; // no verbFromExplicit
+    await interceptor.intercept(context(info), next);
+
+    expect(permissionCache.getAccessibleRecords).toHaveBeenCalled();
+    expect(info.dataScope).toEqual({
+      explicit: [42],
+      ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [7] },
+    });
+  });
+
   it('runs 2 fetches in parallel (Promise.all)', async () => {
     reflector.getAllAndOverride.mockReturnValue({
       tableName: 'bi_hub_diagnostic_reports',

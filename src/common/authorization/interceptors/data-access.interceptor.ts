@@ -11,9 +11,15 @@ import { PermissionCacheService } from '../services/permission-cache.service';
 /**
  * Builds `req.info.dataScope` from two cached fetches. Downstream services
  * call `applyDataScope(qb, alias, table, scope)` which emits the WHERE predicate.
- * Every authenticated user (including super_admin) goes through scope resolution;
- * record visibility is `explicit_grants OR owner_branch`. Owner branch is additive
- * and immune to deny — deny rules only subtract inside `getAccessibleRecords()`.
+ *
+ * Record visibility:
+ *   - verb resolved via role.permissions (or super_admin) → `explicit OR owner_branch`
+ *   - verb resolved ONLY via owner-implied path (req.info.verbFromExplicit === false)
+ *     → owner_branch only; explicit branch suppressed so an owner-path caller cannot
+ *     reach records outside their owned subtree via unrelated admin allow-grants.
+ *
+ * Owner branch is additive and immune to deny — deny rules only subtract inside
+ * `getAccessibleRecords()`.
  */
 @Injectable()
 export class DataAccessInterceptor implements NestInterceptor {
@@ -35,9 +41,13 @@ export class DataAccessInterceptor implements NestInterceptor {
     const userId = Number(req.info?.user?.id);
     if (!userId) throw new ForbiddenException('User not authenticated');
 
+    const ownerOnlyPath = req.info?.verbFromExplicit === false;
+
     const rootTable = findRootTable(meta.tableName);
     const [explicit, ownedRootIds] = await Promise.all([
-      this.permissionCache.getAccessibleRecords(userId, meta.tableName, meta.permissionCode),
+      ownerOnlyPath
+        ? Promise.resolve([] as number[])
+        : this.permissionCache.getAccessibleRecords(userId, meta.tableName, meta.permissionCode),
       rootTable ? this.ownerScope.getOwnedRoots(userId, rootTable) : Promise.resolve([] as number[]),
     ]);
 

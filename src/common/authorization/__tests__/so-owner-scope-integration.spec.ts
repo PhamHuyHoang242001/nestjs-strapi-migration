@@ -9,7 +9,8 @@
  *   #2b SO with non-matching rootTable    — ownedRoots null
  *   #3  SO writes owned record            — OwnerScopeGuard pass
  *   #3b SO writes cross-scope             — OwnerScopeGuard reject
- *   #6c SO + explicit grant union         — both branches populated
+ *   #6c SO + explicit grant union         — both branches populated when verbFromExplicit≠false
+ *   #6d SO owner-only path                — verbFromExplicit=false collapses to owned branch
  *   #8  DENY bypass within owned scope    — helper SQL keeps owned records
  *   SQL regression guard                  — emitted SQL contains `EXISTS (`
  *
@@ -166,6 +167,35 @@ describe('SO Owner-Scope Integration', () => {
 
     expect(info.dataScope).toEqual({
       explicit: [SCENARIO.explicit_grant_report],
+      ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [SCENARIO.owned_root] },
+    });
+  });
+
+  // ── Scenario 6d: SO owner-only path — explicit branch suppressed ───────
+  //
+  // PermissionGuard sets verbFromExplicit=false when every required verb was
+  // resolved only via owner_role.verbs (no role.permissions hit). The
+  // interceptor then skips the explicit-grants fetch entirely, so an admin
+  // allow-grant on a cross-scope record can never widen visibility for an
+  // owner-path caller.
+
+  it('Scenario #6d: SO with owner-only path (verbFromExplicit=false) → explicit suppressed', async () => {
+    mockReflector({
+      [DATA_ACCESS_META_KEY]: { tableName: 'bi_hub_diagnostic_reports', permissionCode: 'bh_diag_report_download' },
+    });
+    queryService.getAccessibleRecords.mockResolvedValue([SCENARIO.explicit_grant_report]); // would-be leak
+    queueQueries([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
+
+    const info: Record<string, unknown> = {
+      user: { id: SCENARIO.user_id },
+      client: 'user',
+      verbFromExplicit: false,
+    };
+    await interceptor.intercept(ctx(info), fakeNext);
+
+    expect(queryService.getAccessibleRecords).not.toHaveBeenCalled();
+    expect(info.dataScope).toEqual({
+      explicit: [],
       ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [SCENARIO.owned_root] },
     });
   });
