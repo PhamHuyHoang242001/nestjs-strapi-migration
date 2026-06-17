@@ -78,19 +78,19 @@ export class BiHubDiagnosticReportService {
   }
 
   // ── View single report ─────────────────────────────────────────
-  // 404 covers both "missing" and "out-of-scope" to avoid existence leak.
+  // 404 = report truly absent. 403 = exists but outside caller's data scope.
+  // Existence is intentionally exposed so callers see a clear permission error.
   async findOne(id: number, scope: DataScope | null) {
-    const qb = this.reportRepo
+    const report = await this.reportRepo
       .createQueryBuilder('report')
       .leftJoinAndSelect('report.labels', 'labels')
       .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'files')
       .leftJoinAndSelect('report.bicc_department', 'bicc_department')
       .where('report.id = :id', { id })
-      .andWhere('report.is_deleted = false');
-    applyDataScope(qb, 'report', REPORT_TABLE, scope);
-
-    const report = await qb.getOne();
+      .andWhere('report.is_deleted = false')
+      .getOne();
     if (!report) throw new NotFoundException('Report not found');
+    await this.assertReportInScope(id, scope);
 
     report.bi_hub_diagnostic_files = report.bi_hub_diagnostic_files?.filter((f) => f.lastest_version) || [];
     return formatReport(report);

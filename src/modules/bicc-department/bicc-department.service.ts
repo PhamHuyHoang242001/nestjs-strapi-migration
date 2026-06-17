@@ -2,7 +2,7 @@ import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { SortParams } from '@common/decorators/sort.decorator';
 import { execQueryPaignation } from '@common/utils';
 import { BiHubBiccDepartment } from '@modules/databases/bi-hub-bicc-department.entity';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { CreateBiccDepartmentDto, SearchBiccDepartmentDto, UpdateBiccDepartmentDto } from './dto';
@@ -45,17 +45,30 @@ export class BiccDepartmentService {
     return execQueryPaignation(qb, pagination.page, pagination.limit);
   }
 
-  // 404 covers both "missing" and "out-of-scope" to avoid existence leak.
+  // 404 = department truly absent. 403 = exists but outside caller's data scope.
+  // Existence is intentionally exposed so callers see a clear permission error.
   async details(id: number, scope: DataScope | null) {
-    const qb = this.biccDeptRepo
+    const dept = await this.biccDeptRepo
       .createQueryBuilder('dept')
       .leftJoinAndSelect('dept.reports', 'reports')
       .leftJoinAndSelect('dept.diagnostic_reports', 'diagnostic_reports')
+      .where('dept.id = :id', { id })
+      .getOne();
+    if (!dept) throw new NotFoundException('BICC Department not found');
+    await this.assertDeptInScope(id, scope);
+    return dept;
+  }
+
+  // Scope-check helper — single SQL existence probe via applyDataScope predicate.
+  private async assertDeptInScope(id: number, scope: DataScope | null): Promise<void> {
+    if (scope === null) return; // admin bypass
+    const qb = this.biccDeptRepo
+      .createQueryBuilder('dept')
+      .select('1', 'one')
       .where('dept.id = :id', { id });
     applyDataScope(qb, 'dept', BICC_DEPT_TABLE, scope);
-    const dept = await qb.getOne();
-    if (!dept) throw new NotFoundException('BICC Department not found');
-    return dept;
+    const ok = await qb.getRawOne();
+    if (!ok) throw new ForbiddenException('No permission');
   }
 
   async create(dto: CreateBiccDepartmentDto, userId?: number) {
