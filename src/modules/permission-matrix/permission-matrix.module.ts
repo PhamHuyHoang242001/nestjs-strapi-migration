@@ -13,6 +13,12 @@ import { PermissionMatrixService } from './permission-matrix.service';
 @NestModule({
   imports: [TypeOrmModule.forFeature([Role, Permission, Module])],
   controllers: [PermissionMatrixController],
-  providers: [PermissionMatrixService, RoleRepository, PermissionRepository, ModuleManagementRepository, AdminRepository],
+  providers: [
+    PermissionMatrixService,
+    RoleRepository,
+    PermissionRepository,
+    ModuleManagementRepository,
+    AdminRepository,
+  ],
 })
 export class PermissionMatrixModule {}

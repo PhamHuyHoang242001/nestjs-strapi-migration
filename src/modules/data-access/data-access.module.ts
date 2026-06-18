@@ -15,11 +15,17 @@ import { CreatorAccessGrantService } from './services/creator-access-grant.servi
 
 @Module({
   imports: [
-      TypeOrmModule.forFeature([DataAccess, RoleDataAccess, UserDataAccess, Permission, ModuleEntity, ResourceOwner]),
-      ChangeHistoryModule,
-    ],
+    TypeOrmModule.forFeature([DataAccess, RoleDataAccess, UserDataAccess, Permission, ModuleEntity, ResourceOwner]),
+    ChangeHistoryModule,
+  ],
   controllers: [DataAccessController, ReportAccessRecordsController],
-  providers: [DataAccessService, DataAccessRepository, AdminRepository, HierarchyValidationService, CreatorAccessGrantService],
+  providers: [
+    DataAccessService,
+    DataAccessRepository,
+    AdminRepository,
+    HierarchyValidationService,
+    CreatorAccessGrantService,
+  ],
   exports: [DataAccessService, DataAccessRepository, CreatorAccessGrantService],
 })
 export class DataAccessModule {}

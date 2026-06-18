@@ -27,9 +27,7 @@ export class BiccDepartmentService {
     pagination: PaginationParams,
     scope: DataScope | null,
   ) {
-    const qb = this.biccDeptRepo
-      .createQueryBuilder('dept')
-      .where('dept.deleted_at IS NULL');
+    const qb = this.biccDeptRepo.createQueryBuilder('dept').where('dept.deleted_at IS NULL');
 
     applyDataScope(qb, 'dept', BICC_DEPT_TABLE, scope);
 
@@ -62,10 +60,7 @@ export class BiccDepartmentService {
   // Scope-check helper — single SQL existence probe via applyDataScope predicate.
   private async assertDeptInScope(id: number, scope: DataScope | null): Promise<void> {
     if (scope === null) return; // admin bypass
-    const qb = this.biccDeptRepo
-      .createQueryBuilder('dept')
-      .select('1', 'one')
-      .where('dept.id = :id', { id });
+    const qb = this.biccDeptRepo.createQueryBuilder('dept').select('1', 'one').where('dept.id = :id', { id });
     applyDataScope(qb, 'dept', BICC_DEPT_TABLE, scope);
     const ok = await qb.getRawOne();
     if (!ok) throw new ForbiddenException('No permission');

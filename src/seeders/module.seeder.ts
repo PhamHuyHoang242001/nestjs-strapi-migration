@@ -15,17 +15,59 @@ interface ModuleSeedItem {
 // ── Data Uploader ────────────────────────────────────────────────
 const DATA_UPLOADER: ModuleSeedItem[] = [
   { id: 1, path: '/data-uploader', name: 'Data Uploader', table_name: null, is_active: true, parent_id: null },
-  { id: 2, path: '/data-uploader/workspace', name: 'Workspace', table_name: 'ma_tool_workspaces', is_active: true, parent_id: 1 },
-  { id: 3, path: '/data-uploader/workspace/template', name: 'Template', table_name: 'ma_tool_templates', is_active: true, parent_id: 2 },
-  { id: 4, path: '/data-uploader/workspace/template/document', name: 'Document', table_name: 'ma_tool_documents', is_active: true, parent_id: 3 },
+  {
+    id: 2,
+    path: '/data-uploader/workspace',
+    name: 'Workspace',
+    table_name: 'ma_tool_workspaces',
+    is_active: true,
+    parent_id: 1,
+  },
+  {
+    id: 3,
+    path: '/data-uploader/workspace/template',
+    name: 'Template',
+    table_name: 'ma_tool_templates',
+    is_active: true,
+    parent_id: 2,
+  },
+  {
+    id: 4,
+    path: '/data-uploader/workspace/template/document',
+    name: 'Document',
+    table_name: 'ma_tool_documents',
+    is_active: true,
+    parent_id: 3,
+  },
 ];
 
 // ── BI Hub ───────────────────────────────────────────────────────
 const BI_HUB: ModuleSeedItem[] = [
   { id: 5, path: '/bi-hub', name: 'BI Hub', table_name: null, is_active: true, parent_id: null },
-  { id: 6, path: '/bi-hub/bicc-department', name: 'BICC Department', table_name: 'bi_hub_bicc_departments', is_active: true, parent_id: 5 },
-  { id: 7, path: '/bi-hub/bicc-department/bi-hub-reports', name: 'BI Hub Reports', table_name: 'bi_hub_reports', is_active: true, parent_id: 6 },
-  { id: 8, path: '/bi-hub/bicc-department/bi-hub-diagnostic-report', name: 'BI Hub Diagnostic Report', table_name: 'bi_hub_diagnostic_reports', is_active: true, parent_id: 6 },
+  {
+    id: 6,
+    path: '/bi-hub/bicc-department',
+    name: 'BICC Department',
+    table_name: 'bi_hub_bicc_departments',
+    is_active: true,
+    parent_id: 5,
+  },
+  {
+    id: 7,
+    path: '/bi-hub/bicc-department/bi-hub-reports',
+    name: 'BI Hub Reports',
+    table_name: 'bi_hub_reports',
+    is_active: true,
+    parent_id: 6,
+  },
+  {
+    id: 8,
+    path: '/bi-hub/bicc-department/bi-hub-diagnostic-report',
+    name: 'BI Hub Diagnostic Report',
+    table_name: 'bi_hub_diagnostic_reports',
+    is_active: true,
+    parent_id: 6,
+  },
 ];
 
 // ── Permission Management ─────────────────────────────────────────
@@ -33,8 +75,22 @@ const PERMISSION_MANAGEMENT: ModuleSeedItem[] = [
   { id: 100, path: '/permission', name: 'Quản trị phân quyền', table_name: null, is_active: true, parent_id: null },
   { id: 101, path: '/permission/role', name: 'Vai trò', table_name: 'role', is_active: true, parent_id: 100 },
   { id: 102, path: '/permission/user', name: 'Người dùng', table_name: 'users', is_active: true, parent_id: 100 },
-  { id: 103, path: '/permission/data-access', name: 'Phân quyền dữ liệu', table_name: 'data_access', is_active: true, parent_id: 100 },
-  { id: 104, path: '/permission/history', name: 'Lịch sử thay đổi', table_name: 'change_historys', is_active: true, parent_id: 100 },
+  {
+    id: 103,
+    path: '/permission/data-access',
+    name: 'Phân quyền dữ liệu',
+    table_name: 'data_access',
+    is_active: true,
+    parent_id: 100,
+  },
+  {
+    id: 104,
+    path: '/permission/history',
+    name: 'Lịch sử thay đổi',
+    table_name: 'change_historys',
+    is_active: true,
+    parent_id: 100,
+  },
 ];
 
 // ── BI Payment — TEMPORARILY DISABLED ────────────────────────────

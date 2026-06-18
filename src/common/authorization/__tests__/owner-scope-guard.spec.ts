@@ -33,7 +33,10 @@ describe('OwnerScopeGuard', () => {
   it('super_admin without verbFromExplicit flag still triggers ownership fallback', async () => {
     // Edge case: super_admin reached OwnerScopeGuard but PermissionGuard never ran
     // (endpoint missing @RequirePermission). Flag undefined → fall back to owned check.
-    reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_bicc_departments', scopeFromBody: 'bicc_department_id' });
+    reflector.getAllAndOverride.mockReturnValue({
+      table: 'bi_hub_bicc_departments',
+      scopeFromBody: 'bicc_department_id',
+    });
     ownerScope.isInOwnedScope.mockResolvedValue(false);
 
     await expect(
@@ -48,15 +51,16 @@ describe('OwnerScopeGuard', () => {
     reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_diagnostic_reports', scopeFromParam: 'id' });
 
     await expect(
-      guard.canActivate(
-        context({ user: { id: 1 }, client: 'user', verbFromExplicit: true }, {}, { id: '999' }),
-      ),
+      guard.canActivate(context({ user: { id: 1 }, client: 'user', verbFromExplicit: true }, {}, { id: '999' })),
     ).resolves.toBe(true);
     expect(ownerScope.isInOwnedScope).not.toHaveBeenCalled();
   });
 
   it('super_admin chain: PermissionGuard set flag=true → OwnerScopeGuard bypass', async () => {
-    reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_bicc_departments', scopeFromBody: 'bicc_department_id' });
+    reflector.getAllAndOverride.mockReturnValue({
+      table: 'bi_hub_bicc_departments',
+      scopeFromBody: 'bicc_department_id',
+    });
 
     await expect(
       guard.canActivate(
@@ -74,9 +78,7 @@ describe('OwnerScopeGuard', () => {
     ownerScope.isInOwnedScope.mockResolvedValue(false);
 
     await expect(
-      guard.canActivate(
-        context({ user: { id: 1 }, client: 'user', verbFromExplicit: false }, {}, { id: '999' }),
-      ),
+      guard.canActivate(context({ user: { id: 1 }, client: 'user', verbFromExplicit: false }, {}, { id: '999' })),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -85,9 +87,7 @@ describe('OwnerScopeGuard', () => {
     ownerScope.isInOwnedScope.mockResolvedValue(true);
 
     await expect(
-      guard.canActivate(
-        context({ user: { id: 1 }, client: 'user', verbFromExplicit: false }, {}, { id: '999' }),
-      ),
+      guard.canActivate(context({ user: { id: 1 }, client: 'user', verbFromExplicit: false }, {}, { id: '999' })),
     ).resolves.toBe(true);
   });
 
@@ -102,14 +102,20 @@ describe('OwnerScopeGuard', () => {
   });
 
   it('throws when target id is missing from body', async () => {
-    reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_bicc_departments', scopeFromBody: 'bicc_department_id' });
+    reflector.getAllAndOverride.mockReturnValue({
+      table: 'bi_hub_bicc_departments',
+      scopeFromBody: 'bicc_department_id',
+    });
     await expect(guard.canActivate(context({ user: { id: 1 }, client: 'user' }, {}))).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
 
   it('allows when scopeFromBody target is in owned scope', async () => {
-    reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_bicc_departments', scopeFromBody: 'bicc_department_id' });
+    reflector.getAllAndOverride.mockReturnValue({
+      table: 'bi_hub_bicc_departments',
+      scopeFromBody: 'bicc_department_id',
+    });
     ownerScope.isInOwnedScope.mockResolvedValue(true);
 
     await expect(
@@ -119,7 +125,10 @@ describe('OwnerScopeGuard', () => {
   });
 
   it('rejects when scopeFromBody target is NOT in owned scope', async () => {
-    reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_bicc_departments', scopeFromBody: 'bicc_department_id' });
+    reflector.getAllAndOverride.mockReturnValue({
+      table: 'bi_hub_bicc_departments',
+      scopeFromBody: 'bicc_department_id',
+    });
     ownerScope.isInOwnedScope.mockResolvedValue(false);
 
     await expect(
@@ -131,9 +140,9 @@ describe('OwnerScopeGuard', () => {
     reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_diagnostic_reports', scopeFromParam: 'id' });
     ownerScope.isInOwnedScope.mockResolvedValue(true);
 
-    await expect(
-      guard.canActivate(context({ user: { id: 1 }, client: 'user' }, {}, { id: '999' })),
-    ).resolves.toBe(true);
+    await expect(guard.canActivate(context({ user: { id: 1 }, client: 'user' }, {}, { id: '999' }))).resolves.toBe(
+      true,
+    );
     expect(ownerScope.isInOwnedScope).toHaveBeenCalledWith(1, 'bi_hub_diagnostic_reports', 999);
   });
 
@@ -155,7 +164,10 @@ describe('OwnerScopeGuard', () => {
   });
 
   it('rejects unauthenticated request', async () => {
-    reflector.getAllAndOverride.mockReturnValue({ table: 'bi_hub_bicc_departments', scopeFromBody: 'bicc_department_id' });
+    reflector.getAllAndOverride.mockReturnValue({
+      table: 'bi_hub_bicc_departments',
+      scopeFromBody: 'bicc_department_id',
+    });
     await expect(guard.canActivate(context({ client: 'user' }, { bicc_department_id: 1 }))).rejects.toBeInstanceOf(
       ForbiddenException,
     );

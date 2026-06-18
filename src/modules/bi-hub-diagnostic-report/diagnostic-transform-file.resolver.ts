@@ -19,10 +19,15 @@ import {
 } from '@modules/databases/bi-diagnostic-log.entity';
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+
+const DIAGNOSTIC_VIEW_VERB = 'bh_diag_report_view';
+const REPORT_TABLE = DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS;
+const BICC_DEPARTMENT_ROOT_TABLE = DATA_ACCESS_TABLE.BI_HUB_BICC_DEPARTMENTS;
 
 @Injectable()
 export class DiagnosticTransformFileResolver implements TransformFileResolver {
@@ -34,6 +39,7 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
     @InjectRepository(BiDiagnosticLog)
     private readonly logRepo: Repository<BiDiagnosticLog>,
     private readonly permissionCache: PermissionCacheService,
+    private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
   supports(model: TransformFileModel): boolean {
@@ -46,18 +52,28 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
     const userId = Number(request.info?.user?.id);
     if (!userId) throw new ForbiddenException('User not authenticated');
 
-    const hasPermission = await this.permissionCache.hasPermission(userId, 'bh_diag_report_view');
-    if (!hasPermission) throw new ForbiddenException('No permission');
+    // Verb gate — mirrors PermissionGuard: the view verb may be held explicitly
+    // (role/exception perm) OR implicitly via an owned bicc-department subtree.
+    // An SO of a bicc-department holds the verb only via the implied path.
+    const hasExplicitVerb = await this.permissionCache.hasPermission(userId, DIAGNOSTIC_VIEW_VERB);
+    let ownerOnlyPath = false;
+    if (!hasExplicitVerb) {
+      const impliedVerbs = await this.ownerScope.getUserImpliedVerbs(userId);
+      if (!impliedVerbs.has(DIAGNOSTIC_VIEW_VERB)) throw new ForbiddenException('No permission');
+      ownerOnlyPath = true;
+    }
 
-    const explicit = await this.permissionCache.getAccessibleRecords(
-      userId,
-      DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS,
-      'bh_diag_report_view',
-    );
-    // Resolver tracks explicit grants only — owner-scope branch is handled by
-    // DataAccessInterceptor on REST endpoints. Transform endpoint preserves
-    // its pre-existing semantics (explicit grants gate access).
-    request.dataScope = { explicit, ownedRoots: null };
+    // Build dataScope identically to DataAccessInterceptor: `explicit OR owner_branch`.
+    // Owner-only path suppresses the explicit branch so an owner-path caller cannot
+    // reach records outside their owned subtree via unrelated admin allow-grants.
+    const explicit = ownerOnlyPath
+      ? []
+      : await this.permissionCache.getAccessibleRecords(userId, REPORT_TABLE, DIAGNOSTIC_VIEW_VERB);
+    const ownedRootIds = await this.ownerScope.getOwnedRoots(userId, BICC_DEPARTMENT_ROOT_TABLE);
+    const ownedRoots =
+      ownedRootIds.length > 0 ? { rootTable: BICC_DEPARTMENT_ROOT_TABLE, rootIds: ownedRootIds } : null;
+
+    request.dataScope = { explicit, ownedRoots };
   }
 
   async transform(request: TransformFileRequest): Promise<TransformFileResult> {
@@ -69,7 +85,7 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
   }
 
   private async transformReport(id: number, info: RequestInfo, scope: DataScope | null): Promise<TransformFileResult> {
-    this.assertCanAccess(id, scope);
+    await this.assertCanAccess(id, scope, info);
 
     const report = await this.reportRepo.findOne({
       where: { id, is_deleted: false },
@@ -101,7 +117,7 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
       throw new NotFoundException('History report not found');
     }
 
-    this.assertCanAccess(history.bi_hub_diagnostic_report_id, scope);
+    await this.assertCanAccess(history.bi_hub_diagnostic_report_id, scope, info);
     if (!history.diagnostic_files_url) throw new NotFoundException('History file not found');
 
     await this.writeDownloadLog(info, {
@@ -126,11 +142,19 @@ export class DiagnosticTransformFileResolver implements TransformFileResolver {
     return files?.find((file) => file.lastest_version) || files?.[0] || null;
   }
 
-  private assertCanAccess(reportId: number, scope: DataScope | null) {
+  // Record gate — allows `explicit OR owner_branch`, mirroring applyDataScope.
+  // Owner branch: the report walks up HIERARCHY_MAP to a bicc-department the
+  // caller owns. Probed only when the caller actually owns roots.
+  private async assertCanAccess(reportId: number, scope: DataScope | null, info: RequestInfo): Promise<void> {
     if (scope === null) return; // admin
-    if (!scope.explicit.includes(reportId)) {
-      throw new ForbiddenException('No permission');
+    if (scope.explicit.includes(reportId)) return;
+
+    if (scope.ownedRoots !== null) {
+      const userId = Number(info?.user?.id);
+      if (userId && (await this.ownerScope.isInOwnedScope(userId, REPORT_TABLE, reportId))) return;
     }
+
+    throw new ForbiddenException('No permission');
   }
 
   private async writeDownloadLog(

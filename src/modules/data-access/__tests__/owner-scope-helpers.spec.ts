@@ -40,27 +40,27 @@ describe('buildOwnerJoinChain()', () => {
   it('root table: direct join to resource_owners with resource_type', () => {
     const result = buildOwnerJoinChain('bi_hub_bicc_departments', '$1');
     expect(result).not.toBeNull();
-    expect(result!.joinSQL).toContain('resource_owners');
-    expect(result!.joinSQL).toContain("resource_type = 'bicc_department'");
-    expect(result!.joinSQL).toContain('$1');
-    expect(result!.rootTable).toBe('bi_hub_bicc_departments');
+    expect(result.joinSQL).toContain('resource_owners');
+    expect(result.joinSQL).toContain("resource_type = 'bicc_department'");
+    expect(result.joinSQL).toContain('$1');
+    expect(result.rootTable).toBe('bi_hub_bicc_departments');
   });
 
   it('1-level child: join through parent to resource_owners', () => {
     const result = buildOwnerJoinChain('bi_hub_reports', '$1');
     expect(result).not.toBeNull();
-    expect(result!.joinSQL).toContain('bi_hub_bicc_departments');
-    expect(result!.joinSQL).toContain('resource_owners');
-    expect(result!.joinSQL).toContain("resource_type = 'bicc_department'");
+    expect(result.joinSQL).toContain('bi_hub_bicc_departments');
+    expect(result.joinSQL).toContain('resource_owners');
+    expect(result.joinSQL).toContain("resource_type = 'bicc_department'");
   });
 
   it('2-level child: join through 2 parents to resource_owners', () => {
     const result = buildOwnerJoinChain('ma_tool_documents', '$1');
     expect(result).not.toBeNull();
-    expect(result!.joinSQL).toContain('ma_tool_templates');
-    expect(result!.joinSQL).toContain('ma_tool_workspaces');
-    expect(result!.joinSQL).toContain('resource_owners');
-    expect(result!.joinSQL).toContain("resource_type = 'workspace'");
+    expect(result.joinSQL).toContain('ma_tool_templates');
+    expect(result.joinSQL).toContain('ma_tool_workspaces');
+    expect(result.joinSQL).toContain('resource_owners');
+    expect(result.joinSQL).toContain("resource_type = 'workspace'");
   });
 
   it('returns null for table without ROOT_OWNER_CONFIG (bi_payment)', () => {
@@ -77,9 +77,9 @@ describe('buildOwnerJoinChain()', () => {
     const result = buildOwnerJoinChain('ma_tool_documents', '$1');
     expect(result).not.toBeNull();
     // documents → templates via template_id
-    expect(result!.joinSQL).toContain('template_id');
+    expect(result.joinSQL).toContain('template_id');
     // templates → workspaces via workspace_id
-    expect(result!.joinSQL).toContain('workspace_id');
+    expect(result.joinSQL).toContain('workspace_id');
   });
 });
 

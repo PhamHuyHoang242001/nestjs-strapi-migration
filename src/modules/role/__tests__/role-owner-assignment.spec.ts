@@ -8,7 +8,11 @@ const mockRoleRepo = { findDetailRelationWithModule: jest.fn(), findOneByConditi
 const mockUserRepo = {};
 const mockPermRepo = { findByIds: jest.fn().mockResolvedValue([]) };
 const mockHistoryLogger = { log: jest.fn().mockReturnValue({ catch: jest.fn() }) };
-const mockPermissionCache = { invalidateByRole: jest.fn().mockReturnValue({ catch: jest.fn() }), invalidateUser: jest.fn().mockReturnValue({ catch: jest.fn() }) };
+const mockPermissionCache = {
+  invalidateByRole: jest.fn().mockReturnValue({ catch: jest.fn() }),
+  invalidateUser: jest.fn().mockReturnValue({ catch: jest.fn() }),
+  invalidateOwnerScopeByRole: jest.fn().mockReturnValue({ catch: jest.fn() }),
+};
 
 function createService() {
   return new RoleService(
@@ -30,12 +34,10 @@ beforeEach(() => {
 describe('listOwnerResources()', () => {
   it('returns data for valid root table (ma_tool_workspaces)', async () => {
     const service = createService();
-    mockQuery
-      .mockResolvedValueOnce([{ total: 2 }])
-      .mockResolvedValueOnce([
-        { id: 1, display_name: 'WS A' },
-        { id: 2, display_name: 'WS B' },
-      ]);
+    mockQuery.mockResolvedValueOnce([{ total: 2 }]).mockResolvedValueOnce([
+      { id: 1, display_name: 'WS A' },
+      { id: 2, display_name: 'WS B' },
+    ]);
 
     const result = await service.listOwnerResources('ma_tool_workspaces', {}, { page: 1, limit: 20, skip: 0 });
 
@@ -45,9 +47,7 @@ describe('listOwnerResources()', () => {
 
   it('returns data for bi_hub_bicc_departments', async () => {
     const service = createService();
-    mockQuery
-      .mockResolvedValueOnce([{ total: 1 }])
-      .mockResolvedValueOnce([{ id: 10, display_name: 'Dept A' }]);
+    mockQuery.mockResolvedValueOnce([{ total: 1 }]).mockResolvedValueOnce([{ id: 10, display_name: 'Dept A' }]);
 
     const result = await service.listOwnerResources('bi_hub_bicc_departments', {}, { page: 1, limit: 20, skip: 0 });
 
@@ -66,9 +66,9 @@ describe('listOwnerResources()', () => {
   it('throws BadRequestException for unknown table', async () => {
     const service = createService();
 
-    await expect(
-      service.listOwnerResources('invalid_table', {}, { page: 1, limit: 20, skip: 0 }),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.listOwnerResources('invalid_table', {}, { page: 1, limit: 20, skip: 0 })).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('applies keyword filter in query', async () => {
@@ -139,12 +139,17 @@ describe('saveOwnerAssignments()', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('skips insert when empty assignments', async () => {
+  it('clears all SO (soft-delete, no insert) when assignments is an empty array', async () => {
     const service = createService();
+    mockQuery.mockResolvedValue([]);
 
     await service.saveOwnerAssignments(99, []);
 
-    expect(mockQuery).not.toHaveBeenCalled();
+    // Empty array = explicit "remove all SO" → soft-delete MUST run.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery.mock.calls[0][0]).toContain('UPDATE resource_owners SET deleted_at');
+    expect(mockQuery.mock.calls[0][1]).toEqual([99]);
+    expect(mockPermissionCache.invalidateOwnerScopeByRole).toHaveBeenCalledWith(99);
   });
 
   it('only soft-deletes when resource_ids are empty', async () => {

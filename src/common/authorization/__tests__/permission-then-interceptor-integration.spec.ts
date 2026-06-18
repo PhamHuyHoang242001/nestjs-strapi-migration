@@ -140,7 +140,7 @@ describe('PermissionGuard → DataAccessInterceptor (Option B composed)', () => 
     queryService.getUserPermissions.mockResolvedValue([]); // no role.permissions
     queueDsQueries(
       [{ resource_type: 'bicc_department', resource_id: OWNED_DEPT, role_id: 7 }], // PG: getUserOwnerScope
-      IMPLIED_VERBS.map((code) => ({ code })),                                     // PG: implied-verbs query
+      IMPLIED_VERBS.map((code) => ({ code })), // PG: implied-verbs query
       [{ resource_type: 'bicc_department', resource_id: OWNED_DEPT, role_id: 7 }], // Interceptor: getUserOwnerScope (cache mocked null)
     );
     queryService.getAccessibleRecords.mockResolvedValue([EXPLICIT_REPORT]); // would-be leak
@@ -189,7 +189,7 @@ describe('PermissionGuard → DataAccessInterceptor (Option B composed)', () => 
     queryService.getUserPermissions.mockResolvedValue(['bh_diag_report_view']);
     queueDsQueries(
       [{ resource_type: 'bicc_department', resource_id: OWNED_DEPT, role_id: 7 }], // PG getUserOwnerScope
-      IMPLIED_VERBS.map((code) => ({ code })),                                     // PG implied-verbs
+      IMPLIED_VERBS.map((code) => ({ code })), // PG implied-verbs
       [{ resource_type: 'bicc_department', resource_id: OWNED_DEPT, role_id: 7 }], // Interceptor getUserOwnerScope
     );
     queryService.getAccessibleRecords.mockResolvedValue([42]); // would-be leak

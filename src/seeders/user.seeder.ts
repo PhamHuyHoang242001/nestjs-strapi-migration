@@ -85,10 +85,9 @@ export class UserSeeder implements Seeder {
     }
 
     const tableName = this.connection.getMetadata(Users).tableName;
-    const existing = await this.connection.query<{ id: number }[]>(
-      `SELECT * FROM ${tableName} WHERE "id" = ANY($1)`,
-      [this.dataRef],
-    );
+    const existing = await this.connection.query<{ id: number }[]>(`SELECT * FROM ${tableName} WHERE "id" = ANY($1)`, [
+      this.dataRef,
+    ]);
 
     const arrDataInit = [];
     for (const item of dataConfig) {
@@ -100,12 +99,22 @@ export class UserSeeder implements Seeder {
         await this.connection.query(
           `INSERT INTO ${tableName} (id, username, full_name, email, team, department, branch_code, region, is_active, password, status, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
-          [item.id, item.username, item.full_name, item.email, item.team, item.department, item.branch_code, item.region, item.is_active, item.password, item.status],
+          [
+            item.id,
+            item.username,
+            item.full_name,
+            item.email,
+            item.team,
+            item.department,
+            item.branch_code,
+            item.region,
+            item.is_active,
+            item.password,
+            item.status,
+          ],
         );
       }
-      await this.connection.query(
-        `SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM ${tableName}))`,
-      );
+      await this.connection.query(`SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM ${tableName}))`);
     }
   }
 

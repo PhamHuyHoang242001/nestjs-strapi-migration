@@ -23,10 +23,9 @@ export class UserRoleSeeder implements Seeder {
     }
 
     const tableName = this.connection.getMetadata(UserRole).tableName;
-    const existing = await this.connection.query<{ id: number }[]>(
-      `SELECT * FROM ${tableName} WHERE "id" = ANY($1)`,
-      [this.dataRef],
-    );
+    const existing = await this.connection.query<{ id: number }[]>(`SELECT * FROM ${tableName} WHERE "id" = ANY($1)`, [
+      this.dataRef,
+    ]);
 
     const arrDataInit = [];
     for (const item of dataConfig) {

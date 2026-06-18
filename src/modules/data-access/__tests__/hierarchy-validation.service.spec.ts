@@ -20,7 +20,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('returns empty when all parents have allow rules', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         // Step 1: get parent IDs for bi_hub_reports
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         // Step 2: check existing allow rules — parent 100 has rule
@@ -32,7 +33,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('returns missing ancestors when parent lacks allow rules', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         // Step 1: get parent IDs
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         // Step 2: no existing rules for parent
@@ -50,8 +52,7 @@ describe('HierarchyValidationService', () => {
     });
 
     it('handles records with no FK (null parent_id)', async () => {
-      const queryMock = jest.fn()
-        .mockResolvedValueOnce([{ id: 1, parent_id: null }]);
+      const queryMock = jest.fn().mockResolvedValueOnce([{ id: 1, parent_id: null }]);
 
       const service = createService(queryMock);
       const result = await service.validate([1], 'bi_hub_reports', [10], []);
@@ -59,7 +60,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('deduplicates parent IDs across multiple data_ids', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         // Both records point to same parent 100
         .mockResolvedValueOnce([
           { id: 1, parent_id: 100 },
@@ -73,7 +75,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('recursively checks grandparents (ma_tool 3-level hierarchy)', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         // Level 1: documents → templates (parent_id)
         .mockResolvedValueOnce([{ id: 1, parent_id: 50 }])
         // Level 1: check rules for template 50 — missing
@@ -100,7 +103,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('builds correct user+role condition when both provided', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         .mockResolvedValueOnce([{ data_id: 100 }]);
 
@@ -117,7 +121,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('builds user-only condition when no roles', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         .mockResolvedValueOnce([{ data_id: 100 }]);
 
@@ -130,7 +135,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('builds role-only condition when no users', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         .mockResolvedValueOnce([{ data_id: 100 }]);
 
@@ -145,7 +151,8 @@ describe('HierarchyValidationService', () => {
 
   describe('enforce()', () => {
     it('does not throw when validation passes', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         .mockResolvedValueOnce([{ data_id: 100 }]);
 
@@ -154,7 +161,8 @@ describe('HierarchyValidationService', () => {
     });
 
     it('throws BadRequestException with missing_ancestors when validation fails', async () => {
-      const queryMock = jest.fn()
+      const queryMock = jest
+        .fn()
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ id: 100, display_name: 'Dept A' }]);

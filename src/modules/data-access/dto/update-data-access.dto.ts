@@ -41,5 +41,4 @@ export class UpdateDataAccessDto {
   @IsInt({ each: true })
   @Type(() => Number)
   role_ids?: number[];
-
 }

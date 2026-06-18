@@ -19,7 +19,7 @@ export class PermissionCacheService {
   async getPermissions(userId: number): Promise<Set<string>> {
     const key = permissionCacheKey(userId);
     try {
-      const raw = (await RedisAdapter.get(key)) as string | null;
+      const raw = await RedisAdapter.get(key);
       if (raw) return new Set(JSON.parse(raw) as string[]);
     } catch (err) {
       this.logger.warn(`Redis read failed for ${key}: ${this.errorMsg(err)}`);
@@ -41,7 +41,7 @@ export class PermissionCacheService {
   async getAccessibleRecords(userId: number, tableName: string, permissionCode?: string): Promise<number[]> {
     const key = dataAccessCacheKey(userId, tableName, permissionCode);
     try {
-      const raw = (await RedisAdapter.get(key)) as string | null;
+      const raw = await RedisAdapter.get(key);
       if (raw) return (JSON.parse(raw) as string[]).map(Number);
     } catch (err) {
       this.logger.warn(`Redis read failed for ${key}: ${this.errorMsg(err)}`);

@@ -109,7 +109,7 @@ export class SbvRptCvtOutputService {
         relations: ['branch'],
       }),
       userGroups.length > 0
-        ? (this.dataSource.query(
+        ? this.dataSource.query(
             `SELECT DISTINCT p.id, p.frq_code, p.rpt_code, p.branch_rpt_ind
              FROM ma_tool_cstb_rpt_properties p
              INNER JOIN ma_tool_cstb_rpt_properties_group_users_lnk lnk
@@ -117,14 +117,7 @@ export class SbvRptCvtOutputService {
              WHERE lnk.group_permission_id = ANY($1)
                AND p.deleted_at IS NULL`,
             [userGroups],
-          ) as Promise<
-            Array<{
-              id: number;
-              frq_code: string;
-              rpt_code: string;
-              branch_rpt_ind: string;
-            }>
-          >)
+          )
         : Promise.resolve([]),
     ]);
 

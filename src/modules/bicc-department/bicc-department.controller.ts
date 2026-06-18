@@ -10,7 +10,20 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BiccDepartmentService } from './bicc-department.service';
 import { CreateBiccDepartmentDto, SearchBiccDepartmentDto, UpdateBiccDepartmentDto } from './dto';

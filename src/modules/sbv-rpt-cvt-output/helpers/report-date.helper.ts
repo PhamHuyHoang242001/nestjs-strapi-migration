@@ -60,11 +60,7 @@ export function buildSearchDate(
  * Build the due date for a given frequency.
  * Ported 1:1 from strapiv5-old/src/common/util.ts:buildDueDate
  */
-export function buildDueDate(
-  baseDate: Date,
-  frqCode: string,
-  dateMode: string,
-): Date | null | undefined {
+export function buildDueDate(baseDate: Date, frqCode: string, dateMode: string): Date | null | undefined {
   if (!baseDate || isNaN(baseDate.getTime())) return null;
   const today = new Date();
   const year = baseDate.getFullYear();

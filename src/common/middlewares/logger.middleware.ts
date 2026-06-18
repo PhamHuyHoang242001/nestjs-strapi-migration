@@ -23,19 +23,19 @@ export class LoggerMiddleware implements NestMiddleware {
     const parts = hostname.split('://');
     const domain = parts.length > 1 ? (parts[1] || 'localhost').split(':')[0] : 'localhost';
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const deviceHeader = req.headers.device;
-    const parsedDevice = typeof deviceHeader === 'string' && deviceHeader ? JSON.parse(deviceHeader) : (typeof deviceHeader === 'object' ? deviceHeader : {});
-    req.headers.device = Object.assign(
-      { browser: '' },
-      parsedDevice,
-      {
-        ip,
-        userAgent: `${(req.headers['sec-ch-ua'] || '').toString().replace(/"/g, '')}${CHARACTER_SEPARATE_SUB_INFO}${
-          req.headers['user-agent']
-        }`,
-      },
-    );
+    const parsedDevice =
+      typeof deviceHeader === 'string' && deviceHeader
+        ? JSON.parse(deviceHeader)
+        : typeof deviceHeader === 'object'
+          ? deviceHeader
+          : {};
+    req.headers.device = Object.assign({ browser: '' }, parsedDevice, {
+      ip,
+      userAgent: `${(req.headers['sec-ch-ua'] || '').toString().replace(/"/g, '')}${CHARACTER_SEPARATE_SUB_INFO}${
+        req.headers['user-agent']
+      }`,
+    });
 
     req.headers.hostname = hostname;
     req.headers.domain = domain;

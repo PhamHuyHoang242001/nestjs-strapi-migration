@@ -211,7 +211,7 @@ export class AuthService {
       value['uid'] = user;
     }
     const access_token = generateToken(value);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const savedToken = (await this.tokenRepository.save({ ...options, expired_at, access_token } as any)) as {
       id: number;
     };
@@ -258,7 +258,12 @@ export class AuthService {
         id: tokenDecrypt['user_id'] as number,
       })) as unknown as Record<string, unknown>;
     }
-    const tokenResponse = await this.createToken(account?.['id'] as number, tokenDecrypt['client'] as USER_CLIENT || USER_CLIENT.USER, domain, device_hash);
+    const tokenResponse = await this.createToken(
+      account?.['id'] as number,
+      (tokenDecrypt['client'] as USER_CLIENT) || USER_CLIENT.USER,
+      domain,
+      device_hash,
+    );
     return tokenResponse;
   }
 

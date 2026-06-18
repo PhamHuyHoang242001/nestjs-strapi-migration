@@ -10,22 +10,26 @@ import { BadRequestException } from '@nestjs/common';
 
 // ── Mock factories ──────────────────────────────────────────────────────────
 
-function createService(overrides: {
-  transaction?: jest.Mock;
-  query?: jest.Mock;
-  moduleRepo?: Partial<Repository<any>>;
-  hierarchyEnforce?: jest.Mock;
-} = {}) {
-  const mockTransaction = overrides.transaction ?? jest.fn(async (cb: any) => {
-    const manager = {
-      create: jest.fn((_: any, data: any) => ({ id: 1, ...data })),
-      save: jest.fn(async (entity: any) => ({ ...entity, id: entity.id ?? 1 })),
-      insert: jest.fn(),
-      delete: jest.fn(),
-      softDelete: jest.fn(),
-    };
-    return cb(manager);
-  });
+function createService(
+  overrides: {
+    transaction?: jest.Mock;
+    query?: jest.Mock;
+    moduleRepo?: Partial<Repository<any>>;
+    hierarchyEnforce?: jest.Mock;
+  } = {},
+) {
+  const mockTransaction =
+    overrides.transaction ??
+    jest.fn(async (cb: any) => {
+      const manager = {
+        create: jest.fn((_: any, data: any) => ({ id: 1, ...data })),
+        save: jest.fn(async (entity: any) => ({ ...entity, id: entity.id ?? 1 })),
+        insert: jest.fn(),
+        delete: jest.fn(),
+        softDelete: jest.fn(),
+      };
+      return cb(manager);
+    });
 
   const mockDataSource = {
     query: overrides.query ?? jest.fn().mockResolvedValue([]),
@@ -51,12 +55,25 @@ function createService(overrides: {
   const mockUserDataAccessRepo = { insert: jest.fn(), softDelete: jest.fn() } as unknown as Repository<any>;
 
   const service = new DataAccessService(
-    mockDataAccessRepo, mockDataSource, mockHierarchyValidation,
-    mockHistoryLogger, mockPermissionCache, mockModuleRepo,
-    mockRoleDataAccessRepo, mockUserDataAccessRepo,
+    mockDataAccessRepo,
+    mockDataSource,
+    mockHierarchyValidation,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockModuleRepo,
+    mockRoleDataAccessRepo,
+    mockUserDataAccessRepo,
   );
 
-  return { service, mockDataSource, mockTransaction, mockHistoryLogger, mockPermissionCache, mockModuleRepo, mockHierarchyValidation };
+  return {
+    service,
+    mockDataSource,
+    mockTransaction,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockModuleRepo,
+    mockHierarchyValidation,
+  };
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -78,7 +95,9 @@ describe('DataAccessService.create()', () => {
   it('throws on duplicate user_id in user_permissions', async () => {
     const { service } = createService();
     const dto: CreateDataAccessDto = {
-      data_ids: [1], module_id: 1, scope_type: SCOPE_TYPE.ALLOW,
+      data_ids: [1],
+      module_id: 1,
+      scope_type: SCOPE_TYPE.ALLOW,
       user_permissions: [
         { user_id: 5, permission_ids: [1] },
         { user_id: 5, permission_ids: [2] },
@@ -162,7 +181,9 @@ describe('DataAccessService.create()', () => {
   it('invalidates permission cache per affected user', async () => {
     const { service, mockPermissionCache } = createService();
     const dto: CreateDataAccessDto = {
-      data_ids: [1], module_id: 1, scope_type: SCOPE_TYPE.ALLOW,
+      data_ids: [1],
+      module_id: 1,
+      scope_type: SCOPE_TYPE.ALLOW,
       user_permissions: [{ user_id: 5, permission_ids: [1, 2] }],
     };
     await service.create(dto);

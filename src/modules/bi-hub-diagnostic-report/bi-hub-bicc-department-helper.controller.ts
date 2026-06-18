@@ -41,7 +41,12 @@ export class BiHubBiccDepartmentHelperController {
   @Get('admin')
   @RequirePermission('bh_bicc_dept_view')
   findAdminByDepartment(@Query() query: BiccDepartmentHelperDto) {
-    return this.service.findAdminByDepartment(+query.biccDepartmentId, query.keyword, +(query.page || 1), +(query.limit || 10));
+    return this.service.findAdminByDepartment(
+      +query.biccDepartmentId,
+      query.keyword,
+      +(query.page || 1),
+      +(query.limit || 10),
+    );
   }
 
   @ApiOperation({ summary: 'Find diagnostic scopes by BICC department' })

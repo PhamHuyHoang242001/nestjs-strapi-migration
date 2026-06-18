@@ -1,4 +1,5 @@
-import { BearerGuard, HeaderGuard, IsMaintenanceGuard } from '@common/guards';
+import { BearerGuard, IsMaintenanceGuard } from '@common/guards';
+import { ServiceTokenGuard } from '@common/guards/service-token.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -100,7 +101,8 @@ export class DataSelfServeController {
 
   @Patch('service/data-self-serve/:id')
   @ApiOperation({ summary: 'Service callback updates a processing data self-serve request' })
-  @UseGuards(HeaderGuard)
+  @ApiBearerAuth()
+  @UseGuards(ServiceTokenGuard)
   update(@Param('id') id: string, @Body() body: UpdateDataSelfServeRequestDto) {
     return this.service.update(Number(id), body);
   }

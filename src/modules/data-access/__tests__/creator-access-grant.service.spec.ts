@@ -6,10 +6,12 @@ import { EntityManager } from 'typeorm';
 
 // ── Mock factories ──────────────────────────────────────────────────────────
 
-function createMockManager(overrides: {
-  findOneResult?: any;
-  findResult?: any[];
-} = {}) {
+function createMockManager(
+  overrides: {
+    findOneResult?: any;
+    findResult?: any[];
+  } = {},
+) {
   const manager = {
     findOne: jest.fn().mockResolvedValue(overrides.findOneResult ?? null),
     find: jest.fn().mockResolvedValue(overrides.findResult ?? []),
@@ -54,11 +56,14 @@ describe('CreatorAccessGrantService.grantCreatorAccess()', () => {
     expect(result).toBe(true);
 
     // DataAccess record created via create+save
-    expect(manager.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      data_id: 42,
-      module_id: 5,
-      scope_type: SCOPE_TYPE.ALLOW,
-    }));
+    expect(manager.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        data_id: 42,
+        module_id: 5,
+        scope_type: SCOPE_TYPE.ALLOW,
+      }),
+    );
     expect(manager.save).toHaveBeenCalledTimes(1);
 
     // UserDataAccess rows bulk-inserted
@@ -114,9 +119,7 @@ describe('CreatorAccessGrantService.grantCreatorAccess()', () => {
   it('bulk-inserts only 1 row when module has read only', async () => {
     const { service } = createService();
     const mockModule = { id: 6, table_name: 'bi_hub_bicc_departments', is_active: true };
-    const mockPermissions = [
-      { id: 30, action: 'read', module_id: 6, is_active: true },
-    ];
+    const mockPermissions = [{ id: 30, action: 'read', module_id: 6, is_active: true }];
     const { manager } = createMockManager({ findOneResult: mockModule, findResult: mockPermissions });
 
     await service.grantCreatorAccess(manager, { tableName: 'bi_hub_bicc_departments', dataId: 1, userId: 2 });
@@ -137,8 +140,8 @@ describe('CreatorAccessGrantService.grantCreatorAccess()', () => {
     expect(manager.findOne).toHaveBeenCalled();
     expect(manager.find).toHaveBeenCalled();
     expect(manager.create).toHaveBeenCalledTimes(1); // Only DataAccess
-    expect(manager.save).toHaveBeenCalledTimes(1);   // Only DataAccess
-    expect(manager.insert).toHaveBeenCalledTimes(1);  // Bulk UserDataAccess
+    expect(manager.save).toHaveBeenCalledTimes(1); // Only DataAccess
+    expect(manager.insert).toHaveBeenCalledTimes(1); // Bulk UserDataAccess
   });
 
   it('invalidateUserCache delegates to permissionCache', async () => {

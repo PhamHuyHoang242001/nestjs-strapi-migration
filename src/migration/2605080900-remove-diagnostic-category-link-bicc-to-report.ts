@@ -12,16 +12,30 @@ export class RemoveDiagnosticCategoryLinkBiccToReport1717833600000 implements Mi
     // ── Step 1: Rename tables ─────────────────────────────────────────
     await queryRunner.query(`ALTER TABLE IF EXISTS bi_diagnostic_reports RENAME TO bi_hub_diagnostic_reports`);
     await queryRunner.query(`ALTER TABLE IF EXISTS bi_diagnostic_files RENAME TO bi_hub_diagnostic_files`);
-    await queryRunner.query(`ALTER TABLE IF EXISTS bi_diagnostic_history_reports RENAME TO bi_hub_diagnostic_history_reports`);
+    await queryRunner.query(
+      `ALTER TABLE IF EXISTS bi_diagnostic_history_reports RENAME TO bi_hub_diagnostic_history_reports`,
+    );
     await queryRunner.query(`ALTER TABLE IF EXISTS bi_diagnostic_scopes RENAME TO bi_hub_diagnostic_scopes`);
-    await queryRunner.query(`ALTER TABLE IF EXISTS bi_diagnostic_reports_scopes RENAME TO bi_hub_diagnostic_reports_scopes`);
-    await queryRunner.query(`ALTER TABLE IF EXISTS bi_diagnostic_reports_labels RENAME TO bi_hub_diagnostic_reports_labels`);
+    await queryRunner.query(
+      `ALTER TABLE IF EXISTS bi_diagnostic_reports_scopes RENAME TO bi_hub_diagnostic_reports_scopes`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE IF EXISTS bi_diagnostic_reports_labels RENAME TO bi_hub_diagnostic_reports_labels`,
+    );
 
     // Rename sequences to match new table names
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_diagnostic_reports_id_seq RENAME TO bi_hub_diagnostic_reports_id_seq`);
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_diagnostic_files_id_seq RENAME TO bi_hub_diagnostic_files_id_seq`);
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_diagnostic_history_reports_id_seq RENAME TO bi_hub_diagnostic_history_reports_id_seq`);
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_diagnostic_scopes_id_seq RENAME TO bi_hub_diagnostic_scopes_id_seq`);
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_diagnostic_reports_id_seq RENAME TO bi_hub_diagnostic_reports_id_seq`,
+    );
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_diagnostic_files_id_seq RENAME TO bi_hub_diagnostic_files_id_seq`,
+    );
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_diagnostic_history_reports_id_seq RENAME TO bi_hub_diagnostic_history_reports_id_seq`,
+    );
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_diagnostic_scopes_id_seq RENAME TO bi_hub_diagnostic_scopes_id_seq`,
+    );
 
     // ── Step 2: Remove category, add direct bicc_department FK ──────
     // Add bicc_department_id column
@@ -107,16 +121,30 @@ export class RemoveDiagnosticCategoryLinkBiccToReport1717833600000 implements Mi
     // Rename tables back
     await queryRunner.query(`ALTER TABLE IF EXISTS bi_hub_diagnostic_reports RENAME TO bi_diagnostic_reports`);
     await queryRunner.query(`ALTER TABLE IF EXISTS bi_hub_diagnostic_files RENAME TO bi_diagnostic_files`);
-    await queryRunner.query(`ALTER TABLE IF EXISTS bi_hub_diagnostic_history_reports RENAME TO bi_diagnostic_history_reports`);
+    await queryRunner.query(
+      `ALTER TABLE IF EXISTS bi_hub_diagnostic_history_reports RENAME TO bi_diagnostic_history_reports`,
+    );
     await queryRunner.query(`ALTER TABLE IF EXISTS bi_hub_diagnostic_scopes RENAME TO bi_diagnostic_scopes`);
-    await queryRunner.query(`ALTER TABLE IF EXISTS bi_hub_diagnostic_reports_scopes RENAME TO bi_diagnostic_reports_scopes`);
-    await queryRunner.query(`ALTER TABLE IF EXISTS bi_hub_diagnostic_reports_labels RENAME TO bi_diagnostic_reports_labels`);
+    await queryRunner.query(
+      `ALTER TABLE IF EXISTS bi_hub_diagnostic_reports_scopes RENAME TO bi_diagnostic_reports_scopes`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE IF EXISTS bi_hub_diagnostic_reports_labels RENAME TO bi_diagnostic_reports_labels`,
+    );
 
     // Restore sequences
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_reports_id_seq RENAME TO bi_diagnostic_reports_id_seq`);
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_files_id_seq RENAME TO bi_diagnostic_files_id_seq`);
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_history_reports_id_seq RENAME TO bi_diagnostic_history_reports_id_seq`);
-    await queryRunner.query(`ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_scopes_id_seq RENAME TO bi_diagnostic_scopes_id_seq`);
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_reports_id_seq RENAME TO bi_diagnostic_reports_id_seq`,
+    );
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_files_id_seq RENAME TO bi_diagnostic_files_id_seq`,
+    );
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_history_reports_id_seq RENAME TO bi_diagnostic_history_reports_id_seq`,
+    );
+    await queryRunner.query(
+      `ALTER SEQUENCE IF EXISTS bi_hub_diagnostic_scopes_id_seq RENAME TO bi_diagnostic_scopes_id_seq`,
+    );
 
     // Restore modules tree
     await queryRunner.query(`

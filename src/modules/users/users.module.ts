@@ -21,7 +21,11 @@ import { ChangeHistoryModule } from '@modules/change-history/change-history.modu
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Users, UserAddress, Admins, UserRole, DataAccess]), AuthModule, ChangeHistoryModule],
+  imports: [
+    TypeOrmModule.forFeature([Users, UserAddress, Admins, UserRole, DataAccess]),
+    AuthModule,
+    ChangeHistoryModule,
+  ],
   controllers: [UsersController, UsersManagementController],
   providers: [UsersService, UserRepository, RoleRepository, UserAddressRepository, AdminRepository, TokenRepository],
   exports: [UsersService, UserRepository, UserAddressRepository],

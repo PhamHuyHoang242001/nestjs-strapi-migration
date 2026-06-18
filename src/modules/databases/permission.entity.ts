@@ -24,5 +24,4 @@ export class Permission extends BaseSoftDeleteEntity {
   @ManyToOne('Module', 'permissions')
   @JoinColumn({ name: 'module_id' })
   public module?: Module;
-
 }

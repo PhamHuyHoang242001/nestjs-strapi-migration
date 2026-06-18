@@ -131,13 +131,7 @@ export class RoleSeeder implements Seeder {
     if (!toAssign.length) return;
 
     const mappings = toAssign.map((p) => ({ role_id: 1, permission_id: p.id }));
-    await this.connection
-      .createQueryBuilder()
-      .insert()
-      .into('roles_permissions')
-      .values(mappings)
-      .orIgnore()
-      .execute();
+    await this.connection.createQueryBuilder().insert().into('roles_permissions').values(mappings).orIgnore().execute();
   }
 
   async drop(): Promise<any> {

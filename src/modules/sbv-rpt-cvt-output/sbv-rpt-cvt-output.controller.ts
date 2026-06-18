@@ -22,11 +22,7 @@ export class SbvRptCvtOutputController {
 
   @Post(':id')
   @ApiOperation({ summary: 'Download report zip file by log ID' })
-  downloadReports(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() req: RequestWithInfo,
-    @Res() res: Response,
-  ) {
+  downloadReports(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo, @Res() res: Response) {
     return this.service.downloadReports(id, req.info.user, res);
   }
 }

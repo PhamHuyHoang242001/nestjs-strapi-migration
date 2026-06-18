@@ -268,8 +268,7 @@ describe('DataAccessInterceptor — dataScope shape', () => {
       tableName: 'bi_hub_diagnostic_reports',
       permissionCode: 'bh_diag_report_view',
     });
-    const sleep = (ms: number, val: number[]) =>
-      new Promise<number[]>((resolve) => setTimeout(() => resolve(val), ms));
+    const sleep = (ms: number, val: number[]) => new Promise<number[]>((resolve) => setTimeout(() => resolve(val), ms));
     permissionCache.getAccessibleRecords.mockImplementation(() => sleep(40, [1]));
     ownerScope.getOwnedRoots.mockImplementation(() => sleep(40, [7]));
 

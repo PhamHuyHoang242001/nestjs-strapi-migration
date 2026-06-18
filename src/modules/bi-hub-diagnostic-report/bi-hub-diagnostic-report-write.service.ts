@@ -68,8 +68,12 @@ export class BiHubDiagnosticReportWriteService {
 
       if (dto.file?.fileUrl) {
         const file = manager.create(BiHubDiagnosticFile, {
-          file_url: dto.file.fileUrl, name: dto.file.name, type: dto.file.type,
-          lastest_version: true, bi_hub_diagnostic_report_id: saved.id, status: 'active' as any,
+          file_url: dto.file.fileUrl,
+          name: dto.file.name,
+          type: dto.file.type,
+          lastest_version: true,
+          bi_hub_diagnostic_report_id: saved.id,
+          status: 'active' as any,
         });
         await manager.save(file);
       }
@@ -126,22 +130,33 @@ export class BiHubDiagnosticReportWriteService {
       const changedKeys: string[] = [];
       if (dto.name !== undefined && dto.name !== existing.name) changedKeys.push('name');
       if (dto.summary !== undefined && dto.summary !== existing.summary) changedKeys.push('summary');
-      if (dto.insight !== undefined && JSON.stringify(dto.insight) !== JSON.stringify(existing.insight)) changedKeys.push('insight');
+      if (dto.insight !== undefined && JSON.stringify(dto.insight) !== JSON.stringify(existing.insight))
+        changedKeys.push('insight');
       if (dto.icon !== undefined && dto.icon !== existing.icon) changedKeys.push('icon');
       if (dto.isSensitive !== undefined && dto.isSensitive !== existing.is_sensitive) changedKeys.push('is_sensitive');
-      if (dto.biccDepartment !== undefined && dto.biccDepartment !== existing.bicc_department_id) changedKeys.push('bicc_department_id');
-      if (dto.scopes !== undefined && dto.scopes !== existing.txt_diagnostic_scope) changedKeys.push('txt_diagnostic_scope');
+      if (dto.biccDepartment !== undefined && dto.biccDepartment !== existing.bicc_department_id)
+        changedKeys.push('bicc_department_id');
+      if (dto.scopes !== undefined && dto.scopes !== existing.txt_diagnostic_scope)
+        changedKeys.push('txt_diagnostic_scope');
       if (dto.labels) changedKeys.push('labels');
       if (dto.file) changedKeys.push('file');
 
       if (Object.keys(updateData).length) await manager.update(BIHubDiagnosticReport, id, updateData);
 
       if (dto.file) {
-        await manager.update(BiHubDiagnosticFile, { bi_hub_diagnostic_report_id: id, lastest_version: true }, { lastest_version: false });
+        await manager.update(
+          BiHubDiagnosticFile,
+          { bi_hub_diagnostic_report_id: id, lastest_version: true },
+          { lastest_version: false },
+        );
         if (dto.file.fileUrl) {
           const newFile = manager.create(BiHubDiagnosticFile, {
-            file_url: dto.file.fileUrl, name: dto.file.name, type: dto.file.type,
-            lastest_version: true, bi_hub_diagnostic_report_id: id, status: 'active' as any,
+            file_url: dto.file.fileUrl,
+            name: dto.file.name,
+            type: dto.file.type,
+            lastest_version: true,
+            bi_hub_diagnostic_report_id: id,
+            status: 'active' as any,
           });
           await manager.save(newFile);
         }
@@ -149,7 +164,11 @@ export class BiHubDiagnosticReportWriteService {
 
       if (dto.labels) {
         const existingLabelIds = existing.labels?.map((l) => l.id) || [];
-        await manager.createQueryBuilder().relation(BIHubDiagnosticReport, 'labels').of(id).addAndRemove(dto.labels, existingLabelIds);
+        await manager
+          .createQueryBuilder()
+          .relation(BIHubDiagnosticReport, 'labels')
+          .of(id)
+          .addAndRemove(dto.labels, existingLabelIds);
       }
 
       if (changedKeys.length > 0) {
@@ -189,7 +208,8 @@ export class BiHubDiagnosticReportWriteService {
 
   // ── Download reports as Excel ───────────────────────────────────
   async download(query: DownloadDiagnosticReportDto, res: Response, scope: DataScope | null) {
-    const qb = this.reportRepo.createQueryBuilder('report')
+    const qb = this.reportRepo
+      .createQueryBuilder('report')
       .leftJoinAndSelect('report.bi_hub_diagnostic_files', 'file', 'file.lastest_version = true')
       .leftJoinAndSelect('report.labels', 'label')
       .leftJoinAndSelect('report.bicc_department', 'bicc')
@@ -200,9 +220,12 @@ export class BiHubDiagnosticReportWriteService {
 
     if (query.download_type === 'ALL') {
       applyDataScope(qb, 'report', REPORT_TABLE, scope);
-      if (query.keyword?.trim()) qb.andWhere('(report.name ILIKE :kw OR report.summary ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
+      if (query.keyword?.trim())
+        qb.andWhere('(report.name ILIKE :kw OR report.summary ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
       const sortCol = REPORT_SORT_MAP[query.sortField || 'createdAt'] || 'created_at';
-      const sortDir = ['ASC', 'DESC'].includes(query.sortValue?.toUpperCase()) ? (query.sortValue.toUpperCase() as 'ASC' | 'DESC') : 'DESC';
+      const sortDir = ['ASC', 'DESC'].includes(query.sortValue?.toUpperCase())
+        ? (query.sortValue.toUpperCase() as 'ASC' | 'DESC')
+        : 'DESC';
       qb.orderBy(`report.${sortCol}`, sortDir);
     } else if (query.download_type === 'MULTIPLE') {
       if (!query.ids) throw new BadRequestException('Missing IDs');
@@ -226,7 +249,7 @@ export class BiHubDiagnosticReportWriteService {
       name: item.name || '',
       bicc_name: item.bicc_department?.name || '',
       bu_name: item.bu_name || '',
-      insight: Array.isArray(item.insight) ? item.insight.join(', ') : (item.insight || ''),
+      insight: Array.isArray(item.insight) ? item.insight.join(', ') : item.insight || '',
       labels: item.labels?.map((l) => l.name).join(', ') || '',
       scopes: item.txt_diagnostic_scope || '',
       is_sensitive: item.is_sensitive ? 'Yes' : 'No',

@@ -1,7 +1,4 @@
-import {
-  ROOT_OWNER_CONFIG,
-  RESOURCE_TYPE_TO_ROOT_TABLE,
-} from '../constants/hierarchy-config';
+import { ROOT_OWNER_CONFIG, RESOURCE_TYPE_TO_ROOT_TABLE } from '../constants/hierarchy-config';
 
 describe('hierarchy-config invariants', () => {
   it('RESOURCE_TYPE_TO_ROOT_TABLE keys match ROOT_OWNER_CONFIG resource types', () => {

@@ -31,8 +31,17 @@ export interface NilReportGeneratorInput {
  */
 export function generateNilReports(input: NilReportGeneratorInput): any[] {
   const {
-    existingReports, rptProps, mappingMap, frq_code, dateMode,
-    baseDate, year, monthIndex, targetBranches, wholeBankVnCode, headOfficeCode,
+    existingReports,
+    rptProps,
+    mappingMap,
+    frq_code,
+    dateMode,
+    baseDate,
+    year,
+    monthIndex,
+    targetBranches,
+    wholeBankVnCode,
+    headOfficeCode,
   } = input;
 
   // Build existing key set
@@ -40,11 +49,8 @@ export function generateNilReports(input: NilReportGeneratorInput): any[] {
     existingReports.map((o) => {
       const d = new Date(o.report_date);
       const ds = formatDateKey(d);
-      const sbvCode =
-        o.branch_sbv_code === MA_REPORT_WHOLE_BANK_CODE
-          ? MA_REPORT_HEAD_OFFICE_CODE
-          : o.branch_sbv_code;
-      return `${o.rpt_code}_${(o.frq_code as string).toUpperCase()}_${sbvCode}_${ds}`;
+      const sbvCode = o.branch_sbv_code === MA_REPORT_WHOLE_BANK_CODE ? MA_REPORT_HEAD_OFFICE_CODE : o.branch_sbv_code;
+      return `${o.rpt_code}_${o.frq_code.toUpperCase()}_${sbvCode}_${ds}`;
     }),
   );
 
@@ -55,8 +61,8 @@ export function generateNilReports(input: NilReportGeneratorInput): any[] {
     const sbvMapping = mappingMap.get(p.rpt_code);
     if (!sbvMapping) continue;
 
-    const frq = (p.frq_code as string).toUpperCase();
-    const isBranchReport = (p.branch_rpt_ind as string) !== 'Y';
+    const frq = p.frq_code.toUpperCase();
+    const isBranchReport = p.branch_rpt_ind !== 'Y';
 
     // Build due dates based on frequency
     const dueDates: Date[] = [];
@@ -113,12 +119,7 @@ export function generateNilReports(input: NilReportGeneratorInput): any[] {
         const key = `${p.rpt_code}_${frq}_${branch}_${dueStr}`;
         if (existingKeySet.has(key)) continue;
 
-        const fileName = buildSearchNilFileName(
-          sbvMapping.rpt_code_sbv,
-          bId,
-          formatDate,
-          isBranchReport,
-        );
+        const fileName = buildSearchNilFileName(sbvMapping.rpt_code_sbv, bId, formatDate, isBranchReport);
 
         nilReports.push({
           id: `NIL|${p.rpt_code}|${bId}|${formatDate}`,
@@ -152,7 +153,8 @@ function buildM3DueDates(due: Date, dueDates: Date[]): void {
   if (due.getDate() === 31) {
     dueDates.push(due);
     for (
-      let d = new Date(day1); d < day30;
+      let d = new Date(day1);
+      d < day30;
       d.getDate() === 1 ? d.setDate(d.getDate() + 9) : d.setDate(d.getDate() + 10)
     ) {
       if (d.getDate() !== 1) dueDates.push(new Date(d));
@@ -164,14 +166,16 @@ function buildM3DueDates(due: Date, dueDates: Date[]): void {
   ) {
     dueDates.push(due);
     for (
-      let d = new Date(day1); d < due;
+      let d = new Date(day1);
+      d < due;
       d.getDate() === 1 ? d.setDate(d.getDate() + 9) : d.setDate(d.getDate() + 10)
     ) {
       if (d.getDate() !== 1) dueDates.push(new Date(d));
     }
   } else {
     for (
-      let d = new Date(day1); d <= due;
+      let d = new Date(day1);
+      d <= due;
       d.getDate() === 1 ? d.setDate(d.getDate() + 9) : d.setDate(d.getDate() + 10)
     ) {
       if (d.getDate() !== 1 && d.getDate() !== 30) dueDates.push(new Date(d));

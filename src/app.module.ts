@@ -38,6 +38,7 @@ import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.e
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { BiDiagnosticLog } from '@modules/databases/bi-diagnostic-log.entity';
 import { AuthorizationModule } from '@common/authorization';
+import { ServiceTokenModule } from '@modules/service-token/service-token.module';
 import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.module';
 import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-output.module';
 @Module({
@@ -95,6 +96,7 @@ import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-o
     AuthorizationModule,
     DataSelfServeModule,
     SbvRptCvtOutputModule,
+    ServiceTokenModule,
   ],
   controllers: [AppController],
   providers: [

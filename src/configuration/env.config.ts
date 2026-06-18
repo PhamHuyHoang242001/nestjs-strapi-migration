@@ -19,6 +19,8 @@ export const REDIS_PORT: number = Number(process.env.REDIS_PORT ?? '6379');
 
 // Service
 export const ENCRYPT_KEY: string = process.env.ENCRYPT_KEY ?? '12345';
+// Secret used to sign service tokens (name-compatible with the Strapi backend).
+export const ADMIN_JWT_SECRET: string = process.env.ADMIN_JWT_SECRET ?? process.env.ENCRYPT_KEY ?? '12345';
 export const ENABLE_CRONJOB: string = process.env.ENABLE_CRONJOB ?? 'enable';
 export const BASE_URL: string = process.env.BASE_URL ?? 'api';
 export const SWAGGER_BASE_URL: string = process.env.SWAGGER_BASE_URL ?? process.env.DOCS_BASE_URL ?? 'api/docs';

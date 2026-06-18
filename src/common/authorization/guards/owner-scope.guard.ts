@@ -38,7 +38,9 @@ export class OwnerScopeGuard implements CanActivate {
 
     if (!meta) return true;
 
-    const req = context.switchToHttp().getRequest<RequestWithInfo & { body?: Record<string, unknown>; params?: Record<string, unknown> }>();
+    const req = context
+      .switchToHttp()
+      .getRequest<RequestWithInfo & { body?: Record<string, unknown>; params?: Record<string, unknown> }>();
 
     // Explicit-verb bypass: caller cleared PermissionGuard via role.permissions only
     // (or super_admin). Owner-scope check would falsely block legitimate non-SO writes.

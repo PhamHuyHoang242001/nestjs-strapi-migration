@@ -32,7 +32,6 @@ export class DataAccess extends BaseSoftDeleteEntity {
 
   @OneToMany(() => RoleDataAccess, (rda) => rda.data_access)
   role_data_access: RoleDataAccess[];
-
 }
 
 @Entity('data_access_users')

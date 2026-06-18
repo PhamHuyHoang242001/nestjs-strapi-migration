@@ -2,7 +2,17 @@ import { Trim } from '@common/decorators/transforms.decorator';
 import { MAX_STR_LENGTH, MAX_TEXT_LENGTH, MIN_STR_LENGTH } from '@constant/index';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 import { OwnerAssignmentDto } from './owner-assignment.dto';
 
 export class CreateRoleDto {

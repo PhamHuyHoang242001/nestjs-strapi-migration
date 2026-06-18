@@ -34,9 +34,7 @@ describe('OwnerScopeResolverService', () => {
 
   describe('getUserOwnerScope()', () => {
     it('returns single entry for SO with one owned root', async () => {
-      dsQuery.mockResolvedValueOnce([
-        { resource_type: 'bicc_department', resource_id: 1, role_id: 7 },
-      ]);
+      dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
 
       const result = await service.getUserOwnerScope(100);
 
@@ -83,7 +81,9 @@ describe('OwnerScopeResolverService', () => {
 
     it('serves from cache on hit (no DB call)', async () => {
       (RedisAdapter.get as jest.Mock).mockResolvedValueOnce(
-        JSON.stringify([{ rootTable: 'bi_hub_bicc_departments', rootId: 1, resourceType: 'bicc_department', roleId: 7 }]),
+        JSON.stringify([
+          { rootTable: 'bi_hub_bicc_departments', rootId: 1, resourceType: 'bicc_department', roleId: 7 },
+        ]),
       );
 
       const result = await service.getUserOwnerScope(100);
@@ -93,17 +93,11 @@ describe('OwnerScopeResolverService', () => {
     });
 
     it('warms cache on miss', async () => {
-      dsQuery.mockResolvedValueOnce([
-        { resource_type: 'bicc_department', resource_id: 1, role_id: 7 },
-      ]);
+      dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
 
       await service.getUserOwnerScope(100);
 
-      expect(RedisAdapter.set).toHaveBeenCalledWith(
-        'perm:user:100:owner_scope',
-        expect.any(String),
-        120,
-      );
+      expect(RedisAdapter.set).toHaveBeenCalledWith('perm:user:100:owner_scope', expect.any(String), 120);
     });
 
     it('skips unknown resource_type rows (drift safety)', async () => {
@@ -149,11 +143,7 @@ describe('OwnerScopeResolverService', () => {
           { resource_type: 'bicc_department', resource_id: 1, role_id: 7 },
           { resource_type: 'workspace', resource_id: 2, role_id: 8 },
         ])
-        .mockResolvedValueOnce([
-          { code: 'report_view' },
-          { code: 'workspace_edit' },
-          { code: 'document_view' },
-        ]);
+        .mockResolvedValueOnce([{ code: 'report_view' }, { code: 'workspace_edit' }, { code: 'document_view' }]);
 
       const result = await service.getUserImpliedVerbs(100);
 
@@ -194,11 +184,7 @@ describe('OwnerScopeResolverService', () => {
 
       await service.getUserImpliedVerbs(100);
 
-      expect(RedisAdapter.set).toHaveBeenCalledWith(
-        'perm:user:100:owner_verbs',
-        JSON.stringify(['report_view']),
-        120,
-      );
+      expect(RedisAdapter.set).toHaveBeenCalledWith('perm:user:100:owner_verbs', JSON.stringify(['report_view']), 120);
     });
   });
 
@@ -236,9 +222,7 @@ describe('OwnerScopeResolverService', () => {
     });
 
     it('returns empty for rootTable that user owns nothing under', async () => {
-      dsQuery.mockResolvedValueOnce([
-        { resource_type: 'workspace', resource_id: 10, role_id: 7 },
-      ]);
+      dsQuery.mockResolvedValueOnce([{ resource_type: 'workspace', resource_id: 10, role_id: 7 }]);
 
       const result = await service.getOwnedRoots(100, 'bi_hub_bicc_departments');
 
@@ -246,16 +230,12 @@ describe('OwnerScopeResolverService', () => {
     });
 
     it('reuses getUserOwnerScope cache: 2 calls → 1 DB query', async () => {
-      dsQuery.mockResolvedValueOnce([
-        { resource_type: 'workspace', resource_id: 10, role_id: 7 },
-      ]);
+      dsQuery.mockResolvedValueOnce([{ resource_type: 'workspace', resource_id: 10, role_id: 7 }]);
 
       await service.getOwnedRoots(100, 'ma_tool_workspaces');
       // Second call hits in-Redis cache; primed during first call's writeCache.
       (RedisAdapter.get as jest.Mock).mockResolvedValueOnce(
-        JSON.stringify([
-          { rootTable: 'ma_tool_workspaces', rootId: 10, resourceType: 'workspace', roleId: 7 },
-        ]),
+        JSON.stringify([{ rootTable: 'ma_tool_workspaces', rootId: 10, resourceType: 'workspace', roleId: 7 }]),
       );
       const result = await service.getOwnedRoots(100, 'ma_tool_workspaces');
 

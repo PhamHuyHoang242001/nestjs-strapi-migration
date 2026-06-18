@@ -112,7 +112,10 @@ export class RoleService {
   }
 
   async saveOwnerAssignments(roleId: number, assignments: OwnerAssignmentDto[]) {
-    if (!assignments?.length) return;
+    // Full-replace semantics. `undefined`/null = caller opted out → no-op.
+    // An empty array `[]` is an explicit "clear all SO for this role" and MUST
+    // fall through to the soft-delete below (do NOT short-circuit on length).
+    if (!assignments) return;
 
     // Validate all resource_types exist in ROOT_OWNER_CONFIG
     const validTypes = new Set(Object.values(ROOT_OWNER_CONFIG).map((c) => c.resourceType));
@@ -122,13 +125,14 @@ export class RoleService {
       }
     }
 
-    // Soft-delete existing owner assignments for this role
+    // Soft-delete existing owner assignments for this role (runs unconditionally —
+    // an empty `assignments` clears all current SO).
     await this.connection.query(
       'UPDATE resource_owners SET deleted_at = NOW() WHERE role_id = $1 AND deleted_at IS NULL',
       [roleId],
     );
 
-    // Insert new assignments
+    // Insert new assignments (none when clearing)
     const rows: { resource_type: string; resource_id: number; role_id: number }[] = [];
     for (const a of assignments) {
       for (const rid of a.resource_ids) {
@@ -143,6 +147,10 @@ export class RoleService {
         params,
       );
     }
+
+    // resource_owners changed → invalidate owner-scope cache for this role's users
+    // so the add/remove takes effect immediately instead of lingering until TTL.
+    void this.permissionCache.invalidateOwnerScopeByRole(roleId).catch(() => {});
   }
 
   private async getOwnerAssignments(roleId: number): Promise<OwnerAssignmentDto[]> {
@@ -222,10 +230,9 @@ export class RoleService {
       .where('ur.role_id = :roleId', { roleId });
 
     if (search) {
-      query.andWhere(
-        '(user.full_name ILIKE :search OR user.email ILIKE :search OR user.username ILIKE :search)',
-        { search: `%${search}%` },
-      );
+      query.andWhere('(user.full_name ILIKE :search OR user.email ILIKE :search OR user.username ILIKE :search)', {
+        search: `%${search}%`,
+      });
     }
 
     const { page, limit } = paginationParams;
@@ -331,8 +338,15 @@ export class RoleService {
   }
 
   async update(id: number, payload: UpdateRoleDto) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { permission, permission_ids, user_ids, owner_assignments, screen: _screen, sub_screen: _sub_screen, ...data } = payload;
+    const {
+      permission,
+      permission_ids,
+      user_ids,
+      owner_assignments,
+      screen: _screen,
+      sub_screen: _sub_screen,
+      ...data
+    } = payload;
 
     // Capture old record with permissions before update for change history
     const oldRecord = await this.roleRepository.findOne({ where: { id }, relations: ['permissions'] });

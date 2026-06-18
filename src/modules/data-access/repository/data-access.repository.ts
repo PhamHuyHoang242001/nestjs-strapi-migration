@@ -51,10 +51,7 @@ export class DataAccessRepository extends BaseRepository<DataAccess> {
         query.andWhere('da.data_id = :dataId', { dataId: Number(kw) });
       } else {
         // Non-numeric: partial match on role name or user full_name
-        query.andWhere(
-          '(role.name ILIKE :keyword OR user.full_name ILIKE :keyword)',
-          { keyword: `%${kw}%` },
-        );
+        query.andWhere('(role.name ILIKE :keyword OR user.full_name ILIKE :keyword)', { keyword: `%${kw}%` });
       }
     }
 

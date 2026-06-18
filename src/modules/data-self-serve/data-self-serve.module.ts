@@ -17,9 +17,11 @@ import { DataSelfServeQuotaService } from './data-self-serve-quota.service';
 import { DataSelfServeService } from './data-self-serve.service';
 import { DataSelfServeStorageService } from './data-self-serve-storage.service';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
+import { ServiceTokenModule } from '@modules/service-token/service-token.module';
 
 @Module({
   imports: [
+    ServiceTokenModule,
     EventEmitterModule.forRoot(),
     TypeOrmModule.forFeature([
       ConfigDataSelfServe,

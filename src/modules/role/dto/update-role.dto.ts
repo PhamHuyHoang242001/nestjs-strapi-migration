@@ -12,7 +12,10 @@ export class UpdateRoleDto extends PartialType(CreateRoleDto) {
   @Type(() => Number)
   permission_ids?: number[];
 
-  @ApiPropertyOptional({ description: 'User IDs to replace all current user assignments for this role', type: [Number] })
+  @ApiPropertyOptional({
+    description: 'User IDs to replace all current user assignments for this role',
+    type: [Number],
+  })
   @IsOptional()
   @IsArray()
   @IsInt({ each: true })

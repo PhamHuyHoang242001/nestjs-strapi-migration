@@ -203,9 +203,7 @@ export class BusinessTableSampleSeeder implements Seeder {
   }
 
   private async resetSeq(table: string): Promise<void> {
-    await this.connection.query(
-      `SELECT setval('${table}_id_seq', (SELECT COALESCE(MAX(id), 1) FROM ${table}))`,
-    );
+    await this.connection.query(`SELECT setval('${table}_id_seq', (SELECT COALESCE(MAX(id), 1) FROM ${table}))`);
   }
 
   async drop(): Promise<any> {

@@ -9,11 +9,13 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 // ── Mock factory ────────────────────────────────────────────────────────────
 
-function createService(overrides: {
-  repoFindOne?: jest.Mock;
-  query?: jest.Mock;
-  queryBuilder?: any;
-} = {}) {
+function createService(
+  overrides: {
+    repoFindOne?: jest.Mock;
+    query?: jest.Mock;
+    queryBuilder?: any;
+  } = {},
+) {
   const mockQueryBuilder = overrides.queryBuilder ?? {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
@@ -43,9 +45,14 @@ function createService(overrides: {
   const mockUserDataAccessRepo = {} as unknown as Repository<any>;
 
   const service = new DataAccessService(
-    mockDataAccessRepo, mockDataSource, mockHierarchyValidation,
-    mockHistoryLogger, mockPermissionCache, mockModuleRepo,
-    mockRoleDataAccessRepo, mockUserDataAccessRepo,
+    mockDataAccessRepo,
+    mockDataSource,
+    mockHierarchyValidation,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockModuleRepo,
+    mockRoleDataAccessRepo,
+    mockUserDataAccessRepo,
   );
 
   return { service, mockDataAccessRepo, mockDataSource, mockQueryBuilder };
@@ -61,12 +68,14 @@ describe('DataAccessService.details()', () => {
 
   it('returns record with relations and record_info', async () => {
     const record = {
-      id: 1, data_id: 42, module_id: 5,
+      id: 1,
+      data_id: 42,
+      module_id: 5,
       module: { id: 5, table_name: 'bi_hub_reports' },
-      role_data_access: [], user_data_access: [],
+      role_data_access: [],
+      user_data_access: [],
     };
-    const query = jest.fn()
-      .mockResolvedValueOnce([{ id: 42, display_name: 'Q2 Report' }]);
+    const query = jest.fn().mockResolvedValueOnce([{ id: 42, display_name: 'Q2 Report' }]);
 
     const { service } = createService({
       repoFindOne: jest.fn().mockResolvedValue(record),
@@ -79,9 +88,12 @@ describe('DataAccessService.details()', () => {
 
   it('returns null record_info when target record deleted', async () => {
     const record = {
-      id: 1, data_id: 42, module_id: 5,
+      id: 1,
+      data_id: 42,
+      module_id: 5,
       module: { id: 5, table_name: 'bi_hub_reports' },
-      role_data_access: [], user_data_access: [],
+      role_data_access: [],
+      user_data_access: [],
     };
     const { service } = createService({
       repoFindOne: jest.fn().mockResolvedValue(record),
@@ -93,9 +105,12 @@ describe('DataAccessService.details()', () => {
 
   it('skips record_info query when table not in ALLOWED_TABLES', async () => {
     const record = {
-      id: 1, data_id: 42, module_id: 5,
+      id: 1,
+      data_id: 42,
+      module_id: 5,
       module: { id: 5, table_name: 'unknown_table' },
-      role_data_access: [], user_data_access: [],
+      role_data_access: [],
+      user_data_access: [],
     };
     const query = jest.fn();
     const { service } = createService({
@@ -157,7 +172,8 @@ describe('DataAccessService.getRecords()', () => {
   });
 
   it('returns paginated records from allowed table', async () => {
-    const query = jest.fn()
+    const query = jest
+      .fn()
       .mockResolvedValueOnce([{ total: 5 }]) // count
       .mockResolvedValueOnce([
         { id: 1, display_name: 'Report A', created_at: '2026-01-01' },
@@ -173,7 +189,8 @@ describe('DataAccessService.getRecords()', () => {
   });
 
   it('applies search filter on id and name column', async () => {
-    const query = jest.fn()
+    const query = jest
+      .fn()
       .mockResolvedValueOnce([{ total: 1 }])
       .mockResolvedValueOnce([{ id: 1, display_name: 'Revenue', created_at: '2026-01-01' }]);
 
@@ -186,7 +203,8 @@ describe('DataAccessService.getRecords()', () => {
   });
 
   it('applies date_from and date_to filters', async () => {
-    const query = jest.fn()
+    const query = jest
+      .fn()
       .mockResolvedValueOnce([{ total: 0 }])
       .mockResolvedValueOnce([]);
 

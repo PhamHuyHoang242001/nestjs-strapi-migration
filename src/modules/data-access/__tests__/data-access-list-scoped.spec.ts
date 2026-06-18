@@ -30,9 +30,14 @@ function createService(queryResults: any[]) {
   const mockUserDataAccessRepo = {} as unknown as Repository<any>;
 
   const service = new DataAccessService(
-    mockDataAccessRepo, mockDataSource, mockHierarchyValidation,
-    mockHistoryLogger, mockPermissionCache, mockModuleRepo,
-    mockRoleDataAccessRepo, mockUserDataAccessRepo,
+    mockDataAccessRepo,
+    mockDataSource,
+    mockHierarchyValidation,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockModuleRepo,
+    mockRoleDataAccessRepo,
+    mockUserDataAccessRepo,
   );
 
   return { service, queryMock };
@@ -47,12 +52,20 @@ describe('DataAccessService.list() — owner scoping', () => {
   describe('unscoped path (no userInfo — internal callers)', () => {
     it('query does NOT contain accessible CTE', async () => {
       const { service, queryMock } = createService([
-        [{ total: 2 }],  // count
-        [                  // groups
-          { data_id: 42, module_id: 5, table_name: 'bi_hub_reports', module_path: '/BI Hub', module_name: 'Reports', latest_created_at: '2026-01-01' },
+        [{ total: 2 }], // count
+        [
+          // groups
+          {
+            data_id: 42,
+            module_id: 5,
+            table_name: 'bi_hub_reports',
+            module_path: '/BI Hub',
+            module_name: 'Reports',
+            latest_created_at: '2026-01-01',
+          },
         ],
-        [],  // rules
-        [],  // record names
+        [], // rules
+        [], // record names
       ]);
 
       await service.list({}, defaultSort, defaultPagination, undefined);
@@ -65,10 +78,33 @@ describe('DataAccessService.list() — owner scoping', () => {
   describe('SO user', () => {
     it('count query includes accessible CTE', async () => {
       const { service, queryMock } = createService([
-        [{ role_id: 3 }],  // get roleIds
-        [{ total: 1 }],     // count (with CTE)
-        [{ data_id: 42, module_id: 5, table_name: 'bi_hub_reports', module_path: '/BI Hub', module_name: 'Reports', latest_created_at: '2026-01-01' }],
-        [{ rule_id: 1, data_id: 42, module_id: 5, scope_type: 'allow', subject_type: 'role', subject_id: 3, subject_name: 'Manager', permissions: null, start_date: null, end_date: null, created_at: '2026-01-01' }],
+        [{ role_id: 3 }], // get roleIds
+        [{ total: 1 }], // count (with CTE)
+        [
+          {
+            data_id: 42,
+            module_id: 5,
+            table_name: 'bi_hub_reports',
+            module_path: '/BI Hub',
+            module_name: 'Reports',
+            latest_created_at: '2026-01-01',
+          },
+        ],
+        [
+          {
+            rule_id: 1,
+            data_id: 42,
+            module_id: 5,
+            scope_type: 'allow',
+            subject_type: 'role',
+            subject_id: 3,
+            subject_name: 'Manager',
+            permissions: null,
+            start_date: null,
+            end_date: null,
+            created_at: '2026-01-01',
+          },
+        ],
         [{ id: 42, display_name: 'Q2 Report' }],
       ]);
 
@@ -84,8 +120,31 @@ describe('DataAccessService.list() — owner scoping', () => {
       const { service, queryMock } = createService([
         [{ role_id: 3 }],
         [{ total: 1 }],
-        [{ data_id: 42, module_id: 5, table_name: 'bi_hub_reports', module_path: '/BI Hub', module_name: 'Reports', latest_created_at: '2026-01-01' }],
-        [{ rule_id: 1, data_id: 42, module_id: 5, scope_type: 'allow', subject_type: 'role', subject_id: 3, subject_name: 'Manager', permissions: null, start_date: null, end_date: null, created_at: '2026-01-01' }],
+        [
+          {
+            data_id: 42,
+            module_id: 5,
+            table_name: 'bi_hub_reports',
+            module_path: '/BI Hub',
+            module_name: 'Reports',
+            latest_created_at: '2026-01-01',
+          },
+        ],
+        [
+          {
+            rule_id: 1,
+            data_id: 42,
+            module_id: 5,
+            scope_type: 'allow',
+            subject_type: 'role',
+            subject_id: 3,
+            subject_name: 'Manager',
+            permissions: null,
+            start_date: null,
+            end_date: null,
+            created_at: '2026-01-01',
+          },
+        ],
         [{ id: 42, display_name: 'Q2 Report' }],
       ]);
 
@@ -99,8 +158,31 @@ describe('DataAccessService.list() — owner scoping', () => {
       const { service } = createService([
         [{ role_id: 3 }],
         [{ total: 1 }],
-        [{ data_id: 42, module_id: 5, table_name: 'bi_hub_reports', module_path: '/BI Hub', module_name: 'Reports', latest_created_at: '2026-01-01' }],
-        [{ rule_id: 1, data_id: 42, module_id: 5, scope_type: 'allow', subject_type: 'role', subject_id: 3, subject_name: 'Manager', permissions: null, start_date: null, end_date: null, created_at: '2026-01-01' }],
+        [
+          {
+            data_id: 42,
+            module_id: 5,
+            table_name: 'bi_hub_reports',
+            module_path: '/BI Hub',
+            module_name: 'Reports',
+            latest_created_at: '2026-01-01',
+          },
+        ],
+        [
+          {
+            rule_id: 1,
+            data_id: 42,
+            module_id: 5,
+            scope_type: 'allow',
+            subject_type: 'role',
+            subject_id: 3,
+            subject_name: 'Manager',
+            permissions: null,
+            start_date: null,
+            end_date: null,
+            created_at: '2026-01-01',
+          },
+        ],
         [{ id: 42, display_name: 'Q2 Report' }],
       ]);
 
@@ -112,11 +194,7 @@ describe('DataAccessService.list() — owner scoping', () => {
     });
 
     it('roleIds passed as parameter to CTE', async () => {
-      const { service, queryMock } = createService([
-        [{ role_id: 3 }, { role_id: 7 }],
-        [{ total: 0 }],
-        [],
-      ]);
+      const { service, queryMock } = createService([[{ role_id: 3 }, { role_id: 7 }], [{ total: 0 }], []]);
 
       await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
 
@@ -129,7 +207,7 @@ describe('DataAccessService.list() — owner scoping', () => {
   describe('non-SO user', () => {
     it('returns empty when user has no roles', async () => {
       const { service } = createService([
-        [],  // no roles
+        [], // no roles
       ]);
 
       const result = await service.list({}, defaultSort, defaultPagination, { userId: 99, client: 'user' });
@@ -141,10 +219,7 @@ describe('DataAccessService.list() — owner scoping', () => {
 
   describe('no userInfo (backward compat)', () => {
     it('works without userInfo param (admin behavior)', async () => {
-      const { service } = createService([
-        [{ total: 0 }],
-        [],
-      ]);
+      const { service } = createService([[{ total: 0 }], []]);
 
       const result = await service.list({}, defaultSort, defaultPagination);
 
@@ -155,11 +230,7 @@ describe('DataAccessService.list() — owner scoping', () => {
 
   describe('combined with search filter', () => {
     it('accessible CTE combined with name_matches CTE', async () => {
-      const { service, queryMock } = createService([
-        [{ role_id: 3 }],
-        [{ total: 0 }],
-        [],
-      ]);
+      const { service, queryMock } = createService([[{ role_id: 3 }], [{ total: 0 }], []]);
 
       await service.list({ keyword: 'Revenue' }, defaultSort, defaultPagination, { userId: 10, client: 'user' });
 

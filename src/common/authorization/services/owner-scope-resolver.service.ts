@@ -2,11 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { RedisAdapter } from '@common/infrastructure/redis.adapter';
-import {
-  OWNER_SCOPE_CACHE_TTL,
-  userImpliedVerbsKey,
-  userOwnerScopeKey,
-} from '../constants/authorization.constant';
+import { OWNER_SCOPE_CACHE_TTL, userImpliedVerbsKey, userOwnerScopeKey } from '../constants/authorization.constant';
 import {
   HIERARCHY_MAP,
   RESOURCE_TYPE_TO_ROOT_TABLE,
@@ -148,7 +144,7 @@ export class OwnerScopeResolverService {
     const chain: { childTable: string; parentTable: string; fkColumn: string }[] = [];
     let cursor = tableName;
     while (HIERARCHY_MAP[cursor] !== null && HIERARCHY_MAP[cursor] !== undefined) {
-      const entry = HIERARCHY_MAP[cursor]!;
+      const entry = HIERARCHY_MAP[cursor];
       chain.push({ childTable: cursor, parentTable: entry.parentTable, fkColumn: entry.fkColumn });
       cursor = entry.parentTable;
     }
@@ -192,7 +188,7 @@ export class OwnerScopeResolverService {
 
   private async readCache<T>(key: string): Promise<T | null> {
     try {
-      const raw = (await RedisAdapter.get(key)) as string | null;
+      const raw = await RedisAdapter.get(key);
       if (raw) return JSON.parse(raw) as T;
     } catch (err) {
       this.logger.warn(`Redis read failed for ${key}: ${this.errorMsg(err)}`);

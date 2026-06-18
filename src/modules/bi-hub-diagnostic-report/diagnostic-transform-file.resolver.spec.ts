@@ -19,6 +19,11 @@ describe('DiagnosticTransformFileResolver', () => {
       hasPermission: jest.fn().mockResolvedValue(true),
       getAccessibleRecords: jest.fn().mockResolvedValue([7, 8, 9]),
     };
+    const ownerScope = {
+      getUserImpliedVerbs: jest.fn().mockResolvedValue(new Set<string>()),
+      getOwnedRoots: jest.fn().mockResolvedValue([]),
+      isInOwnedScope: jest.fn().mockResolvedValue(false),
+    };
 
     return {
       resolver: new DiagnosticTransformFileResolver(
@@ -26,11 +31,13 @@ describe('DiagnosticTransformFileResolver', () => {
         historyRepo as any,
         logRepo as any,
         permissionCache as any,
+        ownerScope as any,
       ),
       reportRepo,
       historyRepo,
       logRepo,
       permissionCache,
+      ownerScope,
     };
   };
 
@@ -83,6 +90,41 @@ describe('DiagnosticTransformFileResolver', () => {
     expect(request.dataScope).toEqual({ explicit: [7, 8], ownedRoots: null });
   });
 
+  it('authorize() resolves verb via owner-implied path for an SO (no explicit verb)', async () => {
+    const { resolver, permissionCache, ownerScope } = createResolver();
+    permissionCache.hasPermission.mockResolvedValue(false);
+    ownerScope.getUserImpliedVerbs.mockResolvedValue(new Set(['bh_diag_report_view']));
+    ownerScope.getOwnedRoots.mockResolvedValue([5]);
+
+    const request: any = {
+      id: 7,
+      model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
+      info: { user: { id: 1 }, client: 'user' },
+    };
+    await resolver.authorize(request);
+
+    // Owner-only path: explicit branch suppressed, owner branch carries the roots.
+    expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
+    expect(request.dataScope).toEqual({
+      explicit: [],
+      ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [5] },
+    });
+  });
+
+  it('authorize() throws when neither explicit nor implied verb is held', async () => {
+    const { resolver, permissionCache, ownerScope } = createResolver();
+    permissionCache.hasPermission.mockResolvedValue(false);
+    ownerScope.getUserImpliedVerbs.mockResolvedValue(new Set<string>());
+
+    await expect(
+      resolver.authorize({
+        id: 7,
+        model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
+        info: { user: { id: 1 }, client: 'user' },
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   // ── transform() tests ─────────────────────────────────────────
 
   it('blocks report transform when dataScope.explicit excludes report', async () => {
@@ -94,6 +136,44 @@ describe('DiagnosticTransformFileResolver', () => {
         model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
         info: { user: { id: 1 }, client: 'user' },
         dataScope: { explicit: [8], ownedRoots: null },
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(reportRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('allows owned report transform via owner branch when explicit excludes it (SO case)', async () => {
+    const { resolver, reportRepo, ownerScope } = createResolver();
+    ownerScope.isInOwnedScope.mockResolvedValue(true);
+    reportRepo.findOne.mockResolvedValue({
+      id: 7,
+      name: 'Diagnostic report',
+      code: 'BICC_7',
+      bi_hub_diagnostic_files: [{ file_url: '/uploads/report.pdf', type: 'pdf', lastest_version: true }],
+    });
+
+    const result = await resolver.transform({
+      id: 7,
+      model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
+      info: { user: { id: 1 }, client: 'user' },
+      // owner-only path: report 7 not in explicit, but owned via root dept 5
+      dataScope: { explicit: [], ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [5] } },
+    });
+
+    expect(result).toEqual({ url: '/uploads/report.pdf', type: 'pdf' });
+    expect(ownerScope.isInOwnedScope).toHaveBeenCalledWith(1, 'bi_hub_diagnostic_reports', 7);
+  });
+
+  it('blocks transform when report is neither explicit nor owned', async () => {
+    const { resolver, reportRepo, ownerScope } = createResolver();
+    ownerScope.isInOwnedScope.mockResolvedValue(false);
+
+    await expect(
+      resolver.transform({
+        id: 7,
+        model: TransformFileModel.BI_DIAGNOSTIC_REPORT,
+        info: { user: { id: 1 }, client: 'user' },
+        dataScope: { explicit: [8], ownedRoots: { rootTable: 'bi_hub_bicc_departments', rootIds: [5] } },
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
 

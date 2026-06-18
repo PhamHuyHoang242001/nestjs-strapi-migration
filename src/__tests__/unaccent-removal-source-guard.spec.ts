@@ -27,26 +27,16 @@ const ILIKE_EXPECTED_FRAGMENTS: Record<string, string[]> = {
     'role.name ILIKE :keyword',
     'user.full_name ILIKE :keyword',
   ],
-  'modules/data-access/data-access.service.ts': [
-    'ILIKE ${searchParam}',
-  ],
+  'modules/data-access/data-access.service.ts': ['ILIKE ${searchParam}'],
   'modules/role/role.service.ts': [
     'user.full_name ILIKE :search',
     'user.email ILIKE :search',
     'user.username ILIKE :search',
   ],
-  'modules/role/repository/role.repository.ts': [
-    'name ILIKE :name',
-  ],
-  'modules/users/repository/users.repository.ts': [
-    'user.full_name ILIKE :s',
-  ],
-  'modules/permission/repository/permission.repository.ts': [
-    'permission.name ILIKE :name',
-  ],
-  'modules/module/repository/module-management.repository.ts': [
-    'module.name ILIKE :name',
-  ],
+  'modules/role/repository/role.repository.ts': ['name ILIKE :name'],
+  'modules/users/repository/users.repository.ts': ['user.full_name ILIKE :s'],
+  'modules/permission/repository/permission.repository.ts': ['permission.name ILIKE :name'],
+  'modules/module/repository/module-management.repository.ts': ['module.name ILIKE :name'],
   'modules/change-history/repository/change-history.repository.ts': [
     'ch.performed_by ILIKE :pb',
     'ch.entity_name ILIKE :s',

@@ -22,17 +22,23 @@ const sampleRecord = {
   ],
 };
 
-function createService(overrides: {
-  findOne?: jest.Mock;
-  transaction?: jest.Mock;
-} = {}) {
+function createService(
+  overrides: {
+    findOne?: jest.Mock;
+    transaction?: jest.Mock;
+  } = {},
+) {
   const managerCalls: Record<string, any[]> = { softDelete: [] };
-  const mockTransaction = overrides.transaction ?? jest.fn(async (cb: any) => {
-    const manager = {
-      softDelete: jest.fn((...args: any[]) => { managerCalls.softDelete.push(args); }),
-    };
-    return cb(manager);
-  });
+  const mockTransaction =
+    overrides.transaction ??
+    jest.fn(async (cb: any) => {
+      const manager = {
+        softDelete: jest.fn((...args: any[]) => {
+          managerCalls.softDelete.push(args);
+        }),
+      };
+      return cb(manager);
+    });
 
   const mockDataSource = {
     query: jest.fn().mockResolvedValue([]),
@@ -56,12 +62,26 @@ function createService(overrides: {
   const mockUserDataAccessRepo = { insert: jest.fn(), softDelete: jest.fn() } as unknown as Repository<any>;
 
   const service = new DataAccessService(
-    mockDataAccessRepo, mockDataSource, mockHierarchyValidation,
-    mockHistoryLogger, mockPermissionCache, mockModuleRepo,
-    mockRoleDataAccessRepo, mockUserDataAccessRepo,
+    mockDataAccessRepo,
+    mockDataSource,
+    mockHierarchyValidation,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockModuleRepo,
+    mockRoleDataAccessRepo,
+    mockUserDataAccessRepo,
   );
 
-  return { service, mockDataAccessRepo, mockHistoryLogger, mockPermissionCache, mockTransaction, managerCalls, mockRoleDataAccessRepo, mockUserDataAccessRepo };
+  return {
+    service,
+    mockDataAccessRepo,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockTransaction,
+    managerCalls,
+    mockRoleDataAccessRepo,
+    mockUserDataAccessRepo,
+  };
 }
 
 // ── delete() ────────────────────────────────────────────────────────────────

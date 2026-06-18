@@ -29,9 +29,14 @@ function createService(queryResults: any[]) {
   const mockUserDataAccessRepo = {} as unknown as Repository<any>;
 
   const service = new DataAccessService(
-    mockDataAccessRepo, mockDataSource, mockHierarchyValidation,
-    mockHistoryLogger, mockPermissionCache, mockModuleRepo,
-    mockRoleDataAccessRepo, mockUserDataAccessRepo,
+    mockDataAccessRepo,
+    mockDataSource,
+    mockHierarchyValidation,
+    mockHistoryLogger,
+    mockPermissionCache,
+    mockModuleRepo,
+    mockRoleDataAccessRepo,
+    mockUserDataAccessRepo,
   );
 
   return { service, queryMock };
@@ -46,7 +51,10 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
     it('sees all records (no owner join injected)', async () => {
       const { service, queryMock } = createService([
         [{ total: 2 }],
-        [{ id: 1, display_name: 'A', created_at: '2026-01-01' }, { id: 2, display_name: 'B', created_at: '2026-01-02' }],
+        [
+          { id: 1, display_name: 'A', created_at: '2026-01-01' },
+          { id: 2, display_name: 'B', created_at: '2026-01-02' },
+        ],
       ]);
 
       const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, undefined);
@@ -69,7 +77,10 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ id: 1, display_name: 'Dept A', created_at: '2026-01-01' }],
       ]);
 
-      const result = await service.getRecords('bi_hub_bicc_departments', {}, defaultPagination, { userId: 10, client: 'user' });
+      const result = await service.getRecords('bi_hub_bicc_departments', {}, defaultPagination, {
+        userId: 10,
+        client: 'user',
+      });
 
       expect(result.data).toHaveLength(1);
       // Query should contain junction join
@@ -99,7 +110,10 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ id: 20, display_name: 'Doc X', created_at: '2026-01-01' }],
       ]);
 
-      const result = await service.getRecords('ma_tool_documents', {}, defaultPagination, { userId: 10, client: 'user' });
+      const result = await service.getRecords('ma_tool_documents', {}, defaultPagination, {
+        userId: 10,
+        client: 'user',
+      });
 
       expect(result.data).toHaveLength(1);
       const countSQL = queryMock.mock.calls[1][0] as string;
@@ -109,11 +123,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
     });
 
     it('passes roleIds as query parameter', async () => {
-      const { service, queryMock } = createService([
-        [{ role_id: 3 }, { role_id: 7 }],
-        [{ total: 0 }],
-        [],
-      ]);
+      const { service, queryMock } = createService([[{ role_id: 3 }, { role_id: 7 }], [{ total: 0 }], []]);
 
       await service.getRecords('bi_hub_reports', {}, defaultPagination, { userId: 10, client: 'user' });
 
@@ -142,7 +152,10 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ role_id: 3 }], // user has roles
       ]);
 
-      const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, { userId: 10, client: 'user' });
+      const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, {
+        userId: 10,
+        client: 'user',
+      });
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.totalItems).toBe(0);
@@ -151,10 +164,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
 
   describe('no userInfo (backward compat)', () => {
     it('returns all records when userInfo not provided', async () => {
-      const { service } = createService([
-        [{ total: 3 }],
-        [{ id: 1, display_name: 'A', created_at: '2026-01-01' }],
-      ]);
+      const { service } = createService([[{ total: 3 }], [{ id: 1, display_name: 'A', created_at: '2026-01-01' }]]);
 
       const result = await service.getRecords('bi_hub_reports', {}, defaultPagination);
 

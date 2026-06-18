@@ -37,7 +37,7 @@ const SCENARIO = {
   user_id: 100,
   owned_root: 1,
   owned_dept_subtree_reports: [10, 11], // records under dept=1
-  explicit_grant_report: 999,           // dept=2, in Role D grant
+  explicit_grant_report: 999, // dept=2, in Role D grant
   implied_verbs: ['bh_diag_report_view', 'bh_diag_report_edit', 'bh_diag_report_delete'],
 };
 
@@ -129,7 +129,7 @@ describe('SO Owner-Scope Integration', () => {
     });
     queueQueries(
       [{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }], // owner scope
-      [{ exists: 1 }],                                                     // walk-up check passes
+      [{ exists: 1 }], // walk-up check passes
     );
 
     await expect(
@@ -225,10 +225,7 @@ describe('SO Owner-Scope Integration', () => {
   it('SQL regression guard: applyDataScope emits EXISTS clause for owner branch (1-hop)', async () => {
     // Standalone DataSource (no connect) — getQueryAndParameters() builds SQL from QB metadata.
     const dataSource = new DataSource({ type: 'postgres', entities: [], synchronize: false });
-    const qb = dataSource
-      .createQueryBuilder()
-      .select('r.id')
-      .from('bi_hub_diagnostic_reports', 'r');
+    const qb = dataSource.createQueryBuilder().select('r.id').from('bi_hub_diagnostic_reports', 'r');
 
     const scope: DataScope = {
       explicit: [],
@@ -243,10 +240,7 @@ describe('SO Owner-Scope Integration', () => {
 
   it('SQL regression guard: applyDataScope emits root-only ANY() when tableName === rootTable', async () => {
     const dataSource = new DataSource({ type: 'postgres', entities: [], synchronize: false });
-    const qb = dataSource
-      .createQueryBuilder()
-      .select('d.id')
-      .from('bi_hub_bicc_departments', 'd');
+    const qb = dataSource.createQueryBuilder().select('d.id').from('bi_hub_bicc_departments', 'd');
 
     const scope: DataScope = {
       explicit: [],
@@ -269,9 +263,9 @@ describe('SO Owner-Scope Integration', () => {
       SCENARIO.implied_verbs.map((code) => ({ code })),
     );
 
-    await expect(
-      permissionGuard.canActivate(ctx({ user: { id: SCENARIO.user_id }, client: 'user' })),
-    ).resolves.toBe(true);
+    await expect(permissionGuard.canActivate(ctx({ user: { id: SCENARIO.user_id }, client: 'user' }))).resolves.toBe(
+      true,
+    );
   });
 
   it('PermissionGuard: SO without verb in impliedVerbs (cross-service) → 403', async () => {
