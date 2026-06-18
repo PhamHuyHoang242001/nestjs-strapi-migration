@@ -6,7 +6,7 @@ import { Body, Controller, Get, Patch, Query, UseGuards } from '@nestjs/common';
 import { ApiBasicAuth, ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SearchUserAddressDto } from './dto/search-user-address.dto';
 import { Users } from '@modules/databases/user.entity';
-import { UpdateMyProfileDto, UserProfileDto } from './dto/user-profile.dto';
+import { UpdateMyProfileDto } from './dto/user-profile.dto';
 import { DeleteMyAccountDto } from './dto/delete-my-account.dto';
 import { SortType } from '@common/enums';
 
@@ -31,7 +31,7 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Get my user profile' })
   @UseGuards(BearerGuard, IsUserGuard)
-  getMyProfile(@UserScope() user: Users): UserProfileDto {
+  getMyProfile(@UserScope() user: Users) {
     return this.usersService.getMyProfile(user);
   }
 
@@ -39,7 +39,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Update my user profile' })
   @UseGuards(BearerGuard, IsUserGuard)
   @ApiBody({ type: UpdateMyProfileDto })
-  updateMyProfile(@UserScope() user: Users, @Body() body: UpdateMyProfileDto): Promise<UserProfileDto> {
+  updateMyProfile(@UserScope() user: Users, @Body() body: UpdateMyProfileDto) {
     return this.usersService.updateMyProfile(user, body);
   }
 

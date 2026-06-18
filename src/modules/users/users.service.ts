@@ -1,14 +1,16 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, Not } from 'typeorm';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import { Permission } from '@modules/databases/permission.entity';
 import { UserRepository } from './repository/users.repository';
 import { SearchingUserDto } from './dto';
 import { PageDto, PageMetaDto } from '@common/dto/paginate.dto';
 import { UserAddressRepository } from './repository/users-address.repository';
 import { SearchUserAddressDto } from './dto/search-user-address.dto';
 import { Users } from '@modules/databases/user.entity';
-import { UpdateMyProfileDto, UserProfileDto } from './dto/user-profile.dto';
+import { UpdateMyProfileDto } from './dto/user-profile.dto';
 import { DeleteMyAccountDto } from './dto/delete-my-account.dto';
-import { USER_STATUS } from '@common/enums';
+import { SCOPE_TYPE, USER_STATUS } from '@common/enums';
 import { ERROR_CODE } from '@constant/error-code';
 import { AuthService } from '@modules/auth/auth.service';
 import { TokenRepository } from '@modules/token/repository/token.repository';
@@ -36,6 +38,7 @@ export class UsersService {
     private readonly authService: AuthService,
     private readonly dataSource: DataSource,
     private readonly historyLogger: ChangeHistoryLogger,
+    private readonly ownerScopeResolver: OwnerScopeResolverService,
   ) {}
 
   findUsingSocialId({ apple_id, google_id }: { apple_id?: string | null; google_id?: string | null }) {
@@ -69,43 +72,79 @@ export class UsersService {
     return new PageDto(entities, pageMetaDto);
   }
 
-  getMyProfile(user: Users): UserProfileDto {
-    const {
-      id,
-      first_name,
-      last_name,
-      email,
-      phone_code,
-      phone,
-      date_of_birth,
-      country,
-      country_iso,
-      phone_iso,
-      state,
-      state_iso,
-      gender,
-      password,
-    } = user;
+  async getMyProfile(user: Users | { id: number }) {
+    const { id } = user;
+
+    const query = this.userRepository
+      .createQueryBuilder('u')
+      .leftJoinAndSelect('u.user_roles', 'ur')
+      .leftJoinAndSelect('ur.role', 'r')
+      .leftJoinAndSelect('r.permissions', 'rp')
+      .leftJoinAndSelect('u.user_data_access', 'uda')
+      .leftJoinAndSelect('uda.permission', 'udap')
+      .leftJoinAndSelect(
+        'uda.data_access',
+        'da',
+        `da.scope_type = :scope
+         AND (da.start_date IS NULL OR da.start_date <= :now)
+         AND (da.end_date   IS NULL OR da.end_date   >= :now)`,
+        { now: new Date(), scope: SCOPE_TYPE.ALLOW },
+      )
+      .where('u.id = :userId', { userId: id });
+
+    const result = await query.getOne();
+
+    if (!result) {
+      throw new NotFoundException(ERROR_CODE.A009);
+    }
+
+    // 1) Role-derived permissions (Role.permissions ManyToMany)
+    const rolePermissions: Permission[] = (result.user_roles ?? [])
+      .flatMap((ur) => ur.role?.permissions ?? [])
+      .filter(Boolean);
+
+    // 2) User-level data_access exceptions (scope=allow, within active window)
+    //    Only rows where `uda.data_access` matched the JOIN condition contribute.
+    const userAccessPermissions: Permission[] = (result.user_data_access ?? [])
+      .filter((uda) => !!uda.data_access)
+      .map((uda) => uda.permission)
+      .filter(Boolean);
+
+    // Dedupe role + user_access by permission id
+    const permissionMap = new Map<number, Permission>();
+    [...rolePermissions, ...userAccessPermissions].forEach((permission) => {
+      if (permission?.id != null) permissionMap.set(permission.id, permission);
+    });
+
+    // 3) SO (resource_owners) implicit verbs.
+    //    OwnerScopeResolverService walks owned roots' module subtree and excludes
+    //    the root-level `create` action — matches "trừ create root module".
+    const impliedVerbs: Set<string> = await this.ownerScopeResolver.getUserImpliedVerbs(id);
+
+    // Fetch full Permission rows for SO verbs not already covered by role/user_access.
+    const existingCodes = new Set([...permissionMap.values()].map((p) => p.code).filter(Boolean));
+    const missingSoCodes = [...impliedVerbs].filter((code) => !existingCodes.has(code));
+
+    if (missingSoCodes.length > 0) {
+      const soPermissions = await this.dataSource.getRepository(Permission).find({
+        where: { code: In(missingSoCodes), is_active: true },
+      });
+      soPermissions.forEach((p) => permissionMap.set(p.id, p));
+    }
+
+    const permissions = [...permissionMap.values()];
 
     return {
-      id,
-      first_name,
-      last_name,
-      email,
-      phone_code,
-      phone,
-      date_of_birth,
-      country,
-      country_iso,
-      phone_iso,
-      state,
-      state_iso,
-      gender,
-      social_link: password ? false : true,
+      id: result.id,
+      username: result.username,
+      email: result.email,
+      status: result.status,
+      type: result.type,
+      permissions,
     };
   }
 
-  async updateMyProfile(user: Users, body: UpdateMyProfileDto): Promise<UserProfileDto> {
+  async updateMyProfile(user: Users, body: UpdateMyProfileDto) {
     const { id: userId, email: currentEmail, password } = user;
     const {
       country_iso,
@@ -212,7 +251,18 @@ export class UsersService {
   async detailAdmin(id: number) {
     const user = await this.userRepository.findOne({
       where: { id },
-      select: ['id', 'username', 'full_name', 'email', 'department', 'branch_code', 'region', 'is_active', 'created_at', 'updated_at'],
+      select: [
+        'id',
+        'username',
+        'full_name',
+        'email',
+        'department',
+        'branch_code',
+        'region',
+        'is_active',
+        'created_at',
+        'updated_at',
+      ],
       relations: ['user_roles', 'user_roles.role'],
     });
     if (!user) throw new BadRequestException(ERROR_CODE.A009);
@@ -251,23 +301,27 @@ export class UsersService {
       await userRoleRepo.save(roles);
     }
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.USER,
-      action_type: CHANGE_ACTION_TYPE.CREATE,
-      entity_id: String(savedUser.id),
-      entity_name: savedUser.username,
-      performed_by: 'system',
-      old_value: null,
-      new_value: {
-        username: userData.username,
-        full_name: userData.full_name,
-        email: userData.email,
-        department: userData.department,
-        roles: role_ids?.length
-          ? (await this.dataSource.getRepository(Role).find({ where: { id: In(role_ids) }, select: ['id', 'name'] })).map((r) => r.name)
-          : [],
-      },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.USER,
+        action_type: CHANGE_ACTION_TYPE.CREATE,
+        entity_id: String(savedUser.id),
+        entity_name: savedUser.username,
+        performed_by: 'system',
+        old_value: null,
+        new_value: {
+          username: userData.username,
+          full_name: userData.full_name,
+          email: userData.email,
+          department: userData.department,
+          roles: role_ids?.length
+            ? (
+                await this.dataSource.getRepository(Role).find({ where: { id: In(role_ids) }, select: ['id', 'name'] })
+              ).map((r) => r.name)
+            : [],
+        },
+      })
+      .catch(() => {});
 
     return { id: savedUser.id };
   }
@@ -301,8 +355,12 @@ export class UsersService {
       const oldRoleLinks = await userRoleRepo.findBy({ user_id: id });
       const oldRoleIds = oldRoleLinks.map((ur) => ur.role_id);
       const roleRepo = this.dataSource.getRepository(Role);
-      const oldRoleEntities = oldRoleIds.length ? await roleRepo.find({ where: { id: In(oldRoleIds) }, select: ['id', 'name'] }) : [];
-      const newRoleEntities = role_ids.length ? await roleRepo.find({ where: { id: In(role_ids) }, select: ['id', 'name'] }) : [];
+      const oldRoleEntities = oldRoleIds.length
+        ? await roleRepo.find({ where: { id: In(oldRoleIds) }, select: ['id', 'name'] })
+        : [];
+      const newRoleEntities = role_ids.length
+        ? await roleRepo.find({ where: { id: In(role_ids) }, select: ['id', 'name'] })
+        : [];
       oldSnapshot['roles'] = oldRoleEntities.map((r) => r.name);
       newSnapshot['roles'] = newRoleEntities.map((r) => r.name);
 
@@ -314,15 +372,17 @@ export class UsersService {
       }
     }
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.USER,
-      action_type: CHANGE_ACTION_TYPE.UPDATE,
-      entity_id: String(id),
-      entity_name: user.username,
-      performed_by: 'system',
-      old_value: Object.keys(oldSnapshot).length ? oldSnapshot : null,
-      new_value: Object.keys(newSnapshot).length ? newSnapshot : null,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.USER,
+        action_type: CHANGE_ACTION_TYPE.UPDATE,
+        entity_id: String(id),
+        entity_name: user.username,
+        performed_by: 'system',
+        old_value: Object.keys(oldSnapshot).length ? oldSnapshot : null,
+        new_value: Object.keys(newSnapshot).length ? newSnapshot : null,
+      })
+      .catch(() => {});
 
     return { id };
   }
@@ -333,15 +393,17 @@ export class UsersService {
     user.is_active = !user.is_active;
     await this.userRepository.save(user);
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.USER,
-      action_type: user.is_active ? CHANGE_ACTION_TYPE.ACTIVATE : CHANGE_ACTION_TYPE.DEACTIVATE,
-      entity_id: String(id),
-      entity_name: user.username,
-      performed_by: 'system',
-      old_value: { is_active: !user.is_active },
-      new_value: { is_active: user.is_active },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.USER,
+        action_type: user.is_active ? CHANGE_ACTION_TYPE.ACTIVATE : CHANGE_ACTION_TYPE.DEACTIVATE,
+        entity_id: String(id),
+        entity_name: user.username,
+        performed_by: 'system',
+        old_value: { is_active: !user.is_active },
+        new_value: { is_active: user.is_active },
+      })
+      .catch(() => {});
 
     return { id, is_active: user.is_active };
   }
@@ -351,15 +413,17 @@ export class UsersService {
     const user = await this.userRepository.findOneByIdValid(id);
     await this.userRepository.softDelete(id);
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.USER,
-      action_type: CHANGE_ACTION_TYPE.DELETE,
-      entity_id: String(id),
-      entity_name: user.username,
-      performed_by: 'system',
-      old_value: { username: user.username, full_name: user.full_name, email: user.email },
-      new_value: null,
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.USER,
+        action_type: CHANGE_ACTION_TYPE.DELETE,
+        entity_id: String(id),
+        entity_name: user.username,
+        performed_by: 'system',
+        old_value: { username: user.username, full_name: user.full_name, email: user.email },
+        new_value: null,
+      })
+      .catch(() => {});
 
     return { user_id: id };
   }
@@ -370,15 +434,17 @@ export class UsersService {
     const updated = users.map((u) => ({ ...u, is_active: !u.is_active }));
     await this.userRepository.save(updated);
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.USER,
-      action_type: CHANGE_ACTION_TYPE.ACTIVATE,
-      entity_id: 'bulk',
-      entity_name: 'bulk toggle active',
-      performed_by: 'system',
-      old_value: null,
-      new_value: { user_ids: dto.user_ids, toggled: updated.length },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.USER,
+        action_type: CHANGE_ACTION_TYPE.ACTIVATE,
+        entity_id: 'bulk',
+        entity_name: 'bulk toggle active',
+        performed_by: 'system',
+        old_value: null,
+        new_value: { user_ids: dto.user_ids, toggled: updated.length },
+      })
+      .catch(() => {});
 
     return { toggled: updated.length };
   }
@@ -392,7 +458,9 @@ export class UsersService {
     // Capture old user list for this role
     const oldLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
     const oldUserIds = oldLinks.map((ur) => ur.user_id);
-    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+    const oldUsers = oldUserIds.length
+      ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] })
+      : [];
 
     const existing = await userRoleRepo.findBy({ user_id: In(dto.user_ids), role_id: dto.role_id });
     const existingUserIds = new Set(existing.map((ur) => ur.user_id));
@@ -404,17 +472,21 @@ export class UsersService {
     // Capture new user list after change
     const newLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
     const newUserIds = newLinks.map((ur) => ur.user_id);
-    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+    const newUsers = newUserIds.length
+      ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] })
+      : [];
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
-      action_type: CHANGE_ACTION_TYPE.ASSIGN_USER,
-      entity_id: String(dto.role_id),
-      entity_name: role?.name || String(dto.role_id),
-      performed_by: 'system',
-      old_value: { users: oldUsers.map((u) => u.username) },
-      new_value: { users: newUsers.map((u) => u.username) },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+        action_type: CHANGE_ACTION_TYPE.ASSIGN_USER,
+        entity_id: String(dto.role_id),
+        entity_name: role?.name || String(dto.role_id),
+        performed_by: 'system',
+        old_value: { users: oldUsers.map((u) => u.username) },
+        new_value: { users: newUsers.map((u) => u.username) },
+      })
+      .catch(() => {});
 
     return { assigned: toInsert.length, skipped: existing.length };
   }
@@ -428,24 +500,30 @@ export class UsersService {
     // Capture old user list before delete
     const oldLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
     const oldUserIds = oldLinks.map((ur) => ur.user_id);
-    const oldUsers = oldUserIds.length ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] }) : [];
+    const oldUsers = oldUserIds.length
+      ? await this.userRepository.find({ where: { id: In(oldUserIds) }, select: ['id', 'username'] })
+      : [];
 
     const result = await userRoleRepo.delete({ user_id: In(dto.user_ids), role_id: dto.role_id });
 
     // Capture new user list after delete
     const newLinks = await userRoleRepo.findBy({ role_id: dto.role_id });
     const newUserIds = newLinks.map((ur) => ur.user_id);
-    const newUsers = newUserIds.length ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] }) : [];
+    const newUsers = newUserIds.length
+      ? await this.userRepository.find({ where: { id: In(newUserIds) }, select: ['id', 'username'] })
+      : [];
 
-    this.historyLogger.log({
-      entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
-      action_type: CHANGE_ACTION_TYPE.REMOVE_USER,
-      entity_id: String(dto.role_id),
-      entity_name: role?.name || String(dto.role_id),
-      performed_by: 'system',
-      old_value: { users: oldUsers.map((u) => u.username) },
-      new_value: { users: newUsers.map((u) => u.username) },
-    }).catch(() => {});
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.ROLE_USER,
+        action_type: CHANGE_ACTION_TYPE.REMOVE_USER,
+        entity_id: String(dto.role_id),
+        entity_name: role?.name || String(dto.role_id),
+        performed_by: 'system',
+        old_value: { users: oldUsers.map((u) => u.username) },
+        new_value: { users: newUsers.map((u) => u.username) },
+      })
+      .catch(() => {});
 
     return { removed: result.affected ?? 0 };
   }
