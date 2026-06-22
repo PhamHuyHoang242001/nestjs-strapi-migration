@@ -42,8 +42,10 @@ export class PermissionQueryService {
       .andWhere('dau.deleted_at IS NULL')
       .andWhere('da.scope_type = :scopeType', { scopeType: SCOPE_TYPE.ALLOW })
       .andWhere('da.deleted_at IS NULL')
-      .andWhere('(da.start_date IS NULL OR da.start_date <= NOW())')
-      .andWhere('(da.end_date IS NULL OR da.end_date >= NOW())')
+      // Date-granularity window: start_date counts from the beginning of its day,
+      // end_date through the end of its day (so start = end = today is active all day).
+      .andWhere('(da.start_date IS NULL OR da.start_date::date <= CURRENT_DATE)')
+      .andWhere('(da.end_date IS NULL OR da.end_date::date >= CURRENT_DATE)')
       .andWhere('p.is_active = true')
       .andWhere('p.deleted_at IS NULL')
       .getRawMany<{ code: string }>();
@@ -156,8 +158,10 @@ export class PermissionQueryService {
       .andWhere('m.table_name = :tableName', { tableName })
       .andWhere('da.scope_type = :scopeType', { scopeType })
       .andWhere('da.deleted_at IS NULL')
-      .andWhere('(da.start_date IS NULL OR da.start_date <= NOW())')
-      .andWhere('(da.end_date IS NULL OR da.end_date >= NOW())');
+      // Date-granularity window: start_date counts from the beginning of its day,
+      // end_date through the end of its day (so start = end = today is active all day).
+      .andWhere('(da.start_date IS NULL OR da.start_date::date <= CURRENT_DATE)')
+      .andWhere('(da.end_date IS NULL OR da.end_date::date >= CURRENT_DATE)');
 
     // Permission code filter: users get permissions from data_access_users;
     // roles get permissions from roles_permissions.

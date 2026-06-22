@@ -8,7 +8,7 @@ import dayjs from 'dayjs';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DownloadDiagnosticReportDto } from './dto';
-import { REPORT_SORT_MAP } from './diagnostic-report-format.helper';
+import { REPORT_SORT_MAP, FILE_CHANGE_KEY, resolveHistoryIsChangeLink } from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
@@ -139,7 +139,7 @@ export class BiHubDiagnosticReportWriteService {
       if (dto.scopes !== undefined && dto.scopes !== existing.txt_diagnostic_scope)
         changedKeys.push('txt_diagnostic_scope');
       if (dto.labels) changedKeys.push('labels');
-      if (dto.file) changedKeys.push('file');
+      if (dto.file) changedKeys.push(FILE_CHANGE_KEY);
 
       if (Object.keys(updateData).length) await manager.update(BIHubDiagnosticReport, id, updateData);
 
@@ -296,6 +296,14 @@ export class BiHubDiagnosticReportWriteService {
 
     const latestFile = report.bi_hub_diagnostic_files?.find((f: BiHubDiagnosticFile) => f.lastest_version);
 
+    // is_change_link describes THIS history event, not the report's static flag:
+    // create => a file was attached; update => the file field was part of the change set.
+    const isFileChanged = resolveHistoryIsChangeLink({
+      isCreate: !oldData,
+      changedKeys,
+      hasLatestFile: !!latestFile,
+    });
+
     // Build change_log: create vs update
     let change_log: Record<string, any>;
     if (!oldData) {
@@ -322,7 +330,7 @@ export class BiHubDiagnosticReportWriteService {
       diagnostic_files_url: latestFile?.file_url || null,
       diagnostic_files_type: latestFile?.type || null,
       bi_hub_diagnostic_report_id: reportId,
-      is_change_link: report.is_change_link,
+      is_change_link: isFileChanged,
       code: report.code,
       created_by_admin_id: userId,
     });

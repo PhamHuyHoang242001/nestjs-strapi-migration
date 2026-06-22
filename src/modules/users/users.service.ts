@@ -85,10 +85,12 @@ export class UsersService {
       .leftJoinAndSelect(
         'uda.data_access',
         'da',
+        // Date-granularity window: start_date counts from the beginning of its day,
+        // end_date through the end of its day (so start = end = today is active all day).
         `da.scope_type = :scope
-         AND (da.start_date IS NULL OR da.start_date <= :now)
-         AND (da.end_date   IS NULL OR da.end_date   >= :now)`,
-        { now: new Date(), scope: SCOPE_TYPE.ALLOW },
+         AND (da.start_date IS NULL OR da.start_date::date <= CURRENT_DATE)
+         AND (da.end_date   IS NULL OR da.end_date::date   >= CURRENT_DATE)`,
+        { scope: SCOPE_TYPE.ALLOW },
       )
       .where('u.id = :userId', { userId: id });
 

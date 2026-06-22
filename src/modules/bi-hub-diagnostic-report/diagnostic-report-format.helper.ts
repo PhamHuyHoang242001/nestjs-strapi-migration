@@ -20,6 +20,22 @@ export const HISTORY_SORT_MAP: Record<string, string> = {
   name: 'name',
 };
 
+// change_log key marking that the file field changed in an update
+export const FILE_CHANGE_KEY = 'file';
+
+// Resolve a history event's is_change_link: this describes whether THIS event
+// touched the file — create with a file attached, or an update whose change set
+// included the file field. It must NOT mirror the report's static is_change_link
+// flag (which is never toggled by file edits and would make history filtering wrong).
+export function resolveHistoryIsChangeLink(input: {
+  isCreate: boolean;
+  changedKeys?: string[];
+  hasLatestFile: boolean;
+}): boolean {
+  const { isCreate, changedKeys, hasLatestFile } = input;
+  return isCreate ? hasLatestFile : (changedKeys || []).includes(FILE_CHANGE_KEY);
+}
+
 function formatReportFile(report: BIHubDiagnosticReport, audience: TransformFileAudience): Record<string, any> | null {
   const file = report.bi_hub_diagnostic_files?.[0] || null;
   if (!file) return null;
