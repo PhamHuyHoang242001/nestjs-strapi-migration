@@ -9,7 +9,6 @@ import { CreateBiccDepartmentDto, SearchBiccDepartmentDto, UpdateBiccDepartmentD
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
-import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 
 const BICC_DEPT_TABLE = 'bi_hub_bicc_departments';
@@ -34,7 +33,6 @@ export class BiccDepartmentService {
     private readonly biccDeptRepo: Repository<BiHubBiccDepartment>,
     private readonly dataSource: DataSource,
     private readonly creatorAccessGrant: CreatorAccessGrantService,
-    private readonly permissionCache: PermissionCacheService,
     private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
@@ -78,9 +76,11 @@ export class BiccDepartmentService {
   }
 
   // ── Derive bicc-level report capability for the current viewer ──
-  // Coarser than the per-record report flags: an explicit verb holder (role/user)
-  // gets the flag by verb presence alone; an owner-implied (SO) holder gets it only
-  // when this bicc resolves into their owned scope. super_admin → all; no userId → none.
+  // Each flag is true when THIS bicc carries a data-access grant for the report verb
+  // through a role/user the caller holds, OR the bicc falls within the caller's owner
+  // (SO) scope. canCreateUnderParent folds both branches over the bicc as the parent
+  // record: (accessible-records for the verb) ∪ (owned-scope). super_admin → all;
+  // no userId → none.
   private async resolveBiccCapabilities(
     biccId: number,
     auth: ReportCapAuth | null,
@@ -89,24 +89,8 @@ export class BiccDepartmentService {
     if (auth.isSuperAdmin) return { isCreate: true, isDownload: true, isDelete: true };
     const userId = auth.userId;
 
-    const [permissions, impliedVerbs] = await Promise.all([
-      this.permissionCache.getPermissions(userId),
-      this.ownerScope.getUserImpliedVerbs(userId),
-    ]);
-
-    // Memoize the owned-scope SQL walk as a promise so the three verb checks
-    // share a single probe without racing.
-    let ownedScopeProbe: Promise<boolean> | null = null;
-    const isInOwnedScope = () => {
-      if (ownedScopeProbe === null) ownedScopeProbe = this.ownerScope.isInOwnedScope(userId, BICC_DEPT_TABLE, biccId);
-      return ownedScopeProbe;
-    };
-
-    const resolveVerb = async (verb: string): Promise<boolean> => {
-      if (permissions.has(verb)) return true; // explicit holder: verb presence suffices
-      if (!impliedVerbs.has(verb)) return false;
-      return isInOwnedScope(); // owner-implied (SO): only inside owned bicc
-    };
+    const resolveVerb = (verb: string): Promise<boolean> =>
+      this.ownerScope.canCreateUnderParent(userId, BICC_DEPT_TABLE, biccId, verb);
 
     const [isCreate, isDownload, isDelete] = await Promise.all([
       resolveVerb(DIAG_CREATE_VERB),
