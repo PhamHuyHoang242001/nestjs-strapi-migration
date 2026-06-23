@@ -11,6 +11,7 @@ describe('OwnerScopeResolverService', () => {
     invalidateOwnerScopeUser: jest.fn().mockResolvedValue(undefined),
     invalidateOwnerScopeByRole: jest.fn().mockResolvedValue(undefined),
     invalidateOwnerScopeAll: jest.fn().mockResolvedValue(undefined),
+    getAccessibleRecords: jest.fn(),
   } as unknown as PermissionCacheService;
 
   let service: OwnerScopeResolverService;
@@ -24,6 +25,7 @@ describe('OwnerScopeResolverService', () => {
     (cache.invalidateOwnerScopeUser as jest.Mock).mockClear();
     (cache.invalidateOwnerScopeByRole as jest.Mock).mockClear();
     (cache.invalidateOwnerScopeAll as jest.Mock).mockClear();
+    (cache.getAccessibleRecords as jest.Mock).mockReset();
     (RedisAdapter.get as jest.Mock).mockResolvedValue(null);
     (RedisAdapter.set as jest.Mock).mockResolvedValue(undefined);
     (RedisAdapter.unlinkKeyByPattern as jest.Mock).mockResolvedValue([]);
@@ -289,6 +291,86 @@ describe('OwnerScopeResolverService', () => {
         .mockResolvedValueOnce([{ exists: 1 }]);
 
       const result = await service.isInOwnedScope(100, 'bi_hub_bicc_departments', 1);
+
+      expect(result).toBe(true);
+    });
+  });
+
+  // ── canCreateUnderParent ───────────────────────────────────────────
+
+  describe('canCreateUnderParent()', () => {
+    const PARENT_TABLE = 'bi_hub_bicc_departments';
+    const PERMISSION = 'bh_diag_report_create';
+
+    it('returns true on explicit accessible-records hit and does NOT call SO path', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([3, 5, 9]);
+      const soSpy = jest.spyOn(service, 'isInOwnedScope');
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, 5, PERMISSION);
+
+      expect(result).toBe(true);
+      expect(cache.getAccessibleRecords).toHaveBeenCalledWith(100, PARENT_TABLE, PERMISSION);
+      expect(soSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls through to SO path on explicit miss and returns true when owned', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([]);
+      const soSpy = jest.spyOn(service, 'isInOwnedScope').mockResolvedValueOnce(true);
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, 7, PERMISSION);
+
+      expect(result).toBe(true);
+      expect(soSpy).toHaveBeenCalledWith(100, PARENT_TABLE, 7);
+    });
+
+    it('returns false when both explicit and SO paths miss', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([]);
+      jest.spyOn(service, 'isInOwnedScope').mockResolvedValueOnce(false);
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, 7, PERMISSION);
+
+      expect(result).toBe(false);
+    });
+
+    it('counts user-level allow grants (same accessible-records primitive)', async () => {
+      // getAccessibleRecords unions role + user allow grants upstream; a user-grant-only
+      // parent appears here the same way a role-bound one does.
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([7]);
+      const soSpy = jest.spyOn(service, 'isInOwnedScope');
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, 7, PERMISSION);
+
+      expect(result).toBe(true);
+      expect(soSpy).not.toHaveBeenCalled();
+    });
+
+    it('treats deny-subtracted parent as explicit miss, then defers to SO', async () => {
+      // Denied parent is removed from accessible records upstream → [] here.
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([]);
+      jest.spyOn(service, 'isInOwnedScope').mockResolvedValueOnce(false);
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, 42, PERMISSION);
+
+      expect(result).toBe(false);
+    });
+
+    it('returns false for non-finite parentId without hitting any path', async () => {
+      const soSpy = jest.spyOn(service, 'isInOwnedScope');
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, Number.NaN, PERMISSION);
+
+      expect(result).toBe(false);
+      expect(cache.getAccessibleRecords).not.toHaveBeenCalled();
+      expect(soSpy).not.toHaveBeenCalled();
+    });
+
+    it('exercises real SO SQL path on explicit miss (no over-mocking)', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([]);
+      dsQuery
+        .mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]) // owner scope
+        .mockResolvedValueOnce([{ exists: 1 }]); // walk-up: parent is owned root
+
+      const result = await service.canCreateUnderParent(100, PARENT_TABLE, 1, PERMISSION);
 
       expect(result).toBe(true);
     });

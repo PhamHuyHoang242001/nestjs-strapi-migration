@@ -126,6 +126,28 @@ export class OwnerScopeResolverService {
     return scope.filter((s) => s.rootTable === rootTable).map((s) => s.rootId);
   }
 
+  /**
+   * Write-side create gate: may `userId` create a child record under `parentTable`/`parentId`?
+   * True when the parent is in the caller's accessible records for `permission`
+   * (role + user allow grants, with deny subtracted upstream) OR the parent is in the
+   * caller's SO owned scope. Note the asymmetry by design: the accessible-records branch
+   * honors deny rules, while the SO owned branch is deny-immune (owner grants are absolute).
+   * Pure boolean — super_admin bypass and error-throwing are the caller's responsibility.
+   */
+  async canCreateUnderParent(
+    userId: number,
+    parentTable: string,
+    parentId: number,
+    permission: string,
+  ): Promise<boolean> {
+    if (!Number.isFinite(parentId)) return false;
+
+    const accessible = await this.permissionCache.getAccessibleRecords(userId, parentTable, permission);
+    if (accessible.includes(parentId)) return true;
+
+    return this.isInOwnedScope(userId, parentTable, parentId);
+  }
+
   async isInOwnedScope(userId: number, tableName: string, recordId: number): Promise<boolean> {
     if (!HIERARCHY_MAP[tableName] && !(tableName in HIERARCHY_MAP)) return false;
 

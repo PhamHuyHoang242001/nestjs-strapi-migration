@@ -11,10 +11,13 @@ import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DownloadDiagnosti
 import { REPORT_SORT_MAP, FILE_CHANGE_KEY, resolveHistoryIsChangeLink } from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import { DATA_ACCESS_TABLE } from '@common/enums';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
 
 const REPORT_TABLE = 'bi_hub_diagnostic_reports';
+const CREATE_PERMISSION = 'bh_diag_report_create';
 
 // Excel column config for diagnostic report download
 const DOWNLOAD_COLUMNS: ExcelColumn[] = [
@@ -38,6 +41,7 @@ export class BiHubDiagnosticReportWriteService {
     private readonly readService: BiHubDiagnosticReportService,
     private readonly dataSource: DataSource,
     private readonly creatorAccessGrant: CreatorAccessGrantService,
+    private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
   private get reportRepo() {
@@ -45,7 +49,21 @@ export class BiHubDiagnosticReportWriteService {
   }
 
   // ── Create report with transaction ─────────────────────────────
-  async create(dto: CreateDiagnosticReportDto, userId: number) {
+  async create(dto: CreateDiagnosticReportDto, userId: number, isSuperAdmin: boolean) {
+    // Parent-scope gate: the target bicc_department must be bound (via role or user allow-grant)
+    // to a holder of the create verb, or fall within the caller's SO owned scope. super_admin bypasses.
+    if (!isSuperAdmin) {
+      const allowed = await this.ownerScope.canCreateUnderParent(
+        userId,
+        DATA_ACCESS_TABLE.BI_HUB_BICC_DEPARTMENTS,
+        dto.biccDepartment,
+        CREATE_PERMISSION,
+      );
+      if (!allowed) {
+        throw new ForbiddenException('Out of create scope for bi_hub_bicc_departments');
+      }
+    }
+
     let accessGranted = false;
 
     const result = await this.dataSource.transaction(async (manager) => {

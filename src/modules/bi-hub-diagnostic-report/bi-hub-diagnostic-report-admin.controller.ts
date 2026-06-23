@@ -8,6 +8,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import {
   Body,
   Controller,
@@ -57,10 +58,12 @@ export class BiHubDiagnosticReportAdminController {
   @Post('admin/diagnostic/report')
   @HttpCode(200)
   @RequirePermission('bh_diag_report_create')
-  @RequireOwnerScope({ table: 'bi_hub_bicc_departments', scopeFromBody: 'biccDepartment' })
+  // Parent-scope enforced in service.create() (canCreateUnderParent): no record exists yet,
+  // so the check is on the parent bicc_department, not via @RequireOwnerScope.
   create(@Body() body: CreateDiagnosticReportDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id;
-    return this.service.create(body, +userId);
+    const isSuperAdmin = req.info?.user?.type === UserType.SUPER_ADMIN;
+    return this.service.create(body, +userId, isSuperAdmin);
   }
 
   @ApiOperation({ summary: 'Update diagnostic report' })
