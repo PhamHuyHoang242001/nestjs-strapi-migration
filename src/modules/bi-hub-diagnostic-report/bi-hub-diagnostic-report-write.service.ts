@@ -219,6 +219,9 @@ export class BiHubDiagnosticReportWriteService {
       .andWhere('report.is_deleted = :isDeleted', { isDeleted: query.isDeleted === 'true' });
 
     if (query.download_type === 'ALL') {
+      // ALL export is scoped to a single BICC department — caller must specify which one
+      if (!query.biccDepartmentId) throw new BadRequestException('Missing biccDepartmentId');
+      qb.andWhere('report.bicc_department_id = :deptId', { deptId: +query.biccDepartmentId });
       applyDataScope(qb, 'report', REPORT_TABLE, scope);
       if (query.keyword?.trim())
         qb.andWhere('(report.name ILIKE :kw OR report.summary ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });

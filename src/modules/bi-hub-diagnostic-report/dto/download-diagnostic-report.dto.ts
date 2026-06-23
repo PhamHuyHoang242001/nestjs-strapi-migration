@@ -12,6 +12,11 @@ export class DownloadDiagnosticReportDto {
   @IsString()
   readonly ids?: string;
 
+  @ApiProperty({ required: false, description: 'BICC department ID — required when download_type=ALL' })
+  @IsOptional()
+  @IsNumberString()
+  readonly biccDepartmentId?: string;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
