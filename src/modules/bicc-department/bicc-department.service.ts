@@ -9,8 +9,23 @@ import { CreateBiccDepartmentDto, SearchBiccDepartmentDto, UpdateBiccDepartmentD
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
+import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 
 const BICC_DEPT_TABLE = 'bi_hub_bicc_departments';
+
+// Report verbs whose holders may act inside a bicc. Used to derive the bicc-level
+// isCreate/isDownload/isDelete capability flags returned by details().
+const DIAG_CREATE_VERB = 'bh_diag_report_create';
+const DIAG_DOWNLOAD_VERB = 'bh_diag_report_download';
+const DIAG_DELETE_VERB = 'bh_diag_report_delete';
+
+// Caller identity needed to derive capability flags. Built in the controller from
+// req.info.user; null userId (anonymous contract) yields no capability.
+export interface ReportCapAuth {
+  userId: number | null;
+  isSuperAdmin: boolean;
+}
 
 @Injectable()
 export class BiccDepartmentService {
@@ -19,6 +34,8 @@ export class BiccDepartmentService {
     private readonly biccDeptRepo: Repository<BiHubBiccDepartment>,
     private readonly dataSource: DataSource,
     private readonly creatorAccessGrant: CreatorAccessGrantService,
+    private readonly permissionCache: PermissionCacheService,
+    private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
   async search(
@@ -45,7 +62,7 @@ export class BiccDepartmentService {
 
   // 404 = department truly absent. 403 = exists but outside caller's data scope.
   // Existence is intentionally exposed so callers see a clear permission error.
-  async details(id: number, scope: DataScope | null) {
+  async details(id: number, scope: DataScope | null, auth: ReportCapAuth | null = null) {
     const dept = await this.biccDeptRepo
       .createQueryBuilder('dept')
       .leftJoinAndSelect('dept.reports', 'reports')
@@ -54,7 +71,49 @@ export class BiccDepartmentService {
       .getOne();
     if (!dept) throw new NotFoundException('BICC Department not found');
     await this.assertDeptInScope(id, scope);
-    return dept;
+
+    const caps = await this.resolveBiccCapabilities(id, auth);
+    // Attach onto the loaded entity to preserve eager relations in the response.
+    return Object.assign(dept, caps);
+  }
+
+  // ── Derive bicc-level report capability for the current viewer ──
+  // Coarser than the per-record report flags: an explicit verb holder (role/user)
+  // gets the flag by verb presence alone; an owner-implied (SO) holder gets it only
+  // when this bicc resolves into their owned scope. super_admin → all; no userId → none.
+  private async resolveBiccCapabilities(
+    biccId: number,
+    auth: ReportCapAuth | null,
+  ): Promise<{ isCreate: boolean; isDownload: boolean; isDelete: boolean }> {
+    if (!auth?.userId) return { isCreate: false, isDownload: false, isDelete: false };
+    if (auth.isSuperAdmin) return { isCreate: true, isDownload: true, isDelete: true };
+    const userId = auth.userId;
+
+    const [permissions, impliedVerbs] = await Promise.all([
+      this.permissionCache.getPermissions(userId),
+      this.ownerScope.getUserImpliedVerbs(userId),
+    ]);
+
+    // Memoize the owned-scope SQL walk as a promise so the three verb checks
+    // share a single probe without racing.
+    let ownedScopeProbe: Promise<boolean> | null = null;
+    const isInOwnedScope = () => {
+      if (ownedScopeProbe === null) ownedScopeProbe = this.ownerScope.isInOwnedScope(userId, BICC_DEPT_TABLE, biccId);
+      return ownedScopeProbe;
+    };
+
+    const resolveVerb = async (verb: string): Promise<boolean> => {
+      if (permissions.has(verb)) return true; // explicit holder: verb presence suffices
+      if (!impliedVerbs.has(verb)) return false;
+      return isInOwnedScope(); // owner-implied (SO): only inside owned bicc
+    };
+
+    const [isCreate, isDownload, isDelete] = await Promise.all([
+      resolveVerb(DIAG_CREATE_VERB),
+      resolveVerb(DIAG_DOWNLOAD_VERB),
+      resolveVerb(DIAG_DELETE_VERB),
+    ]);
+    return { isCreate, isDownload, isDelete };
   }
 
   // Scope-check helper — single SQL existence probe via applyDataScope predicate.

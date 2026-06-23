@@ -10,6 +10,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import {
   Body,
   Controller,
@@ -55,7 +56,10 @@ export class BiccDepartmentController {
   @RequirePermission('bh_bicc_dept_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_BICC_DEPARTMENTS, 'bh_bicc_dept_view')
   details(@Param('id') id: number, @Req() req: RequestWithInfo) {
-    return this.biccDepartmentService.details(+id, req.info?.dataScope ?? null);
+    return this.biccDepartmentService.details(+id, req.info?.dataScope ?? null, {
+      userId: Number(req.info?.user?.id) || null,
+      isSuperAdmin: req.info?.user?.type === UserType.SUPER_ADMIN,
+    });
   }
 
   @ApiOperation({ summary: 'Create BICC department' })

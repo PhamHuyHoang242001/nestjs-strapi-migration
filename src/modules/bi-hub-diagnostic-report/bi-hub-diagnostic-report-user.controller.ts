@@ -6,6 +6,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import { Body, Controller, Get, HttpCode, Post, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
@@ -59,6 +60,9 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   findOne(@Param('id') id: number, @Req() req: RequestWithInfo) {
-    return this.service.findOne(+id, req.info?.dataScope ?? null);
+    return this.service.findOne(+id, req.info?.dataScope ?? null, {
+      userId: Number(req.info?.user?.id) || null,
+      isSuperAdmin: req.info?.user?.type === UserType.SUPER_ADMIN,
+    });
   }
 }

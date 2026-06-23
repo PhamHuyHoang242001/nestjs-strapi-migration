@@ -8,8 +8,22 @@ import { SearchDiagnosticReportDto, SearchDiagnosticHistoryDto, SearchUpdatedUse
 import { REPORT_SORT_MAP, HISTORY_SORT_MAP, formatReport, formatHistory } from './diagnostic-report-format.helper';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
+import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 
 const REPORT_TABLE = 'bi_hub_diagnostic_reports';
+
+// Write verbs whose holders may mutate a report. Used to derive the per-record
+// isUpdate/isDelete capability flags returned by findOne.
+const DIAG_EDIT_VERB = 'bh_diag_report_edit';
+const DIAG_DELETE_VERB = 'bh_diag_report_delete';
+
+// Caller identity needed to derive write-capability flags. Built in the controller
+// from req.info.user; null userId (legacy/anonymous contract) yields no capability.
+export interface ReportViewerAuth {
+  userId: number | null;
+  isSuperAdmin: boolean;
+}
 
 // User-facing read operations for diagnostic reports
 @Injectable()
@@ -20,6 +34,8 @@ export class BiHubDiagnosticReportService {
     @InjectRepository(BIHubDiagnosticHistoryReport)
     private readonly historyRepo: Repository<BIHubDiagnosticHistoryReport>,
     readonly dataSource: DataSource,
+    private readonly permissionCache: PermissionCacheService,
+    private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
   // ── List reports with pagination + data-access filtering ───────
@@ -80,7 +96,7 @@ export class BiHubDiagnosticReportService {
   // ── View single report ─────────────────────────────────────────
   // 404 = report truly absent. 403 = exists but outside caller's data scope.
   // Existence is intentionally exposed so callers see a clear permission error.
-  async findOne(id: number, scope: DataScope | null) {
+  async findOne(id: number, scope: DataScope | null, auth: ReportViewerAuth | null = null) {
     const report = await this.reportRepo
       .createQueryBuilder('report')
       .leftJoinAndSelect('report.labels', 'labels')
@@ -93,7 +109,50 @@ export class BiHubDiagnosticReportService {
     await this.assertReportInScope(id, scope);
 
     report.bi_hub_diagnostic_files = report.bi_hub_diagnostic_files?.filter((f) => f.lastest_version) || [];
-    return formatReport(report);
+    const { isUpdate, isDelete } = await this.resolveWriteFlags(id, auth);
+    return { ...formatReport(report), isUpdate, isDelete };
+  }
+
+  // ── Derive per-record write capability for the current viewer ──
+  // Mirrors the write guard chain (PermissionGuard → OwnerScopeGuard → applyDataScope):
+  //   - super_admin                  → always allowed
+  //   - explicit verb holder         → record in data-access scope OR in owned subtree
+  //   - owner-implied verb holder(SO)→ allowed only when the record is in the owned subtree
+  //   - otherwise                    → denied
+  // The owned-subtree probe is shared across both verbs and resolved at most once.
+  private async resolveWriteFlags(
+    reportId: number,
+    auth: ReportViewerAuth | null,
+  ): Promise<{ isUpdate: boolean; isDelete: boolean }> {
+    if (!auth?.userId) return { isUpdate: false, isDelete: false };
+    if (auth.isSuperAdmin) return { isUpdate: true, isDelete: true };
+    const userId = auth.userId;
+
+    const [permissions, impliedVerbs] = await Promise.all([
+      this.permissionCache.getPermissions(userId),
+      this.ownerScope.getUserImpliedVerbs(userId),
+    ]);
+
+    // Memoize the owned-scope SQL walk as a promise so concurrent verb checks
+    // share a single probe without racing.
+    let ownedScopeProbe: Promise<boolean> | null = null;
+    const isInOwnedScope = () => {
+      if (ownedScopeProbe === null) ownedScopeProbe = this.ownerScope.isInOwnedScope(userId, REPORT_TABLE, reportId);
+      return ownedScopeProbe;
+    };
+
+    const resolveVerb = async (verb: string): Promise<boolean> => {
+      if (permissions.has(verb)) {
+        const accessible = await this.permissionCache.getAccessibleRecords(userId, REPORT_TABLE, verb);
+        if (accessible.includes(reportId)) return true;
+        return isInOwnedScope();
+      }
+      if (!impliedVerbs.has(verb)) return false;
+      return isInOwnedScope();
+    };
+
+    const [isUpdate, isDelete] = await Promise.all([resolveVerb(DIAG_EDIT_VERB), resolveVerb(DIAG_DELETE_VERB)]);
+    return { isUpdate, isDelete };
   }
 
   // ── List users who updated a report ────────────────────────────
