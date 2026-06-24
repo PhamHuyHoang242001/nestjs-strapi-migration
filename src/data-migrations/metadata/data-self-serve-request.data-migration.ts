@@ -66,7 +66,15 @@ export class DataSelfServeRequestDataMigration {
         response_body, rows_file_input, request_completed_at, short_description,
         created_at, updated_at
       )
-      SELECT * FROM json_to_recordset($1::json) AS x(
+      SELECT
+        x.id, x.request_status, x.request_group, x.validation_status, x.destination_path,
+        x.backup_input_file_path, x.code, x.portal_file_url, x.input_method, x.file_size,
+        x.source, x.storage_type, x.estimated_completion_hours, x.request_params,
+        x.response_body, x.rows_file_input, x.request_completed_at, x.short_description,
+        -- legacy rows can carry NULL timestamps; column is NOT NULL so fall back to now()
+        COALESCE(x.created_at, CURRENT_TIMESTAMP) AS created_at,
+        COALESCE(x.updated_at, x.created_at, CURRENT_TIMESTAMP) AS updated_at
+      FROM json_to_recordset($1::json) AS x(
         id INT, request_status TEXT, request_group TEXT, validation_status TEXT,
         destination_path TEXT, backup_input_file_path TEXT, code TEXT,
         portal_file_url TEXT, input_method TEXT, file_size TEXT, source TEXT,

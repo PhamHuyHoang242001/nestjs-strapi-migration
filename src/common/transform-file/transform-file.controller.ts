@@ -1,12 +1,14 @@
-import { BearerGuard, IsMaintenanceGuard } from '@common/guards';
+import { IsMaintenanceGuard } from '@common/guards';
 import { RequestWithInfo } from '@common/types/request-with-info';
-import { Controller, Get, NotFoundException, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query, Req, Res, UseFilters, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as mime from 'mime-types';
 import * as path from 'path';
 import { isExternalTransformFile } from './transform-file-link.helper';
+import { TransformFileAuthGuard } from './transform-file-auth.guard';
+import { TransformFileAuthRedirectFilter } from './transform-file-auth-redirect.filter';
 import { TransformFileService } from './transform-file.service';
 
 const DOWNLOAD_EXTENSIONS = new Set([
@@ -25,7 +27,8 @@ const DOWNLOAD_EXTENSIONS = new Set([
 @Controller()
 @ApiTags('transform-file')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, IsMaintenanceGuard)
+@UseGuards(TransformFileAuthGuard, IsMaintenanceGuard)
+@UseFilters(TransformFileAuthRedirectFilter)
 export class TransformFileController {
   constructor(private readonly service: TransformFileService) {}
 

@@ -80,3 +80,9 @@ export enum OTP_STATUS {
   USED = 'used',
   EXPIRED = 'expired',
 }
+
+// Redis key prefixes. USER_TOKEN_<userId> stores a user's current valid login
+// token (allowlist): a request token is valid only if it matches the stored one.
+export enum RedisKey {
+  USER_TOKEN = 'USER_TOKEN',
+}
