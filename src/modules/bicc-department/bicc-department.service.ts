@@ -13,11 +13,26 @@ import { OwnerScopeResolverService } from '@common/authorization/services/owner-
 
 const BICC_DEPT_TABLE = 'bi_hub_bicc_departments';
 
-// Report verbs whose holders may act inside a bicc. Used to derive the bicc-level
-// isCreate/isDownload/isDelete capability flags returned by details().
-const DIAG_CREATE_VERB = 'bh_diag_report_create';
-const DIAG_DOWNLOAD_VERB = 'bh_diag_report_download';
-const DIAG_DELETE_VERB = 'bh_diag_report_delete';
+// The two report types that live under a bicc. Each contributes its own
+// {isCreate,isDownload,isDelete} capability block to details(), derived from its own
+// child table + verb codes. create = parent-bound (a NEW report under the bicc);
+// download/delete additionally honor per-report exceptions on the child table.
+const REPORT_TYPES = {
+  diagnostic: {
+    table: 'bi_hub_diagnostic_reports',
+    create: 'bh_diag_report_create',
+    download: 'bh_diag_report_download',
+    delete: 'bh_diag_report_delete',
+  },
+  descriptive: {
+    table: 'bi_hub_reports',
+    create: 'bh_report_create',
+    download: 'bh_report_download',
+    delete: 'bh_report_delete',
+  },
+} as const;
+
+type ReportTypeConfig = (typeof REPORT_TYPES)[keyof typeof REPORT_TYPES];
 
 // Caller identity needed to derive capability flags. Built in the controller from
 // req.info.user; null userId (anonymous contract) yields no capability.
@@ -25,6 +40,20 @@ export interface ReportCapAuth {
   userId: number | null;
   isSuperAdmin: boolean;
 }
+
+export interface ReportCapFlags {
+  isCreate: boolean;
+  isDownload: boolean;
+  isDelete: boolean;
+}
+
+// Per-report-type capability blocks merged onto the details() response.
+export interface BiccCapabilities {
+  diagnostic: ReportCapFlags;
+  descriptive: ReportCapFlags;
+}
+
+const allFlags = (value: boolean): ReportCapFlags => ({ isCreate: value, isDownload: value, isDelete: value });
 
 @Injectable()
 export class BiccDepartmentService {
@@ -63,8 +92,8 @@ export class BiccDepartmentService {
   async details(id: number, scope: DataScope | null, auth: ReportCapAuth | null = null) {
     const dept = await this.biccDeptRepo
       .createQueryBuilder('dept')
-      .leftJoinAndSelect('dept.reports', 'reports')
-      .leftJoinAndSelect('dept.diagnostic_reports', 'diagnostic_reports')
+      .leftJoinAndSelect('dept.bi_hub_reports', 'bi_hub_reports')
+      .leftJoinAndSelect('dept.bi_hub_diagnostic_reports', 'bi_hub_diagnostic_reports')
       .where('dept.id = :id', { id })
       .getOne();
     if (!dept) throw new NotFoundException('BICC Department not found');
@@ -76,26 +105,41 @@ export class BiccDepartmentService {
   }
 
   // ── Derive bicc-level report capability for the current viewer ──
-  // Each flag is true when THIS bicc carries a data-access grant for the report verb
-  // through a role/user the caller holds, OR the bicc falls within the caller's owner
-  // (SO) scope. canCreateUnderParent folds both branches over the bicc as the parent
-  // record: (accessible-records for the verb) ∪ (owned-scope). super_admin → all;
-  // no userId → none.
-  private async resolveBiccCapabilities(
-    biccId: number,
-    auth: ReportCapAuth | null,
-  ): Promise<{ isCreate: boolean; isDownload: boolean; isDelete: boolean }> {
-    if (!auth?.userId) return { isCreate: false, isDownload: false, isDelete: false };
-    if (auth.isSuperAdmin) return { isCreate: true, isDownload: true, isDelete: true };
+  // Returns a flag block per report type (diagnostic + descriptive). Within each type:
+  // a flag is true when THIS bicc carries a data-access grant for the verb via a role/user
+  // the caller holds, OR the bicc is in the caller's owner (SO) scope; download/delete are
+  // additionally true when the caller can act on ≥1 existing child report of that type
+  // under the bicc (per-report user/role exception). super_admin → all; no userId → none.
+  private async resolveBiccCapabilities(biccId: number, auth: ReportCapAuth | null): Promise<BiccCapabilities> {
+    if (!auth?.userId) return { diagnostic: allFlags(false), descriptive: allFlags(false) };
+    if (auth.isSuperAdmin) return { diagnostic: allFlags(true), descriptive: allFlags(true) };
     const userId = auth.userId;
 
-    const resolveVerb = (verb: string): Promise<boolean> =>
-      this.ownerScope.canCreateUnderParent(userId, BICC_DEPT_TABLE, biccId, verb);
+    const [diagnostic, descriptive] = await Promise.all([
+      this.resolveReportTypeFlags(userId, biccId, REPORT_TYPES.diagnostic),
+      this.resolveReportTypeFlags(userId, biccId, REPORT_TYPES.descriptive),
+    ]);
+    return { diagnostic, descriptive };
+  }
+
+  // Resolve one report type's flags against a bicc.
+  // create = parent-bound only (a NEW report under the bicc → bicc grant or SO).
+  // download/delete act on EXISTING reports → also true if the caller can act on ≥1 child
+  // report of this type under the bicc. The || short-circuits the child probe when a
+  // bicc-bound grant already covers the verb.
+  private async resolveReportTypeFlags(
+    userId: number,
+    biccId: number,
+    type: ReportTypeConfig,
+  ): Promise<ReportCapFlags> {
+    const resolveChildVerb = async (verb: string): Promise<boolean> =>
+      (await this.ownerScope.canCreateUnderParent(userId, BICC_DEPT_TABLE, biccId, verb)) ||
+      (await this.ownerScope.hasAccessibleChildUnderParent(userId, type.table, biccId, verb));
 
     const [isCreate, isDownload, isDelete] = await Promise.all([
-      resolveVerb(DIAG_CREATE_VERB),
-      resolveVerb(DIAG_DOWNLOAD_VERB),
-      resolveVerb(DIAG_DELETE_VERB),
+      this.ownerScope.canCreateUnderParent(userId, BICC_DEPT_TABLE, biccId, type.create),
+      resolveChildVerb(type.download),
+      resolveChildVerb(type.delete),
     ]);
     return { isCreate, isDownload, isDelete };
   }

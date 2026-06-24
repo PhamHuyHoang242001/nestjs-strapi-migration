@@ -60,15 +60,13 @@ export class CreatorAccessGrantService {
     });
     const saved = await manager.save(dataAccess);
 
-    // Create UserDataAccess junction rows (1 per permission)
-    const rows = permissions.map((perm) =>
-      manager.create(UserDataAccess, {
-        user_id: userId,
-        data_access_id: saved.id,
-        permission_id: perm.id,
-      }),
-    );
-    await manager.save(rows);
+    // Bulk-insert UserDataAccess junction rows (1 per permission)
+    const rows = permissions.map((perm) => ({
+      user_id: userId,
+      data_access_id: saved.id,
+      permission_id: perm.id,
+    }));
+    await manager.insert(UserDataAccess, rows);
 
     return true;
   }

@@ -120,7 +120,7 @@ describe('HierarchyValidationService', () => {
       expect(step2Params).toContain(5);
     });
 
-    it('builds user-only condition when no roles', async () => {
+    it('checks direct user grant AND role-inherited access when no subject roles', async () => {
       const queryMock = jest
         .fn()
         .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
@@ -131,7 +131,24 @@ describe('HierarchyValidationService', () => {
 
       const step2SQL = queryMock.mock.calls[1][0] as string;
       expect(step2SQL).toContain('dau.user_id IN');
-      expect(step2SQL).not.toContain('dar.role_id IN');
+      // A user-exception rule must also accept parent access inherited via the user's roles
+      expect(step2SQL).toContain('FROM user_roles WHERE user_id IN');
+    });
+
+    it('passes when user reaches the parent only through a role (no false missing_parent_access)', async () => {
+      const queryMock = jest
+        .fn()
+        // Step 1: child record 1 → parent 100
+        .mockResolvedValueOnce([{ id: 1, parent_id: 100 }])
+        // Step 2: parent 100 has an allow rule matched via the user's role membership
+        .mockResolvedValueOnce([{ data_id: 100 }]);
+
+      const service = createService(queryMock);
+      const result = await service.validate([1], 'bi_hub_reports', [10], []);
+
+      expect(result).toEqual([]);
+      const step2SQL = queryMock.mock.calls[1][0] as string;
+      expect(step2SQL).toContain('FROM user_roles WHERE user_id IN');
     });
 
     it('builds role-only condition when no users', async () => {

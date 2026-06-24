@@ -376,6 +376,62 @@ describe('OwnerScopeResolverService', () => {
     });
   });
 
+  // ── hasAccessibleChildUnderParent ──────────────────────────────────
+
+  describe('hasAccessibleChildUnderParent()', () => {
+    const CHILD_TABLE = 'bi_hub_diagnostic_reports';
+    const BICC_ID = 5;
+    const PERMISSION = 'bh_diag_report_download';
+
+    it('returns false and skips DB when user has no accessible child records', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([]);
+
+      const result = await service.hasAccessibleChildUnderParent(100, CHILD_TABLE, BICC_ID, PERMISSION);
+
+      expect(result).toBe(false);
+      expect(cache.getAccessibleRecords).toHaveBeenCalledWith(100, CHILD_TABLE, PERMISSION);
+      expect(dsQuery).not.toHaveBeenCalled();
+    });
+
+    it('returns false for a child table absent from HIERARCHY_MAP without hitting any path', async () => {
+      const result = await service.hasAccessibleChildUnderParent(100, 'unknown_table', BICC_ID, PERMISSION);
+
+      expect(result).toBe(false);
+      expect(cache.getAccessibleRecords).not.toHaveBeenCalled();
+      expect(dsQuery).not.toHaveBeenCalled();
+    });
+
+    it('returns false for non-finite parentId without hitting any path', async () => {
+      const result = await service.hasAccessibleChildUnderParent(100, CHILD_TABLE, Number.NaN, PERMISSION);
+
+      expect(result).toBe(false);
+      expect(cache.getAccessibleRecords).not.toHaveBeenCalled();
+      expect(dsQuery).not.toHaveBeenCalled();
+    });
+
+    it('returns true when an accessible child belongs to the parent bicc', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([11, 12]);
+      dsQuery.mockResolvedValueOnce([{ one: 1 }]);
+
+      const result = await service.hasAccessibleChildUnderParent(100, CHILD_TABLE, BICC_ID, PERMISSION);
+
+      expect(result).toBe(true);
+      const sql = dsQuery.mock.calls[0][0] as string;
+      expect(sql).toContain('bicc_department_id');
+      expect(sql).toContain(CHILD_TABLE);
+      expect(dsQuery.mock.calls[0][1]).toEqual([[11, 12], BICC_ID]);
+    });
+
+    it('returns false when accessible children belong to other parents (no row)', async () => {
+      (cache.getAccessibleRecords as jest.Mock).mockResolvedValueOnce([11, 12]);
+      dsQuery.mockResolvedValueOnce([]);
+
+      const result = await service.hasAccessibleChildUnderParent(100, CHILD_TABLE, BICC_ID, PERMISSION);
+
+      expect(result).toBe(false);
+    });
+  });
+
   // ── invalidation ──────────────────────────────────────────────────
 
   describe('invalidate*()', () => {

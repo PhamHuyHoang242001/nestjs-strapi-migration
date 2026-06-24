@@ -59,25 +59,26 @@ export class HierarchyValidationService {
     const parentPlaceholders = parentIds.map((_, i) => `$${i + 1}`).join(',');
     let paramIndex = parentIds.length;
 
-    let userRoleCondition = '';
-    if (userIds.length > 0 && roleIds.length > 0) {
-      const userPh = userIds.map((_, i) => `$${paramIndex + i + 1}`).join(',');
-      paramIndex += userIds.length;
-      const rolePh = roleIds.map((_, i) => `$${paramIndex + i + 1}`).join(',');
-      paramIndex += roleIds.length;
-      params.push(...userIds, ...roleIds);
-      userRoleCondition = `AND (dau.user_id IN (${userPh}) OR dar.role_id IN (${rolePh}))`;
-    } else if (userIds.length > 0) {
+    // A subject satisfies parent access via: a direct user grant, OR a grant to any
+    // role the user belongs to (role-inherited access), OR a grant to one of the
+    // subject roles. The membership subquery reuses the user placeholders so a
+    // user-exception rule on a child is not falsely flagged when the user already
+    // reaches the parent through one of their roles.
+    const conds: string[] = [];
+    if (userIds.length > 0) {
       const userPh = userIds.map((_, i) => `$${paramIndex + i + 1}`).join(',');
       paramIndex += userIds.length;
       params.push(...userIds);
-      userRoleCondition = `AND dau.user_id IN (${userPh})`;
-    } else if (roleIds.length > 0) {
+      conds.push(`dau.user_id IN (${userPh})`);
+      conds.push(`dar.role_id IN (SELECT role_id FROM user_roles WHERE user_id IN (${userPh}) AND deleted_at IS NULL)`);
+    }
+    if (roleIds.length > 0) {
       const rolePh = roleIds.map((_, i) => `$${paramIndex + i + 1}`).join(',');
       paramIndex += roleIds.length;
       params.push(...roleIds);
-      userRoleCondition = `AND dar.role_id IN (${rolePh})`;
+      conds.push(`dar.role_id IN (${rolePh})`);
     }
+    const userRoleCondition = conds.length > 0 ? `AND (${conds.join(' OR ')})` : '';
 
     params.push(parentTable);
     const tableParam = `$${params.length}`;

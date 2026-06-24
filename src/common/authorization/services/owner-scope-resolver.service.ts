@@ -148,6 +148,40 @@ export class OwnerScopeResolverService {
     return this.isInOwnedScope(userId, parentTable, parentId);
   }
 
+  /**
+   * Read-side aggregation gate: can `userId` act on AT LEAST ONE existing child
+   * record (in `childTable`) that lives under `parentId`, for `permission`?
+   * Used to surface child-level grants (e.g. a per-report user_data_access exception)
+   * in a parent-level capability flag. Reuses getAccessibleRecords, which already folds
+   * (role ∪ user) allow grants minus deny — so this honors both role and user exceptions.
+   *
+   * Note the asymmetry vs canCreateUnderParent: `create` is parent-bound (making a NEW
+   * child), so it must NOT use this path; download/delete act on existing children and do.
+   */
+  async hasAccessibleChildUnderParent(
+    userId: number,
+    childTable: string,
+    parentId: number,
+    permission: string,
+  ): Promise<boolean> {
+    if (!Number.isFinite(parentId)) return false;
+
+    const entry = HIERARCHY_MAP[childTable];
+    if (!entry) return false;
+    const { fkColumn } = entry;
+    // Defense-in-depth: only safe identifiers reach string interpolation.
+    if (!/^[a-z_]+$/.test(fkColumn)) return false;
+
+    const accessibleChildIds = await this.permissionCache.getAccessibleRecords(userId, childTable, permission);
+    if (accessibleChildIds.length === 0) return false;
+
+    const rows = await this.ds.query<{ one: number }[]>(
+      `SELECT 1 AS one FROM "${childTable}" WHERE id = ANY($1) AND "${fkColumn}" = $2 AND deleted_at IS NULL LIMIT 1`,
+      [accessibleChildIds, parentId],
+    );
+    return rows.length > 0;
+  }
+
   async isInOwnedScope(userId: number, tableName: string, recordId: number): Promise<boolean> {
     if (!HIERARCHY_MAP[tableName] && !(tableName in HIERARCHY_MAP)) return false;
 
