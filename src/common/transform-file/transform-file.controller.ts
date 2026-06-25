@@ -15,7 +15,6 @@ const DOWNLOAD_EXTENSIONS = new Set([
   '.csv',
   '.doc',
   '.docx',
-  '.pdf',
   '.ppt',
   '.pptx',
   '.rar',
@@ -23,6 +22,10 @@ const DOWNLOAD_EXTENSIONS = new Set([
   '.xlsx',
   '.zip',
 ]);
+
+// Extensions the browser can render natively; served inline so the FE views them
+// in-page and downloads via the viewer's own controls instead of forcing a download.
+const INLINE_EXTENSIONS = new Set(['.pdf']);
 
 @Controller()
 @ApiTags('transform-file')
@@ -84,7 +87,10 @@ export class TransformFileController {
     res.setHeader('Content-Type', contentType);
 
     const fileName = path.basename(filePath);
-    if (DOWNLOAD_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+    const extension = path.extname(filePath).toLowerCase();
+    if (INLINE_EXTENSIONS.has(extension)) {
+      res.setHeader('Content-Disposition', `inline; filename=${encodeURIComponent(fileName)}`);
+    } else if (DOWNLOAD_EXTENSIONS.has(extension)) {
       res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(fileName)}`);
     }
 
