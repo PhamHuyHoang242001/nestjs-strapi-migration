@@ -78,4 +78,26 @@ describe('PermissionQueryService', () => {
     expect(result).toEqual(expect.arrayContaining([1, 3]));
     expect(result).toHaveLength(2);
   });
+
+  it('joins the target table and filters out soft-deleted records', async () => {
+    userRoleRepo.getRawMany.mockResolvedValueOnce([{ role_id: 1 }]);
+
+    await service.getAccessibleRecords(10, 'bi_hub_reports', 'bh_diag_report_view');
+
+    // Target table joined on its id so soft-deleted rows can be excluded
+    expect(roleDataAccessRepo.innerJoin).toHaveBeenCalledWith('bi_hub_reports', 'rec', 'rec.id = da.data_id');
+    expect(userDataAccessRepo.innerJoin).toHaveBeenCalledWith('bi_hub_reports', 'rec', 'rec.id = da.data_id');
+
+    // Soft-delete filters applied on the joined target record
+    expect(roleDataAccessRepo.andWhere).toHaveBeenCalledWith('rec.is_deleted IS NOT TRUE');
+    expect(roleDataAccessRepo.andWhere).toHaveBeenCalledWith('rec.deleted_at IS NULL');
+  });
+
+  it('rejects a table name that is not a plain SQL identifier', async () => {
+    userRoleRepo.getRawMany.mockResolvedValueOnce([{ role_id: 1 }]);
+
+    await expect(service.getAccessibleRecords(10, 'bi_hub_reports; DROP TABLE users')).rejects.toThrow(
+      'Invalid data-access table',
+    );
+  });
 });

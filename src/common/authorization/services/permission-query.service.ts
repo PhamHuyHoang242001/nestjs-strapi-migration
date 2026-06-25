@@ -1,6 +1,6 @@
 import { STATUS } from '@common/enums';
 import { SCOPE_TYPE } from '@common/enums';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RoleDataAccess, UserDataAccess } from '@modules/databases/data-access.entity';
 import { UserRole } from '@modules/databases/user-role.entity';
@@ -148,16 +148,29 @@ export class PermissionQueryService {
     scopeType: SCOPE_TYPE,
     permissionCode?: string,
   ): Promise<number[]> {
+    // Table name comes from @RequireDataAccess metadata (DATA_ACCESS_TABLE enum),
+    // never user input. Validate as a plain SQL identifier before interpolating it
+    // into the raw join below, as defense-in-depth against injection.
+    if (!/^[a-z_][a-z0-9_]*$/.test(tableName)) {
+      throw new BadRequestException('Invalid data-access table');
+    }
+
     const qb = (repo as Repository<RoleDataAccess | UserDataAccess>)
       .createQueryBuilder(alias)
       .innerJoin(`${alias}.data_access`, 'da')
       .innerJoin('da.module', 'm')
+      // Join the target record so soft-deleted records (deleted_at set or
+      // is_deleted = true) are excluded from the accessible set, instead of
+      // returning their data_ids from the data_access config alone.
+      .innerJoin(tableName, 'rec', 'rec.id = da.data_id')
       .select('da.data_id', 'data_id')
       .where(ownerCondition, ownerParams)
       .andWhere(`${alias}.deleted_at IS NULL`)
       .andWhere('m.table_name = :tableName', { tableName })
       .andWhere('da.scope_type = :scopeType', { scopeType })
       .andWhere('da.deleted_at IS NULL')
+      .andWhere('rec.is_deleted IS NOT TRUE')
+      .andWhere('rec.deleted_at IS NULL')
       // Date-granularity window: start_date counts from the beginning of its day,
       // end_date through the end of its day (so start = end = today is active all day).
       .andWhere('(da.start_date IS NULL OR da.start_date::date <= CURRENT_DATE)')
