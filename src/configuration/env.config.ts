@@ -27,6 +27,10 @@ export const SWAGGER_BASE_URL: string = process.env.SWAGGER_BASE_URL ?? process.
 export const APP_VERSION: string = process.env.APP_VERSION ?? process.env.API_VERSION ?? '1.0';
 export const BACKEND_URL: string = process.env.BACKEND_URL ?? process.env.BACKEND_BASE_URL ?? '';
 export const FRONTEND_BASE_URL: string = process.env.FRONTEND_BASE_URL ?? 'http://localhost:3000';
+// Public-facing origin (scheme + host + any gateway path prefix, e.g. `/v2`) used to
+// rebuild absolute return URLs. Behind an ingress the pod sees the internal host,
+// plain http, and a stripped path prefix, so request runtime values cannot be trusted.
+export const PUBLIC_BASE_URL: string = process.env.PUBLIC_BASE_URL ?? FRONTEND_BASE_URL;
 
 // Logger
 export const LOGGER_LEVEL: string = process.env.LOGGER_LEVEL ?? 'debug';

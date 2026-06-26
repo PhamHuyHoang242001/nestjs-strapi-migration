@@ -1,7 +1,7 @@
 import { RedisKey, USER_CLIENT } from '@common/enums';
 import { RedisAdapter } from '@common/infrastructure/redis.adapter';
 import { RequestWithInfo } from '@common/types/request-with-info';
-import { FRONTEND_BASE_URL } from '@configuration/env.config';
+import { FRONTEND_BASE_URL, PUBLIC_BASE_URL } from '@configuration/env.config';
 import { AUTH_FAIL } from '@constant/index';
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -84,9 +84,18 @@ export class TransformFileAuthGuard implements CanActivate {
     return cookies[USER_TOKEN_COOKIE];
   }
 
-  /** Login URL with the current request as the post-login return target. */
+  /**
+   * Login URL with the current request as the post-login return target.
+   *
+   * The return URL is built from the configured public origin, not from
+   * `req.protocol`/`req.get('host')`: behind an ingress the pod sees plain http
+   * and the internal service host, which would make the post-login redirect
+   * point at an unreachable cluster-internal address. PUBLIC_BASE_URL carries
+   * the public scheme, host, and any gateway path prefix (e.g. `/v2`) that the
+   * ingress strips before the request reaches the app.
+   */
   private buildLoginUrl(req: RequestWithInfo): string {
-    const returnUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const returnUrl = `${PUBLIC_BASE_URL}${req.originalUrl}`;
     return `${FRONTEND_BASE_URL}/login?url=${encodeURIComponent(returnUrl)}`;
   }
 }
