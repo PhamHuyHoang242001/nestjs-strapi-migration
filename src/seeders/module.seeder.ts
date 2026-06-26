@@ -91,6 +91,14 @@ const PERMISSION_MANAGEMENT: ModuleSeedItem[] = [
     is_active: true,
     parent_id: 100,
   },
+  {
+    id: 105,
+    path: '/permission/service-token',
+    name: 'Service Token',
+    table_name: 'jwt_tokens',
+    is_active: true,
+    parent_id: 100,
+  },
 ];
 
 // ── BI Payment — TEMPORARILY DISABLED ────────────────────────────

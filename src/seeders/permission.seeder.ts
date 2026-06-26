@@ -252,6 +252,30 @@ const PERM_MGMT_HISTORY: PermissionSeedItem[] = [
   { id: 108, code: 'perm_history_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 104 },
 ];
 
+// ── Permission Management / Service Token (module_id=105) ─────────
+const PERM_MGMT_SERVICE_TOKEN: PermissionSeedItem[] = [
+  { id: 109, code: 'service_token_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 105 },
+  {
+    id: 110,
+    code: 'service_token_create',
+    name: 'Tạo mới',
+    method: 'POST',
+    action: 'create',
+    is_active: true,
+    module_id: 105,
+  },
+  { id: 111, code: 'service_token_edit', name: 'Sửa', method: 'PATCH', action: 'update', is_active: true, module_id: 105 },
+  {
+    id: 112,
+    code: 'service_token_delete',
+    name: 'Xóa',
+    method: 'DELETE',
+    action: 'delete',
+    is_active: true,
+    module_id: 105,
+  },
+];
+
 // ── BI Payment (module_id=12-18) — TEMPORARILY DISABLED ─────────
 // Uncomment when BI Payment modules are ready for seeding
 /*
@@ -334,6 +358,7 @@ export class PermissionSeeder implements Seeder {
       ...PERM_MGMT_USER,
       ...PERM_MGMT_DATA_ACCESS,
       ...PERM_MGMT_HISTORY,
+      ...PERM_MGMT_SERVICE_TOKEN,
       // BI Payment — temporarily disabled (uncomment when ready)
       // ...BI_PAYMENT_PROJECT,
       // ...BI_PAYMENT_PROGRAM,
