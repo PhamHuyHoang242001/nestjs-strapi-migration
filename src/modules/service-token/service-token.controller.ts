@@ -1,7 +1,5 @@
 import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
 import { PermissionGuard } from '@common/authorization/guards/permission.guard';
-import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
-import { Sort, SortParams } from '@common/decorators/sort.decorator';
 import { BearerGuard } from '@common/guards';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
@@ -28,14 +26,10 @@ export class ServiceTokenController {
   }
 
   @Get('service-token/search')
-  @ApiOperation({ summary: 'List service tokens (paginated, search by name; token value hidden)' })
+  @ApiOperation({ summary: 'List service tokens (keyword search, paginated; token value hidden)' })
   @RequirePermission('service_token_view')
-  search(
-    @PaginationDecorator() paginationParams: PaginationParams,
-    @Sort({ allowedFields: ['id', 'name'], default: { sort_field: 'id', sort_order: 'desc' } }) sortParams: SortParams,
-    @Query() query: ListServiceTokenDto,
-  ) {
-    return this.serviceTokenService.search(query, sortParams, paginationParams);
+  search(@Query() query: ListServiceTokenDto) {
+    return this.serviceTokenService.search(query);
   }
 
   @Get('service-token/details')

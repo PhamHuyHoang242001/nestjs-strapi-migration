@@ -1,6 +1,4 @@
-import { PaginationParams } from '@common/decorators/pagination.decorator';
-import { SortParams } from '@common/decorators/sort.decorator';
-import { execQueryAll, execQueryPaignation } from '@common/utils/common';
+import { standardizePagination } from '@common/utils';
 import { NOT_FOUND } from '@constant/error-messages';
 import { ADMIN_JWT_SECRET } from '@configuration/env.config';
 import { JWT_TOKEN_TYPE } from '@modules/databases/jwt-token.entity';
@@ -37,12 +35,19 @@ export class ServiceTokenService {
     return { serviceToken, type: JWT_TOKEN_TYPE.SERVICE_TOKEN };
   }
 
-  /** List active service tokens (paginated, searchable by name). Excludes `token` values. */
-  async search(payload: ListServiceTokenDto, sortParams: SortParams, paginationParams: PaginationParams) {
-    const queryBuilder = this.jwtTokenRepository.buildServiceTokenListQuery(payload, sortParams);
-    const { page, limit } = paginationParams;
-    if (limit === -1) return execQueryAll(queryBuilder);
-    return execQueryPaignation(queryBuilder, page, limit);
+  /**
+   * List active service tokens (paginated, keyword search by name). Excludes `token` values.
+   * Mirrors the data-self-serve request list: page/limit defaults + 100 cap, returns { data, meta }.
+   */
+  async search(query: ListServiceTokenDto) {
+    const page = Number(query.page || 1);
+    const limit = Math.min(Number(query.limit || 10), 100);
+    const qb = this.jwtTokenRepository
+      .buildServiceTokenListQuery(query)
+      .skip((page - 1) * limit)
+      .take(limit);
+    const [rows, total] = await qb.getManyAndCount();
+    return { data: rows, meta: standardizePagination(total, rows.length, limit, page) };
   }
 
   /** Get one active service token by id (includes `token`). 404 if missing/deleted/wrong type. */

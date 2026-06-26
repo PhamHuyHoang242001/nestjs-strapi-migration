@@ -1,11 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
 import { JWT_TOKEN_TYPE } from '@modules/databases/jwt-token.entity';
 import { ServiceTokenService } from './service-token.service';
-import * as commonUtils from '@common/utils/common';
 
-jest.mock('@common/utils/common', () => ({
-  execQueryPaignation: jest.fn(),
-  execQueryAll: jest.fn(),
+jest.mock('@common/utils', () => ({
+  standardizePagination: jest.fn((total: number) => ({ totalItems: total })),
 }));
 
 describe('ServiceTokenService', () => {
@@ -120,30 +118,34 @@ describe('ServiceTokenService', () => {
   });
 
   describe('search', () => {
-    const sortParams = { sort_field: 'id', sort_order: 'DESC' } as any;
-
-    it('builds the list query and delegates to execQueryPaignation when limit != -1', async () => {
-      const qb = { fake: 'qb' };
-      jwtTokenRepository.buildServiceTokenListQuery.mockReturnValue(qb);
-      (commonUtils.execQueryPaignation as jest.Mock).mockResolvedValue({ data: [], meta: {} });
-
-      const result = await service.search({ name: 'svc' }, sortParams, { page: 1, limit: 10 });
-
-      expect(jwtTokenRepository.buildServiceTokenListQuery).toHaveBeenCalledWith({ name: 'svc' }, sortParams);
-      expect(commonUtils.execQueryPaignation).toHaveBeenCalledWith(qb, 1, 10);
-      expect(commonUtils.execQueryAll).not.toHaveBeenCalled();
-      expect(result).toEqual({ data: [], meta: {} });
+    const makeQb = (rows: any[], total: number) => ({
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([rows, total]),
     });
 
-    it('uses execQueryAll when limit === -1', async () => {
-      const qb = { fake: 'qb' };
+    it('passes the query to buildServiceTokenListQuery, paginates, and returns {data, meta}', async () => {
+      const qb = makeQb([{ id: 1, name: 'svc' }], 1);
       jwtTokenRepository.buildServiceTokenListQuery.mockReturnValue(qb);
-      (commonUtils.execQueryAll as jest.Mock).mockResolvedValue({ data: [], meta: {} });
 
-      await service.search({}, sortParams, { page: 1, limit: -1 });
+      const query = { keyword: 'svc', page: 2, limit: 10 } as any;
+      const result = await service.search(query);
 
-      expect(commonUtils.execQueryAll).toHaveBeenCalledWith(qb);
-      expect(commonUtils.execQueryPaignation).not.toHaveBeenCalled();
+      expect(jwtTokenRepository.buildServiceTokenListQuery).toHaveBeenCalledWith(query);
+      expect(qb.skip).toHaveBeenCalledWith(10); // (page-1)*limit = (2-1)*10
+      expect(qb.take).toHaveBeenCalledWith(10);
+      expect(result.data).toEqual([{ id: 1, name: 'svc' }]);
+      expect(result.meta).toEqual({ totalItems: 1 });
+    });
+
+    it('defaults page=1/limit=10 and caps limit at 100', async () => {
+      const qb = makeQb([], 0);
+      jwtTokenRepository.buildServiceTokenListQuery.mockReturnValue(qb);
+
+      await service.search({ limit: 500 } as any);
+
+      expect(qb.skip).toHaveBeenCalledWith(0);
+      expect(qb.take).toHaveBeenCalledWith(100);
     });
   });
 
