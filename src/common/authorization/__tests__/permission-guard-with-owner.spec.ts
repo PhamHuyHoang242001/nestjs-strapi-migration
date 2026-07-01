@@ -53,7 +53,7 @@ describe('PermissionGuard with owner-implied verbs', () => {
     );
   });
 
-  it('requires ALL verbs to be in role.permissions ∪ impliedVerbs (multi-code)', async () => {
+  it('passes (OR) when at least one verb is in role.permissions ∪ impliedVerbs (multi-code)', async () => {
     reflector.getAllAndOverride.mockReturnValue(['report_view', 'report_edit']);
     permissionCache.hasPermission.mockImplementation(async (_uid: number, code: string) => code === 'report_view');
     ownerScope.getUserImpliedVerbs.mockResolvedValue(new Set(['report_edit']));
@@ -61,9 +61,17 @@ describe('PermissionGuard with owner-implied verbs', () => {
     await expect(guard.canActivate(context({ user: { id: 1 }, client: 'user' }))).resolves.toBe(true);
   });
 
-  it('rejects when one code is missing from both role.permissions and impliedVerbs', async () => {
+  it('passes (OR) when the user holds just one of the codes and lacks the other entirely', async () => {
     reflector.getAllAndOverride.mockReturnValue(['report_view', 'workspace_edit']);
     permissionCache.hasPermission.mockImplementation(async (_uid: number, code: string) => code === 'report_view');
+    ownerScope.getUserImpliedVerbs.mockResolvedValue(new Set(['report_edit']));
+
+    await expect(guard.canActivate(context({ user: { id: 1 }, client: 'user' }))).resolves.toBe(true);
+  });
+
+  it('rejects only when NONE of the codes are in role.permissions or impliedVerbs', async () => {
+    reflector.getAllAndOverride.mockReturnValue(['report_view', 'workspace_edit']);
+    permissionCache.hasPermission.mockResolvedValue(false);
     ownerScope.getUserImpliedVerbs.mockResolvedValue(new Set(['report_edit']));
 
     await expect(guard.canActivate(context({ user: { id: 1 }, client: 'user' }))).rejects.toBeInstanceOf(

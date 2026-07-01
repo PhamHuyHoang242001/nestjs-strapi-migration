@@ -36,23 +36,35 @@ export class PermissionGuard implements CanActivate {
     // Lazy-resolve impliedVerbs only when an explicit role permission is missing.
     // Avoids unnecessary cache/SQL roundtrip for the common admin/role-permission path.
     let impliedVerbs: Set<string> | null = null;
-    // Track whether any required verb resolved via SO implied path. If yes, the
-    // request is NOT pure-explicit and OwnerScopeGuard must still enforce ownership.
-    let resolvedViaImplied = false;
+    // OR semantics: the user passes the verb gate if they hold AT LEAST ONE of the
+    // required codes (via explicit role grant OR owner-implied scope). Multiple codes
+    // on one endpoint mean "any of these capabilities is enough" (e.g. an endpoint
+    // shared by the create and update flows accepts either grant).
+    let anyExplicit = false;
+    let anyImplied = false;
 
     for (const code of requiredCodes) {
-      if (await this.permissionCache.hasPermission(userId, code)) continue;
-
+      if (await this.permissionCache.hasPermission(userId, code)) {
+        anyExplicit = true;
+        continue;
+      }
       if (impliedVerbs === null) {
         impliedVerbs = await this.ownerScope.getUserImpliedVerbs(userId);
       }
-      if (!impliedVerbs.has(code)) {
-        throw new ForbiddenException(`Missing required permission: ${code}`);
+      if (impliedVerbs.has(code)) {
+        anyImplied = true;
       }
-      resolvedViaImplied = true;
     }
 
-    req.info.verbFromExplicit = !resolvedViaImplied;
+    if (!anyExplicit && !anyImplied) {
+      throw new ForbiddenException(`Missing required permission: one of [${requiredCodes.join(', ')}]`);
+    }
+
+    // Conservative data-scope signal: stay explicit ONLY when the match is purely
+    // explicit. If any required verb leaned on the owner-implied path, downstream
+    // (OwnerScopeGuard + data-access interceptor) must restrict to owned records to
+    // avoid surfacing rows the user can only reach as an owner.
+    req.info.verbFromExplicit = anyExplicit && !anyImplied;
     return true;
   }
 }
