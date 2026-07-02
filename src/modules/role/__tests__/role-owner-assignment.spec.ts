@@ -139,6 +139,17 @@ describe('saveOwnerAssignments()', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('accepts the whole-table ma_tool_report SO with the sentinel resource_id', async () => {
+    const service = createService();
+    mockQuery.mockResolvedValue([]);
+
+    await service.saveOwnerAssignments(99, [{ resource_type: 'ma_tool_report', resource_ids: [0] }]);
+
+    expect(mockQuery.mock.calls[1][0]).toContain('INSERT INTO resource_owners');
+    expect(mockQuery.mock.calls[1][1]).toContain('ma_tool_report');
+    expect(mockQuery.mock.calls[1][1]).toContain(0); // sentinel = whole-table ownership
+  });
+
   it('clears all SO (soft-delete, no insert) when assignments is an empty array', async () => {
     const service = createService();
     mockQuery.mockResolvedValue([]);

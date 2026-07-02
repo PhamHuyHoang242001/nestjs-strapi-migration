@@ -8,7 +8,14 @@ import { Module as ModuleEntity } from '@modules/databases/module.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { ALLOWED_TABLES, NAME_COLUMN_MAP, getNameColumn } from './constants/hierarchy-config';
+import {
+  ALLOWED_TABLES,
+  NAME_COLUMN_MAP,
+  OWNER_ALL_TABLES,
+  OWNER_ALL_RESOURCE_ID,
+  ROOT_OWNER_CONFIG,
+  getNameColumn,
+} from './constants/hierarchy-config';
 import { buildOwnerJoinChain, buildAccessibleCTE } from './helpers/owner-scope-helpers';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
@@ -799,6 +806,17 @@ export class DataAccessService {
     }
 
     // Unscoped (no user context — internal callers): return all records
+    return this.getUnscopedRecords(tableName, dto, pagination);
+  }
+
+  /**
+   * List every candidate record (id + display_name + created_at), filtered by
+   * keyword/date. Serves two callers with the same "browse all rows" semantics:
+   * internal unscoped callers, and admins picking grant candidates for an
+   * explicit-only table. Record-level access is enforced elsewhere (assignment
+   * mutation stays permission-gated); this is a picker, not a data endpoint.
+   */
+  private async getUnscopedRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams) {
     const nameCol = getNameColumn(tableName);
     const params: any[] = [];
     let whereClause = 'WHERE deleted_at IS NULL';
@@ -864,6 +882,14 @@ export class DataAccessService {
     const roleIds = roleRows.map((r) => r.role_id);
     if (!roleIds.length) return emptyResult;
 
+    // Whole-table SO: a role owning this table (sentinel resource_owners row) sees
+    // EVERY row; a non-owner sees none. The sentinel resource_id never matches a
+    // real row in the standard owner join, so own-all is resolved here explicitly.
+    if (OWNER_ALL_TABLES.has(tableName)) {
+      const isOwnerAll = await this.hasOwnerAllAssignment(tableName, roleIds);
+      return isOwnerAll ? this.getUnscopedRecords(tableName, dto, pagination) : emptyResult;
+    }
+
     // Build owner join chain
     const ownerChain = buildOwnerJoinChain(tableName, `$1`);
     if (!ownerChain) return emptyResult;
@@ -907,5 +933,21 @@ export class DataAccessService {
         totalPages: Math.ceil(total / pagination.limit) || 1,
       },
     };
+  }
+
+  /**
+   * True when any of the caller's roles is a whole-table SO of `tableName`,
+   * i.e. holds the sentinel resource_owners row. Ownership is by role, not record.
+   */
+  private async hasOwnerAllAssignment(tableName: string, roleIds: number[]): Promise<boolean> {
+    const resourceType = ROOT_OWNER_CONFIG[tableName]?.resourceType;
+    if (!resourceType) return false;
+    const rows = await this.connection.query(
+      `SELECT 1 FROM resource_owners
+       WHERE role_id = ANY($1) AND resource_type = $2 AND resource_id = $3 AND deleted_at IS NULL
+       LIMIT 1`,
+      [roleIds, resourceType, OWNER_ALL_RESOURCE_ID],
+    );
+    return rows.length > 0;
   }
 }

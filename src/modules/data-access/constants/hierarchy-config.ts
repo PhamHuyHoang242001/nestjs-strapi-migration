@@ -26,10 +26,35 @@ export const HIERARCHY_MAP: Record<string, HierarchyEntry | null> = {
   bi_hub_bicc_departments: null,
   bi_hub_reports: { parentTable: 'bi_hub_bicc_departments', fkColumn: 'bicc_department_id' },
   bi_hub_diagnostic_reports: { parentTable: 'bi_hub_bicc_departments', fkColumn: 'bicc_department_id' },
+
+  // ma_tool report: standalone root (no parent FK). Owner scope here is
+  // whole-table ("own-all") via a sentinel resource_owners row — see
+  // OWNER_ALL_TABLES and ROOT_OWNER_CONFIG below.
+  ma_tool_cstb_rpt_properties: null,
 };
 
 /** Whitelist of tables allowed for data access rules and records browser */
 export const ALLOWED_TABLES = new Set(Object.keys(HIERARCHY_MAP));
+
+/**
+ * Whole-table SO ("own-all") roots. Ownership here is not per-record: a role is
+ * declared SO of the ENTIRE table via a single sentinel resource_owners row
+ * (resource_id = OWNER_ALL_RESOURCE_ID). Members of such a role browse every row
+ * of the table through the records browser; non-owners see none.
+ *
+ * Distinct from the standard per-record owner scope (bicc/workspace) where a role
+ * owns specific root IDs. The sentinel does NOT match any real row in the id-join
+ * or EXISTS predicate, so the read API (applyDataScope) stays record-scoped —
+ * own-all visibility is resolved explicitly in getScopedRecords only.
+ */
+export const OWNER_ALL_TABLES = new Set<string>(['ma_tool_cstb_rpt_properties']);
+
+/**
+ * Sentinel resource_id marking a whole-table ("own-all") SO assignment.
+ * Relies on real rows never having id = 0 (Postgres serial/identity starts at 1),
+ * so the sentinel never collides with a genuine record in id-join/EXISTS predicates.
+ */
+export const OWNER_ALL_RESOURCE_ID = 0;
 
 /** Maps table name → primary display column for UI. Falls back to 'id'. */
 export const NAME_COLUMN_MAP: Record<string, string> = {
@@ -44,6 +69,7 @@ export const NAME_COLUMN_MAP: Record<string, string> = {
   bi_hub_diagnostic_reports: 'name',
   bi_payment_checklists: 'name',
   bi_payment_other_files: 'name',
+  ma_tool_cstb_rpt_properties: 'rpt_code',
 };
 
 /** Maps root table → resource_type discriminator for polymorphic owner scoping */
@@ -54,6 +80,10 @@ export interface RootOwnerEntry {
 export const ROOT_OWNER_CONFIG: Record<string, RootOwnerEntry> = {
   bi_hub_bicc_departments: { resourceType: 'bicc_department' },
   ma_tool_workspaces: { resourceType: 'workspace' },
+  // Whole-table SO: role owns ALL reports via a sentinel resource_owners row.
+  // Registered here so owner_assignments accepts the type and SO members receive
+  // ma_tool_report_view as an implied verb (module-path derivation). See OWNER_ALL_TABLES.
+  ma_tool_cstb_rpt_properties: { resourceType: 'ma_tool_report' },
 };
 
 /**

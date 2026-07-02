@@ -12,7 +12,12 @@ import { PermissionRepository } from '@modules/permission/repository/permission.
 import { UserRepository } from '@modules/users/repository/users.repository';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, Not } from 'typeorm';
-import { ROOT_OWNER_CONFIG, getNameColumn } from '@modules/data-access/constants/hierarchy-config';
+import {
+  ROOT_OWNER_CONFIG,
+  OWNER_ALL_TABLES,
+  OWNER_ALL_RESOURCE_ID,
+  getNameColumn,
+} from '@modules/data-access/constants/hierarchy-config';
 import { ListRoleDto } from './dto';
 import { AssignUsersRoleDto } from './dto/assign-users-role.dto';
 import { CloneRoleDto } from './dto/clone-role.dto';
@@ -119,9 +124,18 @@ export class RoleService {
 
     // Validate all resource_types exist in ROOT_OWNER_CONFIG
     const validTypes = new Set(Object.values(ROOT_OWNER_CONFIG).map((c) => c.resourceType));
+    // resource_types of whole-table (own-all) roots — ownership is the sentinel, not per-record.
+    const ownerAllTypes = new Set(
+      [...OWNER_ALL_TABLES].map((t) => ROOT_OWNER_CONFIG[t]?.resourceType).filter(Boolean),
+    );
     for (const a of assignments) {
       if (!validTypes.has(a.resource_type)) {
         throw new BadRequestException(`invalid_resource_type: ${a.resource_type}`);
+      }
+      // Own-all roots accept ONLY the sentinel id. Reject real record IDs so a
+      // per-record grant can't silently widen the read API for this table.
+      if (ownerAllTypes.has(a.resource_type) && a.resource_ids.some((id) => Number(id) !== OWNER_ALL_RESOURCE_ID)) {
+        throw new BadRequestException(`whole_table_so_requires_sentinel: ${a.resource_type}`);
       }
     }
 

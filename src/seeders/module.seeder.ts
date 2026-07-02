@@ -70,6 +70,21 @@ const BI_HUB: ModuleSeedItem[] = [
   },
 ];
 
+// ── MA Tool ──────────────────────────────────────────────────────
+// Pinned to a fresh top-level namespace, outside every owner-scoped root path,
+// so the report view verb never leaks into owners' implied-verb set.
+const MA_TOOL: ModuleSeedItem[] = [
+  { id: 106, path: '/ma-tool', name: 'MA Tool', table_name: null, is_active: true, parent_id: null },
+  {
+    id: 107,
+    path: '/ma-tool/report',
+    name: 'Report',
+    table_name: 'ma_tool_cstb_rpt_properties',
+    is_active: true,
+    parent_id: 106,
+  },
+];
+
 // ── Permission Management ─────────────────────────────────────────
 const PERMISSION_MANAGEMENT: ModuleSeedItem[] = [
   { id: 100, path: '/permission', name: 'Quản trị phân quyền', table_name: null, is_active: true, parent_id: null },
@@ -127,6 +142,7 @@ export class ModuleSeeder implements Seeder {
     const dataConfig: ModuleSeedItem[] = [
       ...DATA_UPLOADER,
       ...BI_HUB,
+      ...MA_TOOL,
       ...PERMISSION_MANAGEMENT,
       // BI Payment — temporarily disabled (uncomment when ready)
       // ...BI_PAYMENT,

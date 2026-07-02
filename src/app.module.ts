@@ -32,6 +32,7 @@ import { ChangeHistoryModule } from '@modules/change-history/change-history.modu
 import { DataAccessModule } from '@modules/data-access/data-access.module';
 import { BiccDepartmentModule } from '@modules/bicc-department/bicc-department.module';
 import { BiHubDiagnosticReportModule } from '@modules/bi-hub-diagnostic-report/bi-hub-diagnostic-report.module';
+import { MaToolReportModule } from '@modules/ma-tool-report/ma-tool-report.module';
 import { TransformFileModule } from '@common/transform-file';
 import { DiagnosticTransformFileResolver } from '@modules/bi-hub-diagnostic-report/diagnostic-transform-file.resolver';
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
@@ -89,6 +90,7 @@ import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-o
     DataAccessModule,
     BiccDepartmentModule,
     BiHubDiagnosticReportModule,
+    MaToolReportModule,
     TransformFileModule.register({
       imports: [TypeOrmModule.forFeature([BIHubDiagnosticReport, BIHubDiagnosticHistoryReport, BiDiagnosticLog])],
       resolvers: [DiagnosticTransformFileResolver],

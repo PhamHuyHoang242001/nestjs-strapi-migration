@@ -338,6 +338,11 @@ const BI_PAYMENT_OTHER_FILE: PermissionSeedItem[] = [
 ];
 */
 
+// ── MA Tool / Report (module_id=107) ─────────────────────────────
+const MA_TOOL_REPORT: PermissionSeedItem[] = [
+  { id: 113, code: 'ma_tool_report_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 107 },
+];
+
 @Injectable()
 export class PermissionSeeder implements Seeder {
   constructor(private connection: DataSource) {}
@@ -353,6 +358,8 @@ export class PermissionSeeder implements Seeder {
       ...BI_HUB_BICC_DEPT,
       ...BI_HUB_REPORTS,
       ...BI_HUB_DIAG_REPORT,
+      // MA Tool
+      ...MA_TOOL_REPORT,
       // Permission Management
       ...PERM_MGMT_ROLE,
       ...PERM_MGMT_USER,

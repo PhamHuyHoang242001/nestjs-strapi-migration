@@ -10,6 +10,9 @@ export enum DATA_ACCESS_TABLE {
   BI_HUB_REPORTS = 'bi_hub_reports',
   BI_HUB_DIAGNOSTIC_REPORTS = 'bi_hub_diagnostic_reports',
 
+  // MA Tool — parentless root; whole-table ("own-all") SO via sentinel resource_owners row
+  MA_TOOL_CSTB_RPT_PROPERTIES = 'ma_tool_cstb_rpt_properties',
+
   // BI Payment
   BI_PAYMENT_PROJECTS = 'bi_payment_projects',
   BI_PAYMENT_PROGRAMS = 'bi_payment_programs',
