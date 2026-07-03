@@ -1,4 +1,10 @@
-import { HIERARCHY_MAP, ALLOWED_TABLES, ROOT_OWNER_CONFIG } from '../constants/hierarchy-config';
+import {
+  HIERARCHY_MAP,
+  ALLOWED_TABLES,
+  ROOT_OWNER_CONFIG,
+  OWNER_ALL_TABLES,
+  OWNER_ALL_RESOURCE_ID,
+} from '../constants/hierarchy-config';
 
 /**
  * Walk HIERARCHY_MAP upward from tableName until a root entry (null) is found.
@@ -80,6 +86,23 @@ export function buildAccessibleCTE(roleIdsParam: string): { cteSql: string } {
     const ownerConfig = ROOT_OWNER_CONFIG[rootTable];
     if (!ownerConfig) continue;
 
+    const { resourceType } = ownerConfig;
+
+    // Whole-table SO ("own-all"): ownership is declared by a single sentinel
+    // resource_owners row (resource_id = OWNER_ALL_RESOURCE_ID), which never
+    // equals a real record id. The per-record join below (ro.resource_id = t0.id)
+    // therefore matches nothing, so match the sentinel directly: a role holding
+    // it makes EVERY row of the table accessible; a non-owner matches none.
+    // Mirrors getScopedRecords' own-all branch so the grouped list stays in sync.
+    if (OWNER_ALL_TABLES.has(tableName)) {
+      branches.push(
+        `SELECT t0.id as data_id, '${tableName}' as table_name FROM "${tableName}" t0 ` +
+          `JOIN "resource_owners" ro ON ro.resource_id = ${OWNER_ALL_RESOURCE_ID} AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL ` +
+          `WHERE ro.role_id = ANY(${roleIdsParam}) AND t0.deleted_at IS NULL`,
+      );
+      continue;
+    }
+
     // Build JOIN chain from this table to root
     const chain: { parentTable: string; fkColumn: string }[] = [];
     let current = tableName;
@@ -103,7 +126,6 @@ export function buildAccessibleCTE(roleIdsParam: string): { cteSql: string } {
     }
 
     const rootAlias = aliases[aliases.length - 1];
-    const { resourceType } = ownerConfig;
     joins.push(
       `JOIN "resource_owners" ro ON ro.resource_id = ${rootAlias}.id AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL`,
     );

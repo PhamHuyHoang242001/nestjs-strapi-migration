@@ -131,4 +131,28 @@ describe('buildAccessibleCTE()', () => {
     const result = buildAccessibleCTE('$2');
     expect(result.cteSql).toContain('$2');
   });
+
+  // Whole-table SO ("own-all"): ma_tool_cstb_rpt_properties is owned via a sentinel
+  // resource_owners row (resource_id = 0), not per-record. Its branch must match the
+  // sentinel so a sentinel-holding role sees every row in the grouped list — the
+  // per-record join (ro.resource_id = t0.id) would never match id = 0.
+  describe('own-all table (ma_tool_cstb_rpt_properties)', () => {
+    it('emits a branch for the own-all table', () => {
+      const result = buildAccessibleCTE('$1');
+      expect(result.cteSql).toContain('ma_tool_cstb_rpt_properties');
+      expect(result.cteSql).toContain("resource_type = 'ma_tool_report'");
+    });
+
+    it('matches the sentinel resource_id (= 0), NOT the per-record id join', () => {
+      const result = buildAccessibleCTE('$1');
+      // Isolate the own-all branch to avoid matching other UNION ALL branches
+      const branch = result.cteSql
+        .split('UNION ALL')
+        .find((b) => b.includes('ma_tool_cstb_rpt_properties')) as string;
+      expect(branch).toBeDefined();
+      expect(branch).toContain('ro.resource_id = 0');
+      expect(branch).not.toContain('ro.resource_id = t0.id');
+      expect(branch).toContain('ro.role_id = ANY($1)');
+    });
+  });
 });
