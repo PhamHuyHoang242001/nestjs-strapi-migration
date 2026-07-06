@@ -1,27 +1,33 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Module } from '@modules/databases/module.entity';
-import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Module } from './module.entity';
+import { UserDataAccess } from './data-access.entity';
+import { RolePermission } from './role.entity';
 
-@Entity()
+@Entity('permissions')
 export class Permission extends BaseSoftDeleteEntity {
-  @Column({ nullable: false })
+  @Column()
   name: string;
 
-  @Column({ nullable: false })
+  @Column()
   code: string;
 
-  @Column({ nullable: false })
+  @Column()
   method: string;
 
-  @Column({ nullable: false })
+  @Column()
   action: string;
 
-  @Column({ default: true })
-  public is_active: boolean;
+  @OneToMany(() => RolePermission, (rp) => rp.permission)
+  role_permissions: RolePermission[];
 
-  @Column({ nullable: true })
-  public module_id?: number;
-  @ManyToOne('Module', 'permissions')
+  @Column()
+  module_id: number;
+
+  @ManyToOne(() => Module, (data) => data.permissions)
   @JoinColumn({ name: 'module_id' })
-  public module?: Module;
+  module: Module;
+
+  @OneToMany(() => UserDataAccess, (uda) => uda.permission)
+  user_data_access: UserDataAccess[];
 }

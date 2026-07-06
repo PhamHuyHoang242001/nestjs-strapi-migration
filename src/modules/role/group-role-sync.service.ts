@@ -1,9 +1,8 @@
 import { PermissionCacheService } from '@common/authorization';
 import { GroupRoleMapping } from '@modules/databases/group-role-mapping.entity';
-import { Permission } from '@modules/databases/permission.entity';
 import { Role, ROLE_PERMISSION } from '@modules/databases/role.entity';
 import { UserRole } from '@modules/databases/user-role.entity';
-import { Users, UserType } from '@modules/databases/user.entity';
+import { User, UserType } from '@modules/databases/user.entity';
 import { PermissionRepository } from '@modules/permission/repository/permission.repository';
 import { UserRepository } from '@modules/users/repository/users.repository';
 import { ForbiddenException, Injectable } from '@nestjs/common';
@@ -43,7 +42,7 @@ export class GroupRoleSyncService {
     private readonly permissionCache: PermissionCacheService,
   ) {}
 
-  async syncGroupRoles(caller: Users): Promise<GroupRoleSyncReport> {
+  async syncGroupRoles(caller: User): Promise<GroupRoleSyncReport> {
     if (caller?.type !== UserType.SUPER_ADMIN) {
       throw new ForbiddenException('Only super_admin can sync group roles');
     }
@@ -116,20 +115,22 @@ export class GroupRoleSyncService {
 
     // Find or create the role (name = group_role).
     let role = await this.roleRepository.findOneByCondition({ name: groupRole });
-    let created = false;
+    const created = !role;
     if (!role) {
       role = await this.roleRepository.save({
         name: groupRole,
-        user_id: callerId,
-        permissions: permIds.map((id) => ({ id }) as Permission),
+        created_by_id: callerId,
       } as Partial<Role>);
-      created = true;
-    } else {
-      const added = await this.addPermissionsToRole(role.id, permIds);
-      // New permissions on an existing role change what its CURRENT users can do →
-      // invalidate the whole role's cache (assignUsersToRole only covers newly-added users).
-      if (added > 0) void this.permissionCache.invalidateByRole(role.id).catch(() => {});
     }
+
+    // Attach permissions via the explicit role_permissions join (add-only, raw insert).
+    // Same path for new and existing roles now that permissions live on a join entity,
+    // not a ManyToMany relation editable through Role.save.
+    const added = await this.addPermissionsToRole(role.id, permIds);
+    // New permissions on an EXISTING role change what its CURRENT users can do →
+    // invalidate the whole role's cache (assignUsersToRole only covers newly-added users).
+    // A freshly created role has no current users yet, so no role-wide invalidation needed.
+    if (!created && added > 0) void this.permissionCache.invalidateByRole(role.id).catch(() => {});
 
     const { usersAdded, usersSkippedExisting } = await this.assignUsersToRole(role.id, userIds);
     return { group_role: groupRole, roleId: role.id, created, usersAdded, usersSkippedExisting, usersNotFound };

@@ -11,7 +11,7 @@ export enum UserType {
 }
 
 @Entity('users')
-export class Users extends BaseSoftDeleteEntity {
+export class User extends BaseSoftDeleteEntity {
   @Column({ nullable: true })
   public last_name: string;
 

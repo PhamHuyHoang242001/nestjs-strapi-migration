@@ -1,53 +1,71 @@
 import { STATUS } from '@common/enums';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { RoleDataAccess } from '@modules/databases/data-access.entity';
-import { Permission } from '@modules/databases/permission.entity';
-import { UserRole } from '@modules/databases/user-role.entity';
-import { Users } from '@modules/databases/user.entity';
-import { Column, Entity, JoinColumn, JoinTable, ManyToMany, ManyToOne, OneToMany } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  JoinTable,
+  ManyToMany,
+  ManyToOne,
+  OneToMany,
+  PrimaryColumn,
+  Unique,
+} from 'typeorm';
+import { RoleDataAccess } from './data-access.entity';
+import { UserRole } from './user-role.entity';
+import { User } from './user.entity';
+import { Permission } from './permission.entity';
 
-export const ROLE_PERMISSION = 'roles_permissions';
+export const ROLE_PERMISSION = 'role_permissions';
 
-@Entity()
+@Entity('roles')
 export class Role extends BaseSoftDeleteEntity {
   @Column()
-  public name: string;
+  name: string;
 
-  @Column({ nullable: true })
-  public description: string;
-
-  @ManyToMany(() => Permission, {
+  @OneToMany(() => RolePermission, (rp) => rp.role, {
     cascade: true,
   })
-  @JoinTable({
-    name: ROLE_PERMISSION,
-    joinColumn: {
-      name: 'role_id',
-      referencedColumnName: 'id',
-    },
-    inverseJoinColumn: {
-      name: 'permission_id',
-      referencedColumnName: 'id',
-    },
-  })
-  permissions: Permission[];
+  role_permissions: RolePermission[];
 
   @Column({ default: STATUS.ACTIVE })
-  public status: STATUS;
-
-  @Column({ nullable: true, unique: true })
-  public code: string;
-
-  @Column({ nullable: true })
-  public user_id?: number;
-  @ManyToOne('Users', 'created_roles')
-  @JoinColumn({ name: 'user_id' })
-  public creator?: Users;
-
-  // Inverse relations
-  @OneToMany('UserRole', 'role')
-  user_roles?: UserRole[];
+  status: STATUS;
 
   @OneToMany(() => RoleDataAccess, (rda) => rda.role)
-  role_data_access?: RoleDataAccess[];
+  role_data_access: RoleDataAccess[];
+
+  @OneToMany(() => UserRole, (ur) => ur.role)
+  user_roles: UserRole[];
+
+  @Column({ nullable: true })
+  created_by_id?: number;
+
+  @ManyToOne(() => User, (u) => u.created_roles)
+  @JoinColumn({ name: 'created_by_id' })
+  created_by?: User;
+
+  @Column({ nullable: true })
+  updated_by_id?: number;
+
+  @ManyToOne(() => User, (u) => u.updated_roles)
+  @JoinColumn({ name: 'updated_by_id' })
+  updated_by?: User;
+}
+
+@Entity('role_permissions')
+@Unique(['role_id', 'permission_id'])
+export class RolePermission extends BaseSoftDeleteEntity {
+  @Column()
+  role_id: number;
+
+  @Column()
+  permission_id: number;
+
+  @ManyToOne(() => Role, (role) => role.role_permissions)
+  @JoinColumn({ name: 'role_id' })
+  role: Role;
+
+  @ManyToOne(() => Permission, (permission) => permission.role_permissions)
+  @JoinColumn({ name: 'permission_id' })
+  permission: Permission;
 }

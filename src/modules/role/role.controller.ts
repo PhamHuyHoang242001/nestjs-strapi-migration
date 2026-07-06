@@ -16,7 +16,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleService } from './role.service';
 import { GroupRoleSyncService } from './group-role-sync.service';
-import { Users } from '@modules/databases/user.entity';
+import { User } from '@modules/databases/user.entity';
 
 @Controller('v1/role')
 @ApiTags('role')
@@ -33,7 +33,7 @@ export class RoleController {
   })
   @Post('sync-group-roles')
   @HttpCode(200)
-  syncGroupRoles(@UserScope() user: Users) {
+  syncGroupRoles(@UserScope() user: User) {
     // No @RequirePermission: PermissionGuard passes any authenticated user when no codes are set.
     // The super_admin restriction is enforced inside the service.
     return this.groupRoleSyncService.syncGroupRoles(user);
@@ -44,7 +44,7 @@ export class RoleController {
   @Post('create')
   @HttpCode(200)
   @RequirePermission('perm_role_create')
-  async create(@Body() body: CreateRoleDto, @UserScope() user: Users) {
+  async create(@Body() body: CreateRoleDto, @UserScope() user: User) {
     const data = await this.roleService.validateForm(body);
     return this.roleService.create(data, user.id);
   }
@@ -101,7 +101,7 @@ export class RoleController {
   @Post('clone/:id')
   @HttpCode(200)
   @RequirePermission('perm_role_create')
-  clone(@Param('id') id: number, @Body() body: CloneRoleDto, @UserScope() user: Users) {
+  clone(@Param('id') id: number, @Body() body: CloneRoleDto, @UserScope() user: User) {
     return this.roleService.clone(id, body, user.id);
   }
 
