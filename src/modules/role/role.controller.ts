@@ -15,6 +15,7 @@ import { CloneRoleDto } from './dto/clone-role.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleService } from './role.service';
+import { GroupRoleSyncService } from './group-role-sync.service';
 import { Users } from '@modules/databases/user.entity';
 
 @Controller('v1/role')
@@ -22,7 +23,21 @@ import { Users } from '@modules/databases/user.entity';
 @ApiBearerAuth()
 @UseGuards(BearerGuard, IsMaintenanceGuard, PermissionGuard)
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {}
+  constructor(
+    private readonly roleService: RoleService,
+    private readonly groupRoleSyncService: GroupRoleSyncService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Bulk sync roles + users from group_role_mappings source table (super_admin only)',
+  })
+  @Post('sync-group-roles')
+  @HttpCode(200)
+  syncGroupRoles(@UserScope() user: Users) {
+    // No @RequirePermission: PermissionGuard passes any authenticated user when no codes are set.
+    // The super_admin restriction is enforced inside the service.
+    return this.groupRoleSyncService.syncGroupRoles(user);
+  }
 
   @ApiOperation({ summary: 'create' })
   @ApiBody({ description: 'create', type: CreateRoleDto })
