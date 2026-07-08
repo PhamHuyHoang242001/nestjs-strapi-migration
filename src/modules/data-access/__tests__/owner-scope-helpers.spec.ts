@@ -28,9 +28,11 @@ describe('findRootTable()', () => {
     expect(findRootTable('nonexistent_table')).toBeNull();
   });
 
-  it('walks up bi_payment chain correctly', () => {
-    expect(findRootTable('bi_payment_programs')).toBe('bi_payment_projects');
-    expect(findRootTable('bi_payment_work_steps')).toBe('bi_payment_projects');
+  it('walks up bi_payment chain to bicc-department root (cascade)', () => {
+    // project treo dưới bi_hub_bicc_departments (owner-scope root) → BICC owner kế thừa verb subtree.
+    expect(findRootTable('bi_payment_programs')).toBe('bi_hub_bicc_departments');
+    expect(findRootTable('bi_payment_work_steps')).toBe('bi_hub_bicc_departments');
+    expect(findRootTable('bi_payment_projects')).toBe('bi_hub_bicc_departments');
   });
 });
 
@@ -63,9 +65,11 @@ describe('buildOwnerJoinChain()', () => {
     expect(result.joinSQL).toContain("resource_type = 'workspace'");
   });
 
-  it('returns null for table without ROOT_OWNER_CONFIG (bi_payment)', () => {
+  it('bi_payment_projects cascades to bicc-department root (has ROOT_OWNER_CONFIG)', () => {
     const result = buildOwnerJoinChain('bi_payment_projects', '$1');
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result?.rootTable).toBe('bi_hub_bicc_departments');
+    expect(result?.joinSQL).toContain("resource_type = 'bicc_department'");
   });
 
   it('returns null for unknown table', () => {
@@ -112,13 +116,12 @@ describe('buildAccessibleCTE()', () => {
     expect(result.cteSql).toContain("resource_type = 'workspace'");
   });
 
-  it('skips tables without ROOT_OWNER_CONFIG root (bi_payment)', () => {
+  it('includes bi_payment branches (cascade to bicc-department root)', () => {
     const result = buildAccessibleCTE('$1');
-    expect(result.cteSql).not.toContain('bi_payment_projects');
-    expect(result.cteSql).not.toContain('bi_payment_programs');
-    expect(result.cteSql).not.toContain('bi_payment_work_steps');
-    expect(result.cteSql).not.toContain('bi_payment_checklists');
-    expect(result.cteSql).not.toContain('bi_payment_other_files');
+    // bi_payment_projects now cascades to bi_hub_bicc_departments (ROOT_OWNER_CONFIG) → included.
+    expect(result.cteSql).toContain('bi_payment_projects');
+    expect(result.cteSql).toContain('bi_payment_programs');
+    expect(result.cteSql).toContain("resource_type = 'bicc_department'");
   });
 
   it('each branch selects data_id and table_name', () => {

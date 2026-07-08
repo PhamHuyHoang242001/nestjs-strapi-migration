@@ -19,4 +19,7 @@ export enum DATA_ACCESS_TABLE {
   BI_PAYMENT_WORK_STEPS = 'bi_payment_work_steps',
   BI_PAYMENT_CHECKLISTS = 'bi_payment_checklists',
   BI_PAYMENT_OTHER_FILES = 'bi_payment_other_files',
+  BI_PAYMENT_DOCUMENTS = 'bi_payment_documents',
+  BI_PAYMENT_TEMPLATES = 'bi_payment_templates',
+  BI_PAYMENT_COMMENTS = 'bi_payment_comments',
 }

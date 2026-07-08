@@ -31,6 +31,7 @@ import { PermissionMatrixModule } from '@modules/permission-matrix/permission-ma
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 import { DataAccessModule } from '@modules/data-access/data-access.module';
 import { BiccDepartmentModule } from '@modules/bicc-department/bicc-department.module';
+import { BiPaymentModule } from '@modules/bi-payment/bi-payment.module';
 import { BiHubDiagnosticReportModule } from '@modules/bi-hub-diagnostic-report/bi-hub-diagnostic-report.module';
 import { MaToolReportModule } from '@modules/ma-tool-report/ma-tool-report.module';
 import { TransformFileModule } from '@common/transform-file';
@@ -89,6 +90,7 @@ import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-o
     ChangeHistoryModule,
     DataAccessModule,
     BiccDepartmentModule,
+    BiPaymentModule,
     BiHubDiagnosticReportModule,
     MaToolReportModule,
     TransformFileModule.register({

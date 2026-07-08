@@ -3,7 +3,7 @@ import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Module } from '@modules/databases/module.entity';
 import { Permission } from '@modules/databases/permission.entity';
 import { Role } from '@modules/databases/role.entity';
-import { Users } from '@modules/databases/user.entity';
+import { User } from '@modules/databases/user.entity';
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 
 @Entity('data_access')
@@ -45,9 +45,9 @@ export class UserDataAccess extends BaseSoftDeleteEntity {
   @Column()
   permission_id: number;
 
-  @ManyToOne(() => Users, (u) => u.user_data_access)
+  @ManyToOne(() => User, (u) => u.user_data_access)
   @JoinColumn({ name: 'user_id' })
-  user: Users;
+  user: User;
 
   @ManyToOne(() => DataAccess, (da) => da.user_data_access)
   @JoinColumn({ name: 'data_access_id' })

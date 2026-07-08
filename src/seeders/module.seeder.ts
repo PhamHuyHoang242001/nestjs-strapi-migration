@@ -116,21 +116,24 @@ const PERMISSION_MANAGEMENT: ModuleSeedItem[] = [
   },
 ];
 
-// ── BI Payment — TEMPORARILY DISABLED ────────────────────────────
-// Uncomment when BI Payment modules are ready for seeding
-/*
+// ── BI Payment — gộp theo màn step v2 ────────────────────────────
+// 17 permission codes gắn module 12 (project) / 13 (program) / 15 (template).
+// Module 16 (document) giữ để UI tree + data_access table ref; file eat theo perm màn step.
+// Bỏ module 14 (workstep — không perm code), 17 (checklist — eat preparing), 18 (other-file — eat preparing).
+// Entity checklist/other-file vẫn dùng cho data_access (DATA_ACCESS_TABLE enum + hierarchy-config).
 const BI_PAYMENT: ModuleSeedItem[] = [
   { id: 10, path: '/bi-payment', name: 'BI Payment', table_name: null, is_active: true, parent_id: null },
   { id: 11, path: '/bi-payment/bicc-department', name: 'BICC Department', table_name: null, is_active: true, parent_id: 10 },
   { id: 12, path: '/bi-payment/bicc-department/project', name: 'Project', table_name: 'bi_payment_projects', is_active: true, parent_id: 11 },
   { id: 13, path: '/bi-payment/bicc-department/project/program', name: 'Program', table_name: 'bi_payment_programs', is_active: true, parent_id: 12 },
-  { id: 14, path: '/bi-payment/bicc-department/project/program/workstep', name: 'Work Step', table_name: 'bi_payment_work_steps', is_active: true, parent_id: 13 },
-  { id: 15, path: '/bi-payment/bicc-department/project/program/template', name: 'Template', table_name: 'ma_tool_templates', is_active: true, parent_id: 13 },
-  { id: 16, path: '/bi-payment/bicc-department/project/program/document', name: 'Document', table_name: 'ma_tool_documents', is_active: true, parent_id: 13 },
-  { id: 17, path: '/bi-payment/bicc-department/project/program/checklist', name: 'Checklist', table_name: 'bi_payment_checklists', is_active: true, parent_id: 13 },
-  { id: 18, path: '/bi-payment/bicc-department/project/program/other-file', name: 'Other File', table_name: 'bi_payment_other_files', is_active: true, parent_id: 13 },
+  { id: 15, path: '/bi-payment/bicc-department/project/program/template', name: 'Template', table_name: 'bi_payment_templates', is_active: true, parent_id: 13 },
+  { id: 16, path: '/bi-payment/bicc-department/project/program/document', name: 'Document', table_name: 'bi_payment_documents', is_active: true, parent_id: 13 },
+  { id: 17, path: '/bi-payment/bicc-department/project/program/other-file', name: 'Other File', table_name: 'bi_payment_other_files', is_active: true, parent_id: 13 },
+  { id: 18, path: '/bi-payment/category', name: 'Category', table_name: 'bi_payment_categories', is_active: true, parent_id: 10 },
+  { id: 19, path: '/bi-payment/bicc-department/project/program/program-history', name: 'Program History', table_name: 'bi_payment_program_histories', is_active: true, parent_id: 13 },
+  { id: 20, path: '/bi-payment/bicc-department/project/program/program-log-change', name: 'Program Log Change', table_name: 'bi_payment_program_log_changes', is_active: true, parent_id: 13 },
+  { id: 21, path: '/bi-payment/bicc-department/project/project-history', name: 'Project History', table_name: 'bi_payment_project_histories', is_active: true, parent_id: 12 },
 ];
-*/
 
 @Injectable()
 export class ModuleSeeder implements Seeder {
@@ -144,8 +147,8 @@ export class ModuleSeeder implements Seeder {
       ...BI_HUB,
       ...MA_TOOL,
       ...PERMISSION_MANAGEMENT,
-      // BI Payment — temporarily disabled (uncomment when ready)
-      // ...BI_PAYMENT,
+      // BI Payment — gộp theo màn step v2
+      ...BI_PAYMENT,
     ];
 
     this.dataRef = dataConfig.map((item) => item.id);

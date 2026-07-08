@@ -48,6 +48,11 @@ export class BiPaymentProject extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'jsonb' })
   public frequencies: object;
 
+  // FK to parent bicc-department (owner-scope root). Plain nullable int — no decorator.
+  // Owner-scope: project treo dưới bi_hub_bicc_departments; BICC owner tự kế thừa verb subtree.
+  @Column({ nullable: true, type: 'int' })
+  public bicc_department_id: number;
+
   @Column({ nullable: true, default: false })
   public is_deleted: boolean;
 

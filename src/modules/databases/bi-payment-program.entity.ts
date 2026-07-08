@@ -11,6 +11,8 @@ import { BiPaymentCategory } from '@modules/databases/bi-payment-category.entity
 import { BiPaymentProject } from '@modules/databases/bi-payment-project.entity';
 import { BiPaymentChecklist } from '@modules/databases/bi-payment-checklist.entity';
 import { BiPaymentComment } from '@modules/databases/bi-payment-comment.entity';
+import { BiPaymentDocument } from '@modules/databases/bi-payment-document.entity';
+import { BiPaymentTemplate } from '@modules/databases/bi-payment-template.entity';
 import { BiPaymentProgramHistory } from '@modules/databases/bi-payment-program-history.entity';
 import { BiPaymentProgramLogChange } from '@modules/databases/bi-payment-program-log-change.entity';
 import { BiPaymentProgramPicConfirm } from '@modules/databases/bi-payment-program-pic-confirm.entity';
@@ -140,6 +142,14 @@ export class BiPaymentProgram extends BaseSoftDeleteEntity {
 
   @OneToMany(() => BiPaymentComment, (c) => c.program)
   public comments: BiPaymentComment[];
+
+  // 1:N — documents (bi_payment_documents)
+  @OneToMany(() => BiPaymentDocument, (d) => d.program)
+  public documents: BiPaymentDocument[];
+
+  // 1:N — templates (bi_payment_templates)
+  @OneToMany(() => BiPaymentTemplate, (t) => t.bi_payment_program)
+  public templates: BiPaymentTemplate[];
 
   @OneToMany(() => BiPaymentProgramHistory, (h) => h.program)
   public program_histories: BiPaymentProgramHistory[];

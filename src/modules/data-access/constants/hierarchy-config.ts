@@ -15,12 +15,22 @@ export const HIERARCHY_MAP: Record<string, HierarchyEntry | null> = {
   ma_tool_templates: { parentTable: 'ma_tool_workspaces', fkColumn: 'workspace_id' },
   ma_tool_workspaces: null,
 
-  // bi_payment: project → program → { work_step, checklist → other_file }
+  // bi_payment: project → program → { work_step, checklist → other_file, document, template }
   bi_payment_programs: { parentTable: 'bi_payment_projects', fkColumn: 'project_id' },
   bi_payment_work_steps: { parentTable: 'bi_payment_programs', fkColumn: 'program_id' },
   bi_payment_checklists: { parentTable: 'bi_payment_programs', fkColumn: 'program_id' },
   bi_payment_other_files: { parentTable: 'bi_payment_checklists', fkColumn: 'bi_payment_checklist_id' },
-  bi_payment_projects: null,
+  bi_payment_documents: { parentTable: 'bi_payment_programs', fkColumn: 'program_id' },
+  bi_payment_templates: { parentTable: 'bi_payment_programs', fkColumn: 'bi_payment_program_id' },
+  bi_payment_comments: { parentTable: 'bi_payment_programs', fkColumn: 'program_id' },
+  // audit tables — scope theo parent program/project (read-only history/log-change).
+  bi_payment_program_histories: { parentTable: 'bi_payment_programs', fkColumn: 'program_id' },
+  bi_payment_program_log_changes: { parentTable: 'bi_payment_programs', fkColumn: 'program_id' },
+  bi_payment_project_histories: { parentTable: 'bi_payment_projects', fkColumn: 'project_id' },
+  // category = config dùng chung (whole-table, root null → ko record-scope owner).
+  bi_payment_categories: null,
+  // project treo dưới bicc-department (owner-scope root) → BICC owner kế thừa verb subtree.
+  bi_payment_projects: { parentTable: 'bi_hub_bicc_departments', fkColumn: 'bicc_department_id' },
 
   // bi_hub: bicc_department → { reports, diagnostic_report }
   bi_hub_bicc_departments: null,
@@ -69,6 +79,13 @@ export const NAME_COLUMN_MAP: Record<string, string> = {
   bi_hub_diagnostic_reports: 'name',
   bi_payment_checklists: 'name',
   bi_payment_other_files: 'name',
+  bi_payment_documents: 'document_name',
+  bi_payment_templates: 'name',
+  bi_payment_comments: 'value',
+  bi_payment_categories: 'name',
+  bi_payment_program_histories: 'name',
+  bi_payment_program_log_changes: 'workstep',
+  bi_payment_project_histories: 'id',
   ma_tool_cstb_rpt_properties: 'rpt_code',
 };
 
