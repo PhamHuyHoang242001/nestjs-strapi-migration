@@ -85,9 +85,22 @@ export class BiPaymentDocument extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'int' })
   public uploaded_by_id: number;
 
+  // Last editor (any status change). Backs the updatedByIds list-doc filter
+  // (Strapi IFindDocument parity) and the user-updated distinct-user endpoint.
+  @Column({ nullable: true, type: 'int' })
+  public updated_by_id: number;
+
   @Column({ nullable: true, type: 'int' })
   public rejected_by_id: number;
 
   @Column({ nullable: true, type: 'timestamptz' })
   public rejected_at: Date;
+
+  // Approver + approval timestamp. Backs the approvedByIds list-doc filter
+  // and the user-approved distinct-user endpoint.
+  @Column({ nullable: true, type: 'int' })
+  public approved_by_id: number;
+
+  @Column({ nullable: true, type: 'timestamptz' })
+  public approved_at: Date;
 }

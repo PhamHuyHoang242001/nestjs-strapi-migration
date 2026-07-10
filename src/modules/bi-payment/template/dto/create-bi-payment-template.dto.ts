@@ -5,7 +5,7 @@ import {
   MaToolUploadMethod,
   MaToolWorkstepType,
 } from '@common/enums/ma-tool.enums';
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 // Strapi parity (ICreateTemplate): camelCase field names.
 export class CreateBiPaymentTemplateDto {
@@ -50,4 +50,12 @@ export class CreateBiPaymentTemplateDto {
   @IsOptional()
   @IsInt()
   fromTemplateId?: number;
+
+  // Strapi parity (ICreateTemplate.sheets): sheet/column cascade. NestJS has no
+  // sheet_template entity → sheets accepted but ignored. TODO: port
+  // saveManySheetTemplate/Column/ValidationRule when sheet entities exist.
+  @ApiProperty({ required: false, type: 'array' })
+  @IsOptional()
+  @IsArray()
+  sheets?: any[];
 }

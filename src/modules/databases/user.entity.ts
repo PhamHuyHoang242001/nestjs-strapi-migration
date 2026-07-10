@@ -134,4 +134,13 @@ export class User extends BaseSoftDeleteEntity {
 
   @OneToMany('Role', 'creator')
   created_roles?: Role[];
+
+  @OneToMany('Role', 'updater')
+  updated_roles?: Role[];
 }
+
+// Backward-compat alias: older modules import `Users` (plural) and reference it
+// as both a type and a value (TypeORM `@ManyToOne(() => Users)`). The entity is
+// `User`; this value+type alias keeps those imports compiling until migrated.
+export const Users = User;
+export type Users = User;

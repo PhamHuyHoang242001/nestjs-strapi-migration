@@ -14,6 +14,7 @@ import { BiPaymentComment } from '@modules/databases/bi-payment-comment.entity';
 import { BiPaymentCategory } from '@modules/databases/bi-payment-category.entity';
 import { BiPaymentOtherFile } from '@modules/databases/bi-payment-other-file.entity';
 import { DataAccessModule } from '@modules/data-access/data-access.module';
+import { StepScopeModule } from './common/step-scope.module';
 import { BiPaymentProjectController } from './project/bi-payment-project.controller';
 import { BiPaymentProjectService } from './project/bi-payment-project.service';
 import { BiPaymentProgramController } from './program/bi-payment-program.controller';
@@ -53,6 +54,7 @@ import { BiPaymentReportController } from './report/bi-payment-report.controller
       BiPaymentOtherFile,
     ]),
     DataAccessModule,
+    StepScopeModule,
   ],
   controllers: [
     BiPaymentProjectController,
