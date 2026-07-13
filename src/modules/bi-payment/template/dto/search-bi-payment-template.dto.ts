@@ -1,10 +1,12 @@
 import { Transform } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { BaseSearchDto } from '@common/dto/common.dto';
 
 // Strapi parity (IFindTemplate): camelCase query keys. programId required
-// (step×program scope anchor). Optional filters mirror Strapi findTemplateV2.
-export class SearchBiPaymentTemplateDto {
+// (step×program scope anchor). keyword/sortField/sortValue/page/limit inherited from
+// BaseSearchDto (Strapi IBaseSearch parity). Optional filters mirror Strapi findTemplateV2.
+export class SearchBiPaymentTemplateDto extends BaseSearchDto {
   @ApiPropertyOptional({ description: 'Required — step×program scope anchor' })
   @Transform(({ value }) => (value === undefined || value === '' || value === null ? undefined : Number(value)))
   @IsInt()
@@ -41,9 +43,4 @@ export class SearchBiPaymentTemplateDto {
   @IsOptional()
   @IsString()
   updatedByIds?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  keyword?: string;
 }

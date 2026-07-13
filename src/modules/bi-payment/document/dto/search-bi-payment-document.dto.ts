@@ -1,24 +1,21 @@
+import { BaseSearchDto } from '@common/dto/common.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { MaToolWorkstepType } from '@common/enums/ma-tool.enums';
 import { BiPaymentWorkstepCurrent } from '@common/enums/bi-payment.enums';
 
-// Strapi parity (IFindDocument): camelCase query keys. Base search (keyword/sortField/sortValue/
-// page/limit) handled by @SortCamel + PaginationDecorator at controller.
+// Strapi parity (IFindDocument): camelCase query keys. keyword/sortField/sortValue/page/limit
+// inherited from BaseSearchDto (Strapi IBaseSearch parity); sort/page/limit handled by
+// @SortCamel + PaginationDecorator at controller.
 // workstepCurrent filters the PROGRAM's workstep_current (not document_status).
 // workstep filters the TEMPLATE's workstep_type. These are two distinct filters.
-export class SearchBiPaymentDocumentDto {
+export class SearchBiPaymentDocumentDto extends BaseSearchDto {
   @ApiProperty({ required: false, description: 'Comma-separated template ids' })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   readonly templateIds?: string;
-
-  @ApiProperty({ required: false, description: 'Free-text search (document_name OR notes ILIKE)' })
-  @IsOptional()
-  @IsString()
-  readonly keyword?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()

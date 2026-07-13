@@ -1,8 +1,10 @@
+import { BaseSearchDto } from '@common/dto/common.dto';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString } from 'class-validator';
 
 // Strapi parity (IFindProgramHistory): programId + workstepCurrent + progressStatus + updatedByIds.
-export class SearchBiPaymentProgramHistoryDto {
+// keyword/sortField/sortValue/page/limit inherited from BaseSearchDto (Strapi IBaseSearch parity).
+export class SearchBiPaymentProgramHistoryDto extends BaseSearchDto {
   @ApiProperty({ required: true })
   @IsInt()
   readonly programId: number;
@@ -21,16 +23,11 @@ export class SearchBiPaymentProgramHistoryDto {
   @IsOptional()
   @IsString()
   readonly updatedByIds?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  readonly keyword?: string;
 }
 
 // Strapi parity (IFindProjectHistory): projectId + updatedByIds.
-export class SearchBiPaymentProjectHistoryDto {
+// keyword/sortField/sortValue/page/limit inherited from BaseSearchDto (Strapi IBaseSearch parity).
+export class SearchBiPaymentProjectHistoryDto extends BaseSearchDto {
   @ApiProperty({ required: true })
   @IsInt()
   readonly projectId: number;
@@ -39,10 +36,4 @@ export class SearchBiPaymentProjectHistoryDto {
   @IsOptional()
   @IsString()
   readonly updatedByIds?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  readonly keyword?: string;
 }

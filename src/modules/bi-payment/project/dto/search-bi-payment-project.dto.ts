@@ -1,14 +1,10 @@
+import { BaseSearchDto } from '@common/dto/common.dto';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
-// Strapi parity (IFindProject): camelCase query keys (extends IBaseSearch sortField/sortValue/page/limit).
-export class SearchBiPaymentProjectDto {
-  @ApiProperty({ required: false, description: 'Tìm theo mã hoặc tên project' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  readonly keyword?: string;
-
+// Strapi parity (IFindProject): camelCase query keys. keyword/sortField/sortValue/page/limit
+// inherited from BaseSearchDto (Strapi IBaseSearch parity).
+export class SearchBiPaymentProjectDto extends BaseSearchDto {
   @ApiProperty({ required: false, description: 'Comma-separated updated-by ids' })
   @IsOptional()
   @IsString()

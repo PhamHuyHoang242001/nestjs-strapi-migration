@@ -1,17 +1,13 @@
+import { BaseSearchDto } from '@common/dto/common.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { BiPaymentWorkstepCurrent } from '@common/enums/bi-payment.enums';
 import { IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
-// Strapi parity (IFindProgram): camelCase query keys.
+// Strapi parity (IFindProgram): camelCase query keys. keyword/sortField/sortValue/page/limit
+// inherited from BaseSearchDto (Strapi IBaseSearch parity).
 // biccDepartmentId/projectId required trong Strapi, nhưng để GET linh hoạt thì optional ở DTO
 // (service check required nếu cần). progressStatus là string (có thể comma-sep).
-export class SearchBiPaymentProgramDto {
-  @ApiProperty({ required: false, description: 'Tìm theo code hoặc name' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  readonly keyword?: string;
-
+export class SearchBiPaymentProgramDto extends BaseSearchDto {
   @ApiProperty({ required: false, description: 'Lọc theo BICC department' })
   @IsOptional()
   @IsInt()

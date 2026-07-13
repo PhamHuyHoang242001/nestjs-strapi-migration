@@ -1,8 +1,10 @@
+import { BaseSearchDto } from '@common/dto/common.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsDateString, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 // Strapi parity (IFindAllOtherFile): camelCase query keys. programId + type required trong Strapi.
-export class SearchBiPaymentOtherFileDto {
+// keyword/sortField/sortValue/page/limit inherited from BaseSearchDto (Strapi IBaseSearch parity).
+export class SearchBiPaymentOtherFileDto extends BaseSearchDto {
   @ApiProperty({ required: true, description: 'Program scope anchor' })
   @IsInt()
   readonly programId: number;
@@ -42,10 +44,4 @@ export class SearchBiPaymentOtherFileDto {
   @IsOptional()
   @IsString()
   readonly type?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  readonly keyword?: string;
 }
