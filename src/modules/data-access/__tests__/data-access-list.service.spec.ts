@@ -16,6 +16,13 @@ import { SCOPE_TYPE } from '@common/enums';
 
 // ── Mock factories ──────────────────────────────────────────────────────────
 
+// Module-scoped so tests can assert buildPath was called with the right args.
+const mockRecordPath = {
+  buildPath: jest.fn().mockImplementation((_table: string, id: number) =>
+    Promise.resolve(`ROOT / leaf-${id}`),
+  ),
+} as unknown as import("../services/record-path.service").RecordPathService;
+
 function createMockService(queryMock: jest.Mock) {
   const mockDataSource = { query: queryMock, transaction: jest.fn() } as unknown as DataSource;
   const mockDataAccessRepo = {} as DataAccessRepository;
@@ -35,6 +42,7 @@ function createMockService(queryMock: jest.Mock) {
     mockHierarchyValidation,
     mockHistoryLogger,
     mockPermissionCache,
+    mockRecordPath,
     mockModuleRepo,
     mockRoleDataAccessRepo,
     mockUserDataAccessRepo,
@@ -160,6 +168,10 @@ describe('DataAccessService.list() — grouped', () => {
       expect(group).toHaveProperty('table_name', 'bi_hub_reports');
       expect(group).toHaveProperty('rules');
       expect(Array.isArray(group.rules)).toBe(true);
+      // record_path: root→leaf breadcrumb (RecordPathService stub). module_path
+      // + record_name unchanged — additive field only.
+      expect(group).toHaveProperty('record_path', 'ROOT / leaf-42');
+      expect(mockRecordPath.buildPath).toHaveBeenCalledWith('bi_hub_reports', 42);
     });
 
     it('each group.rules contains rule_id, scope_type, subject_type, subject_id, subject_name, permissions, dates', async () => {

@@ -58,6 +58,7 @@ function createService(
     invalidateByTable: jest.fn().mockReturnValue(Promise.resolve()),
     invalidateUser: jest.fn().mockReturnValue(Promise.resolve()),
   } as unknown as PermissionCacheService;
+  const mockRecordPath = { buildPath: jest.fn().mockResolvedValue("ID: 0") } as unknown as import("../services/record-path.service").RecordPathService;
 
   const mockModuleRepo = {
     findOne: jest.fn().mockResolvedValue({ id: 5, table_name: 'bi_hub_reports' }),
@@ -72,6 +73,7 @@ function createService(
     mockHierarchyValidation,
     mockHistoryLogger,
     mockPermissionCache,
+    mockRecordPath,
     mockModuleRepo,
     mockRoleDataAccessRepo,
     mockUserDataAccessRepo,
@@ -83,6 +85,7 @@ function createService(
     mockTransaction,
     mockHistoryLogger,
     mockPermissionCache,
+    mockRecordPath,
     mockHierarchyValidation,
   };
 }

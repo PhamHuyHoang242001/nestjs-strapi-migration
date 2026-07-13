@@ -23,6 +23,7 @@ import { SearchRecordsDto } from './dto/search-records.dto';
 import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 import { HierarchyValidationService } from './hierarchy-validation.service';
 import { DataAccessRepository } from './repository/data-access.repository';
+import { RecordPathService } from './services/record-path.service';
 import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
 
 /** User context for owner scoping */
@@ -39,6 +40,7 @@ export class DataAccessService {
     private readonly hierarchyValidation: HierarchyValidationService,
     private readonly historyLogger: ChangeHistoryLogger,
     private readonly permissionCache: PermissionCacheService,
+    private readonly recordPath: RecordPathService,
     @InjectRepository(ModuleEntity)
     private readonly moduleRepo: Repository<ModuleEntity>,
     @InjectRepository(RoleDataAccess)
@@ -185,6 +187,16 @@ export class DataAccessService {
     // Step 3: Batch fetch record names from target tables
     const recordNames = await this.batchFetchRecordNames(groups);
 
+    // Step 3b: Build root→leaf record path per group (breadcrumb). Per-record
+    // walk via HIERARCHY_MAP; isolated catch so one bad record can't fail the list.
+    const recordPaths = await Promise.all(
+      groups.map((g) =>
+        g.table_name && ALLOWED_TABLES.has(g.table_name)
+          ? this.recordPath.buildPath(g.table_name, g.data_id).catch(() => `ID: ${g.data_id}`)
+          : Promise.resolve(`ID: ${g.data_id}`),
+      ),
+    );
+
     // Step 4: Assemble grouped response
     const rulesByGroup = new Map<string, any[]>();
     for (const rule of rules) {
@@ -204,12 +216,13 @@ export class DataAccessService {
       rulesByGroup.set(key, arr);
     }
 
-    const data = groups.map((g) => ({
+    const data = groups.map((g, i) => ({
       data_id: g.data_id,
       module_id: g.module_id,
       module_name: g.module_name,
       module_path: g.module_path,
       record_name: recordNames.get(`${g.data_id}-${g.module_id}`) || `ID: ${g.data_id}`,
+      record_path: recordPaths[i],
       table_name: g.table_name,
       rules: rulesByGroup.get(`${g.data_id}-${g.module_id}`) || [],
     }));
@@ -393,7 +406,13 @@ export class DataAccessService {
       }
     }
 
-    return { ...record, record_info };
+    // root→leaf breadcrumb for the referenced record (e.g. "BICC / Report").
+    // Fallback ID:<data_id> on disallowed table or walk failure.
+    const record_path = tableName && ALLOWED_TABLES.has(tableName)
+      ? await this.recordPath.buildPath(tableName, record.data_id).catch(() => `ID: ${record.data_id}`)
+      : `ID: ${record.data_id}`;
+
+    return { ...record, record_info, record_path };
   }
 
   /** Resolve module by ID and validate its table_name is allowed */

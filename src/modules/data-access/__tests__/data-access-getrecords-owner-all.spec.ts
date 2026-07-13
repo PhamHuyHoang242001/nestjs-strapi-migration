@@ -3,6 +3,7 @@ import { DataAccessRepository } from '../repository/data-access.repository';
 import { HierarchyValidationService } from '../hierarchy-validation.service';
 import { ChangeHistoryLogger } from '@modules/change-history/change-history-logger.service';
 import { PermissionCacheService } from '@common/authorization';
+import { RecordPathService } from '../services/record-path.service';
 import { DataSource, Repository } from 'typeorm';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 
@@ -25,6 +26,7 @@ function createService(queryResults: any[]) {
       invalidateByTable: jest.fn().mockReturnValue(Promise.resolve()),
       invalidateUser: jest.fn().mockReturnValue(Promise.resolve()),
     } as unknown as PermissionCacheService,
+    { buildPath: jest.fn().mockResolvedValue('ID: 0') } as unknown as RecordPathService,
     {} as unknown as Repository<any>,
     {} as unknown as Repository<any>,
     {} as unknown as Repository<any>,

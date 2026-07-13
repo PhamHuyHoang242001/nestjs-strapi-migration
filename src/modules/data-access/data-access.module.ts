@@ -12,6 +12,7 @@ import { DataAccessRepository } from './repository/data-access.repository';
 import { ReportAccessRecordsController } from './report-access-records.controller';
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 import { CreatorAccessGrantService } from './services/creator-access-grant.service';
+import { RecordPathService } from './services/record-path.service';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CreatorAccessGrantService } from './services/creator-access-grant.servi
     AdminRepository,
     HierarchyValidationService,
     CreatorAccessGrantService,
+    RecordPathService,
   ],
   exports: [DataAccessService, DataAccessRepository, CreatorAccessGrantService],
 })

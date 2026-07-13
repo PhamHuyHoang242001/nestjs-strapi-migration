@@ -39,6 +39,7 @@ function createService(
     invalidateByTable: jest.fn().mockReturnValue(Promise.resolve()),
     invalidateUser: jest.fn().mockReturnValue(Promise.resolve()),
   } as unknown as PermissionCacheService;
+  const mockRecordPath = { buildPath: jest.fn().mockResolvedValue("ID: 0") } as unknown as import("../services/record-path.service").RecordPathService;
 
   const mockModuleRepo = {} as unknown as Repository<any>;
   const mockRoleDataAccessRepo = {} as unknown as Repository<any>;
@@ -50,6 +51,7 @@ function createService(
     mockHierarchyValidation,
     mockHistoryLogger,
     mockPermissionCache,
+    mockRecordPath,
     mockModuleRepo,
     mockRoleDataAccessRepo,
     mockUserDataAccessRepo,
