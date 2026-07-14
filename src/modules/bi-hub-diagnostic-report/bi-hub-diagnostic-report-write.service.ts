@@ -201,7 +201,11 @@ export class BiHubDiagnosticReportWriteService {
     await this.assertReportInScope(id, scope);
     const report = await this.reportRepo.findOne({ where: { id, is_deleted: false } });
     if (!report) throw new NotFoundException('Report not found');
-    await this.reportRepo.update(id, { is_deleted: true });
+    // Set BOTH is_deleted and deleted_at: two delete-path convention. TypeORM
+    // softDelete sets deleted_at only; other code paths set is_deleted only.
+    // Setting both keeps the row consistent with every read filter that checks
+    // either column, so a soft-deleted report never leaks its name into lists.
+    await this.reportRepo.update(id, { is_deleted: true, deleted_at: new Date() });
     return { message: 'Delete success' };
   }
 
@@ -220,7 +224,9 @@ export class BiHubDiagnosticReportWriteService {
     const rows = await qb.getRawMany<{ id: number }>();
     const deletableIds = rows.map((r) => Number(r.id));
 
-    if (deletableIds.length > 0) await this.reportRepo.update({ id: In(deletableIds) }, { is_deleted: true });
+    // Set both soft-delete columns (see deleteOne comment) so the row is marked
+    // deleted under both conventions and no read filter leaks it back.
+    if (deletableIds.length > 0) await this.reportRepo.update({ id: In(deletableIds) }, { is_deleted: true, deleted_at: new Date() });
     return { success: deletableIds.length, error: requestedIds.length - deletableIds.length };
   }
 

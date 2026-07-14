@@ -105,14 +105,17 @@ function buildExistsSubquery(rootAlias: string, chain: ChainHop[], suffix: strin
     if (i === 0) {
       lines.push(`  FROM "${hop.parentTable}" ${aliases[i]}`);
     } else {
+      // Dual-column deleted check (is_deleted flagged OR deleted_at set) — both
+      // columns live on every ALLOWED_TABLES row; two delete paths set only one.
       lines.push(
-        `  INNER JOIN "${hop.parentTable}" ${aliases[i]} ON ${aliases[i]}.id = ${aliases[i - 1]}."${hop.fkColumn}" AND ${aliases[i]}.deleted_at IS NULL`,
+        `  INNER JOIN "${hop.parentTable}" ${aliases[i]} ON ${aliases[i]}.id = ${aliases[i - 1]}."${hop.fkColumn}" AND ${aliases[i]}.deleted_at IS NULL AND ${aliases[i]}.is_deleted IS NOT TRUE`,
       );
     }
   });
 
   lines.push(`  WHERE ${aliases[0]}.id = ${rootAlias}."${chain[0].fkColumn}"`);
-  lines.push(`    AND ${aliases[0]}.deleted_at IS NULL`);
+  // Dual-column deleted check on the first hop's row too.
+  lines.push(`    AND ${aliases[0]}.deleted_at IS NULL AND ${aliases[0]}.is_deleted IS NOT TRUE`);
   lines.push(`    AND ${aliases[aliases.length - 1]}.id = ANY(:${paramName})`);
   lines.push(')');
 

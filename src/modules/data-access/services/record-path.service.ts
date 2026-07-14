@@ -49,8 +49,11 @@ export class RecordPathService {
   }
 
   private async fetchRow(table: string, id: number, nameCol: string): Promise<{ display_name: unknown } | null> {
+    // "Deleted" = is_deleted flagged OR deleted_at set. Both columns exist on
+    // every ALLOWED_TABLES row (BaseSoftDeleteEntity); checking both because the
+    // two delete paths set only one column each.
     const rows: { display_name: unknown }[] = await this.connection.query(
-      `SELECT id, "${nameCol}" as display_name FROM "${table}" WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT id, "${nameCol}" as display_name FROM "${table}" WHERE id = $1 AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
       [id],
     );
     return rows[0] ?? null;
@@ -58,8 +61,9 @@ export class RecordPathService {
 
   private async fetchParentId(table: string, id: number, fkColumn: string): Promise<number | null> {
     // Postgres lowercases unquoted aliases → 'parentid'. Match the driver's shape.
+    // Same dual-column deleted check as fetchRow (see comment there).
     const rows: { parentid: number | null }[] = await this.connection.query(
-      `SELECT "${fkColumn}" as parentid FROM "${table}" WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT "${fkColumn}" as parentid FROM "${table}" WHERE id = $1 AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
       [id],
     );
     return rows[0]?.parentid ?? null;

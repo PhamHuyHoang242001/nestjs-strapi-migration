@@ -9,7 +9,20 @@ import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.decorator';
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BiPaymentProgramService } from './bi-payment-program.service';
 import { CreateBiPaymentProgramDto, SearchBiPaymentProgramDto, UpdateBiPaymentProgramDto } from './dto';

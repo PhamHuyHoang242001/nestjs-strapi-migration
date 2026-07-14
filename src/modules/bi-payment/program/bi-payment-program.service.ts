@@ -7,12 +7,7 @@ import { CreatorAccessGrantService } from '@modules/data-access/services/creator
 import { BiPaymentProgram } from '@modules/databases/bi-payment-program.entity';
 import { BiPaymentProgramPicConfirm } from '@modules/databases/bi-payment-program-pic-confirm.entity';
 import { BiPaymentCalculatingStatus, BiPaymentWorkstepCurrent } from '@common/enums/bi-payment.enums';
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { CreateBiPaymentProgramDto, NextStepDto, SearchBiPaymentProgramDto, UpdateBiPaymentProgramDto } from './dto';
@@ -42,7 +37,6 @@ const PROGRAM_FIELD_MAPPING: Record<string, string> = {
   sendNoti: 'send_noti',
 };
 
-
 @Injectable()
 export class BiPaymentProgramService {
   constructor(
@@ -70,8 +64,15 @@ export class BiPaymentProgramService {
     if (query.workstepCurrent) qb.andWhere('pg.workstep_current = :ws', { ws: query.workstepCurrent });
     if (query.biccDepartmentId) qb.andWhere('pg.project.bicc_department_id = :bdid', { bdid: query.biccDepartmentId });
     if (query.categoryIds) {
-      const catIds = query.categoryIds.split(',').map((s) => Number(s.trim())).filter((n) => n > 0);
-      if (catIds.length) qb.andWhere('pg.id IN (SELECT program_id FROM bi_payment_programs_categories WHERE bi_payment_category_id IN (:...catIds))', { catIds });
+      const catIds = query.categoryIds
+        .split(',')
+        .map((s) => Number(s.trim()))
+        .filter((n) => n > 0);
+      if (catIds.length)
+        qb.andWhere(
+          'pg.id IN (SELECT program_id FROM bi_payment_programs_categories WHERE bi_payment_category_id IN (:...catIds))',
+          { catIds },
+        );
     }
 
     qb.orderBy(`pg.${sortParams.sort_field}`, sortParams.sort_order as 'ASC' | 'DESC');
@@ -157,7 +158,12 @@ export class BiPaymentProgramService {
 
   // Approve report-link ở màn tính toán (calculating_status: in_review → approved).
   async approveReportLink(id: number, scope: DataScope | null) {
-    return this.patchStepFields(id, { calculatingStatus: BiPaymentCalculatingStatus.APPROVED }, scope, BiPaymentWorkstepCurrent.CALCULATING);
+    return this.patchStepFields(
+      id,
+      { calculatingStatus: BiPaymentCalculatingStatus.APPROVED },
+      scope,
+      BiPaymentWorkstepCurrent.CALCULATING,
+    );
   }
 
   // Màn tra soát — bicc full. Sale KHÔNG gọi được endpoint này (verb-gate _bicc).

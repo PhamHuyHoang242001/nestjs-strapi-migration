@@ -6,6 +6,12 @@ import {
   OWNER_ALL_RESOURCE_ID,
 } from '../constants/hierarchy-config';
 
+// "Deleted" predicate for target tables + resource_owners (all carry both
+// is_deleted and deleted_at via BaseSoftDeleteEntity). Two delete paths exist:
+// TypeORM softDelete sets deleted_at only; manual updates set is_deleted only.
+// Every read filter must check BOTH columns or records deleted via one path
+// leak through the other. Mirrors permission-query.service.ts:172-173.
+
 /**
  * Walk HIERARCHY_MAP upward from tableName until a root entry (null) is found.
  * Returns the root table name, or null if tableName is unknown.
@@ -53,7 +59,7 @@ export function buildOwnerJoinChain(
     const parentAlias = `t${i + 1}`;
     const { parentTable, fkColumn } = chain[i];
     joins.push(
-      `JOIN "${parentTable}" ${parentAlias} ON ${parentAlias}.id = ${childAlias}."${fkColumn}" AND ${parentAlias}.deleted_at IS NULL`,
+      `JOIN "${parentTable}" ${parentAlias} ON ${parentAlias}.id = ${childAlias}."${fkColumn}" AND ${parentAlias}.deleted_at IS NULL AND ${parentAlias}.is_deleted IS NOT TRUE`,
     );
   }
 
@@ -61,7 +67,7 @@ export function buildOwnerJoinChain(
   const rootAlias = chain.length === 0 ? 't0' : `t${chain.length}`;
   const { resourceType } = ownerConfig;
   joins.push(
-    `JOIN "resource_owners" ro ON ro.resource_id = ${rootAlias}.id AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL`,
+    `JOIN "resource_owners" ro ON ro.resource_id = ${rootAlias}.id AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL AND ro.is_deleted IS NOT TRUE`,
   );
 
   // Add WHERE for role_ids
@@ -97,8 +103,8 @@ export function buildAccessibleCTE(roleIdsParam: string): { cteSql: string } {
     if (OWNER_ALL_TABLES.has(tableName)) {
       branches.push(
         `SELECT t0.id as data_id, '${tableName}' as table_name FROM "${tableName}" t0 ` +
-          `JOIN "resource_owners" ro ON ro.resource_id = ${OWNER_ALL_RESOURCE_ID} AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL ` +
-          `WHERE ro.role_id = ANY(${roleIdsParam}) AND t0.deleted_at IS NULL`,
+          `JOIN "resource_owners" ro ON ro.resource_id = ${OWNER_ALL_RESOURCE_ID} AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL AND ro.is_deleted IS NOT TRUE ` +
+          `WHERE ro.role_id = ANY(${roleIdsParam}) AND t0.deleted_at IS NULL AND t0.is_deleted IS NOT TRUE`,
       );
       continue;
     }
@@ -121,16 +127,16 @@ export function buildAccessibleCTE(roleIdsParam: string): { cteSql: string } {
       const parentAlias = `t${i + 1}`;
       aliases.push(parentAlias);
       joins.push(
-        `JOIN "${chain[i].parentTable}" ${parentAlias} ON ${parentAlias}.id = ${childAlias}."${chain[i].fkColumn}" AND ${parentAlias}.deleted_at IS NULL`,
+        `JOIN "${chain[i].parentTable}" ${parentAlias} ON ${parentAlias}.id = ${childAlias}."${chain[i].fkColumn}" AND ${parentAlias}.deleted_at IS NULL AND ${parentAlias}.is_deleted IS NOT TRUE`,
       );
     }
 
     const rootAlias = aliases[aliases.length - 1];
     joins.push(
-      `JOIN "resource_owners" ro ON ro.resource_id = ${rootAlias}.id AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL`,
+      `JOIN "resource_owners" ro ON ro.resource_id = ${rootAlias}.id AND ro.resource_type = '${resourceType}' AND ro.deleted_at IS NULL AND ro.is_deleted IS NOT TRUE`,
     );
 
-    const branch = `SELECT t0.id as data_id, '${tableName}' as table_name FROM "${tableName}" t0 ${joins.join(' ')} WHERE ro.role_id = ANY(${roleIdsParam}) AND t0.deleted_at IS NULL`;
+    const branch = `SELECT t0.id as data_id, '${tableName}' as table_name FROM "${tableName}" t0 ${joins.join(' ')} WHERE ro.role_id = ANY(${roleIdsParam}) AND t0.deleted_at IS NULL AND t0.is_deleted IS NOT TRUE`;
     branches.push(branch);
   }
 

@@ -47,7 +47,9 @@ export class HierarchyValidationService {
     // Step 1: Get parent IDs for all data_ids in single query
     const fkPlaceholders = dataIds.map((_, i) => `$${i + 1}`).join(',');
     const fkRows: { id: number; parent_id: number }[] = await this.connection.query(
-      `SELECT id, "${fkColumn}" as parent_id FROM "${tableName}" WHERE id IN (${fkPlaceholders}) AND deleted_at IS NULL`,
+      // Dual-column deleted check: is_deleted flagged OR deleted_at set (both
+      // columns live on every ALLOWED_TABLES row; two delete paths set only one).
+      `SELECT id, "${fkColumn}" as parent_id FROM "${tableName}" WHERE id IN (${fkPlaceholders}) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
       dataIds,
     );
 
@@ -104,7 +106,9 @@ export class HierarchyValidationService {
     const parentNameCol = getNameColumn(parentTable);
     const missingPh = missingParentIds.map((_, i) => `$${i + 1}`).join(',');
     const missingRows: { id: number; display_name: string }[] = await this.connection.query(
-      `SELECT id, "${parentNameCol}" as display_name FROM "${parentTable}" WHERE id IN (${missingPh}) AND deleted_at IS NULL`,
+      // Dual-column deleted check (see above): parents flagged or timestamped
+      // as deleted must not surface as valid resolution targets.
+      `SELECT id, "${parentNameCol}" as display_name FROM "${parentTable}" WHERE id IN (${missingPh}) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
       missingParentIds,
     );
 

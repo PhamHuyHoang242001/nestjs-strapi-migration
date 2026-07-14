@@ -364,7 +364,11 @@ export class DataAccessService {
       const nameCol = getNameColumn(tableName);
       const ids = entries.map((e) => e.data_id);
       const rows: { id: number; display_name: string }[] = await this.connection.query(
-        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = ANY($1) AND deleted_at IS NULL`,
+        // Dual-column deleted check: is_deleted flagged OR deleted_at set (both
+        // columns live on every ALLOWED_TABLES row; two delete paths each set
+        // only one). Without is_deleted, records deleted via the flag path leak
+        // their name into the list as if still active.
+        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = ANY($1) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
         [ids],
       );
       // Map each row back using the entry's own module_id (handles same table, different modules)
@@ -398,7 +402,8 @@ export class DataAccessService {
     if (tableName && ALLOWED_TABLES.has(tableName)) {
       const nameCol = getNameColumn(tableName);
       const rows: { id: number; display_name: string }[] = await this.connection.query(
-        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = $1 AND deleted_at IS NULL`,
+        // Dual-column deleted check (see batchFetchRecordNames comment).
+        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = $1 AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
         [record.data_id],
       );
       if (rows.length > 0) {
@@ -838,7 +843,8 @@ export class DataAccessService {
   private async getUnscopedRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams) {
     const nameCol = getNameColumn(tableName);
     const params: any[] = [];
-    let whereClause = 'WHERE deleted_at IS NULL';
+    // Dual-column deleted check: is_deleted flagged OR deleted_at set.
+    let whereClause = 'WHERE deleted_at IS NULL AND is_deleted IS NOT TRUE';
 
     if (dto.keyword) {
       params.push(`%${dto.keyword}%`);
@@ -932,14 +938,14 @@ export class DataAccessService {
       whereExtra += ` AND t0.created_at <= $${params.length}`;
     }
 
-    // Count scoped records
-    const countQuery = `SELECT COUNT(DISTINCT t0.id)::int as total FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL${whereExtra}`;
+    // Count scoped records (dual-column deleted check on target row t0).
+    const countQuery = `SELECT COUNT(DISTINCT t0.id)::int as total FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL AND t0.is_deleted IS NOT TRUE${whereExtra}`;
     const countResult = await this.connection.query(countQuery, params);
     const total: number = countResult[0]?.total || 0;
 
     // Fetch paginated scoped data
     params.push(pagination.limit, pagination.skip || 0);
-    const dataQuery = `SELECT DISTINCT t0.id, t0."${nameCol}" as display_name, t0.created_at FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL${whereExtra} ORDER BY t0.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    const dataQuery = `SELECT DISTINCT t0.id, t0."${nameCol}" as display_name, t0.created_at FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL AND t0.is_deleted IS NOT TRUE${whereExtra} ORDER BY t0.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
     const data = await this.connection.query(dataQuery, params);
 
     return {

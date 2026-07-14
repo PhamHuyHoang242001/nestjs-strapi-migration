@@ -11,6 +11,12 @@ import {
 import { findRootTable } from '@modules/data-access/helpers/owner-scope-helpers';
 import { PermissionCacheService } from './permission-cache.service';
 
+// "Deleted" predicate for target tables + resource_owners (all carry both
+// is_deleted and deleted_at via BaseSoftDeleteEntity). Two delete paths exist:
+// TypeORM softDelete sets deleted_at only; manual updates set is_deleted only.
+// Every read filter must check BOTH columns or records deleted via one path
+// leak through the other. Mirrors permission-query.service.ts:172-173.
+
 export interface OwnerScopeEntry {
   rootTable: string;
   rootId: number;
@@ -55,6 +61,7 @@ export class OwnerScopeResolverService {
       INNER JOIN role r ON r.id = ro.role_id AND r.status = 'active' AND r.deleted_at IS NULL
       WHERE ur.user_id = $1
         AND ro.deleted_at IS NULL
+        AND ro.is_deleted IS NOT TRUE
       `,
       [userId],
     );
@@ -176,7 +183,9 @@ export class OwnerScopeResolverService {
     if (accessibleChildIds.length === 0) return false;
 
     const rows = await this.ds.query<{ one: number }[]>(
-      `SELECT 1 AS one FROM "${childTable}" WHERE id = ANY($1) AND "${fkColumn}" = $2 AND deleted_at IS NULL LIMIT 1`,
+      // Dual-column deleted check on childTable (an ALLOWED_TABLES member):
+      // a child flagged is_deleted must not satisfy the accessible-child probe.
+      `SELECT 1 AS one FROM "${childTable}" WHERE id = ANY($1) AND "${fkColumn}" = $2 AND deleted_at IS NULL AND is_deleted IS NOT TRUE LIMIT 1`,
       [accessibleChildIds, parentId],
     );
     return rows.length > 0;
@@ -211,7 +220,10 @@ export class OwnerScopeResolverService {
       const parentAlias = `t${i + 1}`;
       const { parentTable, fkColumn } = chain[i];
       joins.push(
-        `INNER JOIN "${parentTable}" ${parentAlias} ON ${parentAlias}.id = ${childAlias}."${fkColumn}" AND ${parentAlias}.deleted_at IS NULL`,
+        // Dual-column deleted check on parentTable (ALLOWED_TABLES member):
+        // a deleted parent breaks the ownership chain, so its descendants are
+        // not in-owned-scope. Mirrors owner-scope-helpers.ts parent JOINs.
+        `INNER JOIN "${parentTable}" ${parentAlias} ON ${parentAlias}.id = ${childAlias}."${fkColumn}" AND ${parentAlias}.deleted_at IS NULL AND ${parentAlias}.is_deleted IS NOT TRUE`,
       );
     }
     const rootAlias = chain.length === 0 ? 't0' : `t${chain.length}`;
@@ -222,6 +234,7 @@ export class OwnerScopeResolverService {
       ${joins.join('\n      ')}
       WHERE t0.id = $1
         AND t0.deleted_at IS NULL
+        AND t0.is_deleted IS NOT TRUE
         AND ${rootAlias}.id = ANY($2)
       LIMIT 1
     `;
