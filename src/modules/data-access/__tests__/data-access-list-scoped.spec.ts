@@ -242,4 +242,42 @@ describe('DataAccessService.list() — owner scoping', () => {
       expect(countSQL).toContain('name_matches');
     });
   });
+
+  // Unscoped path (admin/super_admin) has no accessible CTE, so a data_access
+  // rule pointing at a since-deleted target record used to leak through. The
+  // EXISTS predicate against the target table (dual-column deleted check) closes
+  // that gap. Scoped path is already guarded by the accessible CTE and must NOT
+  // duplicate the predicate.
+  describe('unscoped path excludes soft-deleted target records', () => {
+    it('count + groups SQL carry a target-table EXISTS with dual-column deleted check', async () => {
+      const { service, queryMock } = createService([
+        [{ total: 0 }], // count
+        [], // groups
+      ]);
+
+      await service.list({}, defaultSort, defaultPagination, undefined);
+
+      const countSQL = queryMock.mock.calls[0][0] as string;
+      expect(countSQL).toContain('EXISTS');
+      expect(countSQL).toContain('deleted_at IS NULL');
+      expect(countSQL).toContain('is_deleted IS NOT TRUE');
+      // Catch-all keeps legacy rules for non-allowed tables visible.
+      expect(countSQL).toContain('NOT IN');
+    });
+
+    it('scoped path does NOT add the target EXISTS (accessible CTE already guards it)', async () => {
+      const { service, queryMock } = createService([
+        [{ role_id: 3 }], // roleIds
+        [{ total: 0 }], // count
+        [], // groups
+      ]);
+
+      await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+
+      const countSQL = queryMock.mock.calls[1][0] as string;
+      expect(countSQL).toContain('accessible');
+      // The unscoped-only EXISTS predicate must not appear here.
+      expect(countSQL).not.toContain('NOT IN');
+    });
+  });
 });

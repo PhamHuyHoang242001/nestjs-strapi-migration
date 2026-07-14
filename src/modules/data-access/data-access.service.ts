@@ -128,7 +128,15 @@ export class DataAccessService {
 
     // Merge params: owner params first, then shift search params
     const mergedParams = [...ownerParams, ...params];
-    const mergedWhereClause = whereClause + ownerWhereClause;
+    // Unscoped path (admin/super_admin) has no accessible CTE, so a data_access
+    // rule pointing at a since-deleted target record leaked through as if still
+    // active. The scoped path is already guarded (accessible CTE branches filter
+    // deleted_at + is_deleted). Add a per-table EXISTS predicate here so both
+    // paths share the same "live target record" contract. No params are introduced
+    // (table names are identifiers, data_id is a column reference), so existing
+    // param indexes stay valid.
+    const targetExistsClause = isUnscoped ? this.buildTargetExistsClause() : '';
+    const mergedWhereClause = whereClause + ownerWhereClause + targetExistsClause;
 
     const cteLine = mergedCtePrefix ? `${mergedCtePrefix} ` : '';
 
@@ -237,6 +245,39 @@ export class DataAccessService {
         totalPages: Math.ceil(total / limit) || 1,
       },
     };
+  }
+
+  /**
+   * Build an EXISTS predicate that confirms the target record (the row a
+   * data_access rule points at via da.data_id + m.table_name) is still live.
+   *
+   * Used by the unscoped list path (admin/super_admin) where no accessible CTE
+   * guards record visibility. Each ALLOWED_TABLE contributes one EXISTS branch
+   * gated on its own table_name; the dual-column deleted check (deleted_at +
+   * is_deleted) mirrors the rest of the read path so records deleted via either
+   * path are excluded.
+   *
+   * A trailing catch-all (`m.table_name NOT IN (...)`) keeps rules pointing at
+   * non-ALLOWED tables visible — resolveModule() blocks creating such rules, but
+   * legacy rows must not silently vanish from the list. Returns '' when no
+   * allowed tables exist.
+   *
+   * No bind params: table names are static identifiers from ALLOWED_TABLES and
+   * data_id is a column reference, so existing $N indexes in the caller stay valid.
+   */
+  private buildTargetExistsClause(): string {
+    const branches: string[] = [];
+    const allowedList: string[] = [];
+    for (const tableName of ALLOWED_TABLES) {
+      allowedList.push(`'${tableName}'`);
+      branches.push(
+        `(m.table_name = '${tableName}' AND EXISTS (SELECT 1 FROM "${tableName}" t WHERE t.id = da.data_id AND t.deleted_at IS NULL AND t.is_deleted IS NOT TRUE))`,
+      );
+    }
+    if (!branches.length) return '';
+    // Non-allowed tables: no target row to check, keep prior behavior (visible).
+    branches.push(`m.table_name NOT IN (${allowedList.join(', ')})`);
+    return ` AND (${branches.join(' OR ')})`;
   }
 
   /**
