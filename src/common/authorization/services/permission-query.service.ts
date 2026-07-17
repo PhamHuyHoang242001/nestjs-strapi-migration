@@ -138,6 +138,100 @@ export class PermissionQueryService {
     return rows.map((row) => Number(row.user_id));
   }
 
+  // Reverse of getAccessibleRecords: given (table, recordId, code) return the
+  // users who explicitly hold `code` on that record. Explicit-only (role_data_access
+  // ∪ data_access_users), minus deny — SO owner inheritance + super_admin are NOT
+  // applied here. Mirrors queryDataIds guards (tableName regex, soft-delete,
+  // date-window, code filter shape per alias). No caching; queries DB every call.
+  async getUsersByRecordPermission(
+    tableName: string,
+    recordId: number,
+    permissionCode: string,
+  ): Promise<{ id: number; email: string | null }[]> {
+    const [allowViaRole, allowViaUser, denyViaRole, denyViaUser] = await Promise.all([
+      this.queryUsersForRecord(this.roleDataAccessRepo, 'dar', tableName, recordId, SCOPE_TYPE.ALLOW, permissionCode),
+      this.queryUsersForRecord(this.userDataAccessRepo, 'dau', tableName, recordId, SCOPE_TYPE.ALLOW, permissionCode),
+      this.queryUsersForRecord(this.roleDataAccessRepo, 'dar', tableName, recordId, SCOPE_TYPE.DENY, permissionCode),
+      this.queryUsersForRecord(this.userDataAccessRepo, 'dau', tableName, recordId, SCOPE_TYPE.DENY, permissionCode),
+    ]);
+
+    // (allow_role ∪ allow_user) \ (deny_role ∪ deny_user), keyed by user id so
+    // the same user reached via both sources collapses to one entry.
+    const allowed = new Map<number, { id: number; email: string | null }>();
+    for (const u of [...allowViaRole, ...allowViaUser]) allowed.set(u.id, u);
+    for (const u of [...denyViaRole, ...denyViaUser]) allowed.delete(u.id);
+    return [...allowed.values()];
+  }
+
+  // Reverse of queryDataIds: SELECT user WHERE da.data_id = recordId (instead of
+  // SELECT data_id WHERE user/role = X). Same guards so it stays consistent with
+  // the forward direction.
+  private async queryUsersForRecord(
+    repo: Repository<RoleDataAccess> | Repository<UserDataAccess>,
+    alias: string,
+    tableName: string,
+    recordId: number,
+    scopeType: SCOPE_TYPE,
+    permissionCode: string,
+  ): Promise<{ id: number; email: string | null }[]> {
+    if (!/^[a-z_][a-z0-9_]*$/.test(tableName)) {
+      throw new BadRequestException('Invalid data-access table');
+    }
+
+    const qb = (repo as Repository<RoleDataAccess | UserDataAccess>)
+      .createQueryBuilder(alias)
+      .select(['u.id AS id', 'u.email AS email'])
+      .distinct()
+      .innerJoin(`${alias}.data_access`, 'da')
+      .innerJoin('da.module', 'm')
+      // Join the target record so a soft-deleted record yields no users.
+      .innerJoin(tableName, 'rec', 'rec.id = da.data_id')
+      .andWhere(`${alias}.deleted_at IS NULL`)
+      .andWhere('m.table_name = :tableName', { tableName })
+      .andWhere('da.scope_type = :scopeType', { scopeType })
+      .andWhere('da.deleted_at IS NULL')
+      .andWhere('da.data_id = :recordId', { recordId })
+      .andWhere('rec.is_deleted IS NOT TRUE')
+      .andWhere('rec.deleted_at IS NULL')
+      .andWhere('(da.start_date IS NULL OR da.start_date::date <= CURRENT_DATE)')
+      .andWhere('(da.end_date IS NULL OR da.end_date::date >= CURRENT_DATE)');
+
+    if (alias === 'dau') {
+      // User-exception: permission lives directly on data_access_users.
+      qb.innerJoin(`${alias}.permission`, 'p_filter')
+        .innerJoin(`${alias}.user`, 'u')
+        .andWhere('p_filter.code = :permCode', { permCode: permissionCode })
+        .andWhere('p_filter.is_active = true')
+        .andWhere('p_filter.deleted_at IS NULL');
+    } else {
+      // Role-scoped: permission via roles_permissions; members via role.user_roles.
+      qb.innerJoin(`${alias}.role`, 'r')
+        .innerJoin('r.user_roles', 'ur')
+        .innerJoin('ur.user', 'u')
+        .andWhere('r.status = :status', { status: STATUS.ACTIVE })
+        .andWhere('r.deleted_at IS NULL')
+        .andWhere('ur.deleted_at IS NULL')
+        .andWhere(
+          `EXISTS (
+            SELECT 1
+            FROM roles_permissions rp
+            JOIN permission p ON p.id = rp.permission_id
+            WHERE rp.role_id = ${alias}.role_id
+              AND p.code = :permCode
+              AND p.is_active = true
+              AND p.deleted_at IS NULL
+          )`,
+          { permCode: permissionCode },
+        );
+    }
+
+    // Exclude soft-deleted users from the result set.
+    qb.andWhere('u.deleted_at IS NULL').andWhere('u.is_deleted IS NOT TRUE');
+
+    const rows = await qb.getRawMany<{ id: number | string; email: string | null }>();
+    return rows.map((row) => ({ id: Number(row.id), email: row.email ?? null }));
+  }
+
   /** Shared query: get data_ids from data_access filtered by scope, table, and optional permission code */
   private async queryDataIds(
     repo: Repository<RoleDataAccess> | Repository<UserDataAccess>,

@@ -38,6 +38,17 @@ export class PermissionCacheService {
     return (await this.getPermissions(userId)).has(code);
   }
 
+  // Reverse of getAccessibleRecords: users who hold `permissionCode` on record
+  // `recordId` of `tableName` (explicit-only: role_data_access ∪ data_access_users,
+  // minus deny). Not cached — queries the DB on every call.
+  async getUsersByRecordPermission(
+    tableName: string,
+    recordId: number,
+    permissionCode: string,
+  ): Promise<{ id: number; email: string | null }[]> {
+    return this.queryService.getUsersByRecordPermission(tableName, recordId, permissionCode);
+  }
+
   async getAccessibleRecords(userId: number, tableName: string, permissionCode?: string): Promise<number[]> {
     const key = dataAccessCacheKey(userId, tableName, permissionCode);
     try {
