@@ -8,6 +8,7 @@ import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { SortParams } from '@common/decorators/sort.decorator';
 import { SearchDataAccessDto } from '../dto/search-data-access.dto';
 import { SCOPE_TYPE } from '@common/enums';
+import { EXTRA_FIELDS_MAP } from '../constants/hierarchy-config';
 
 /**
  * Unit tests for DataAccessService.list() — grouped response.
@@ -123,6 +124,18 @@ const sampleRecordNames = {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('DataAccessService.list() — grouped', () => {
+  // Snapshot/restore EXTRA_FIELDS_MAP around each test so config mutations in
+  // individual cases never leak across tests. Keys are assigned by reference,
+  // so we mutate-then-restore the original object identity.
+  let originalMap: Record<string, string[]>;
+  beforeEach(() => {
+    originalMap = { ...EXTRA_FIELDS_MAP };
+  });
+  afterEach(() => {
+    for (const k of Object.keys(EXTRA_FIELDS_MAP)) delete EXTRA_FIELDS_MAP[k];
+    Object.assign(EXTRA_FIELDS_MAP, originalMap);
+  });
+
   /** Standard mock: count → groups → rules → record names (2 tables) */
   function setupGroupedMock(overrides?: {
     count?: number;
@@ -172,6 +185,9 @@ describe('DataAccessService.list() — grouped', () => {
       // + record_name unchanged — additive field only.
       expect(group).toHaveProperty('record_path', 'ROOT / leaf-42');
       expect(mockRecordPath.buildPath).toHaveBeenCalledWith('bi_hub_reports', 42);
+      // Default (no EXTRA_FIELDS_MAP entry) → record_extra key absent, base
+      // contract unchanged. Additive only when dev declares extra fields.
+      expect(group).not.toHaveProperty('record_extra');
     });
 
     it('each group.rules contains rule_id, scope_type, subject_type, subject_id, subject_name, permissions, dates', async () => {
@@ -364,6 +380,59 @@ describe('DataAccessService.list() — grouped', () => {
       expect(result.data[0].record_name).toBe('Q2 Revenue Analysis');
       expect(result.data[1].table_name).toBe('ma_tool_documents');
       expect(result.data[1].record_name).toBe('Upload Template A');
+    });
+  });
+
+  // ── record_extra (EXTRA_FIELDS_MAP) ─────────────────────────────────────
+
+  describe('record_extra', () => {
+    it('returns record_extra with declared fields when EXTRA_FIELDS_MAP has the table', async () => {
+      EXTRA_FIELDS_MAP.bi_hub_reports = ['code', 'status'];
+      const records = {
+        bi_hub_reports: [{ id: 42, display_name: 'Q2 Revenue Analysis', code: 'RPT-01', status: 'active' }],
+        ma_tool_documents: [{ id: 10, display_name: 'Upload Template A' }],
+      };
+      const { service } = setupGroupedMock({ recordNames: records });
+      const result = await service.list({}, defaultSort, defaultPagination);
+
+      // Declared table → record_extra present with fetched values.
+      expect(result.data[0]).toHaveProperty('record_extra', { code: 'RPT-01', status: 'active' });
+      // Undeclared table → key absent (base contract unchanged).
+      expect(result.data[1]).not.toHaveProperty('record_extra');
+    });
+
+    it('falls back gracefully when an extra field column does not exist (per-table catch)', async () => {
+      EXTRA_FIELDS_MAP.bi_hub_reports = ['nonexistent_col'];
+      const queryMock = jest.fn();
+      queryMock.mockResolvedValueOnce([{ total: 2 }]); // count
+      queryMock.mockResolvedValueOnce(sampleGroups); // groups
+      queryMock.mockResolvedValueOnce(sampleRules); // rules
+      // bi_hub_reports fetch rejects (bad column) → per-table catch, name-only.
+      queryMock.mockRejectedValueOnce(new Error('column "nonexistent_col" does not exist'));
+      // ma_tool_documents ok (no extra declared).
+      queryMock.mockResolvedValueOnce([{ id: 10, display_name: 'Upload Template A' }]);
+      const service = createMockService(queryMock);
+
+      const result = await service.list({}, defaultSort, defaultPagination);
+
+      // List stays 200 OK; failed table falls back, no record_extra.
+      expect(result.data[0]).not.toHaveProperty('record_extra');
+      expect(result.data[0].record_name).toBe('ID: 42');
+      expect(result.data[1].record_name).toBe('Upload Template A');
+    });
+
+    it('missing target row → record_name fallback, record_extra absent', async () => {
+      EXTRA_FIELDS_MAP.bi_hub_reports = ['code', 'status'];
+      const records = {
+        // row 42 absent → falls back to ID: 42, no record_extra.
+        bi_hub_reports: [],
+        ma_tool_documents: [{ id: 10, display_name: 'Upload Template A' }],
+      };
+      const { service } = setupGroupedMock({ recordNames: records });
+      const result = await service.list({}, defaultSort, defaultPagination);
+
+      expect(result.data[0].record_name).toBe('ID: 42');
+      expect(result.data[0]).not.toHaveProperty('record_extra');
     });
   });
 

@@ -14,6 +14,7 @@ import {
   OWNER_ALL_TABLES,
   OWNER_ALL_RESOURCE_ID,
   ROOT_OWNER_CONFIG,
+  getExtraFields,
   getNameColumn,
 } from './constants/hierarchy-config';
 import { buildOwnerJoinChain, buildAccessibleCTE } from './helpers/owner-scope-helpers';
@@ -192,8 +193,8 @@ export class DataAccessService {
     // Step 2: Fetch flattened rules for these groups
     const rules = await this.fetchRulesForGroups(groups);
 
-    // Step 3: Batch fetch record names from target tables
-    const recordNames = await this.batchFetchRecordNames(groups);
+    // Step 3: Batch fetch record names + extra fields from target tables
+    const recordInfos = await this.batchFetchRecordInfo(groups);
 
     // Step 3b: Build root→leaf record path per group (breadcrumb). Per-record
     // walk via HIERARCHY_MAP; isolated catch so one bad record can't fail the list.
@@ -224,16 +225,23 @@ export class DataAccessService {
       rulesByGroup.set(key, arr);
     }
 
-    const data = groups.map((g, i) => ({
-      data_id: g.data_id,
-      module_id: g.module_id,
-      module_name: g.module_name,
-      module_path: g.module_path,
-      record_name: recordNames.get(`${g.data_id}-${g.module_id}`) || `ID: ${g.data_id}`,
-      record_path: recordPaths[i],
-      table_name: g.table_name,
-      rules: rulesByGroup.get(`${g.data_id}-${g.module_id}`) || [],
-    }));
+    const data = groups.map((g, i) => {
+      const info = recordInfos.get(`${g.data_id}-${g.module_id}`);
+      return {
+        data_id: g.data_id,
+        module_id: g.module_id,
+        module_name: g.module_name,
+        module_path: g.module_path,
+        record_name: info?.record_name || `ID: ${g.data_id}`,
+        record_path: recordPaths[i],
+        table_name: g.table_name,
+        // record_extra only present when the table has declared extra fields
+        // AND a live row was fetched. Empty/missing config or soft-deleted row
+        // → key absent (spread conditional keeps base contract unchanged).
+        ...(info?.record_extra ? { record_extra: info.record_extra } : {}),
+        rules: rulesByGroup.get(`${g.data_id}-${g.module_id}`) || [],
+      };
+    });
 
     return {
       data,
@@ -390,7 +398,9 @@ export class DataAccessService {
   }
 
   /** Batch-fetch display names from target tables, grouped by table_name */
-  private async batchFetchRecordNames(groups: { data_id: number; module_id: number; table_name: string }[]) {
+  private async batchFetchRecordInfo(
+    groups: { data_id: number; module_id: number; table_name: string }[],
+  ): Promise<Map<string, { record_name: string; record_extra?: Record<string, any> }>> {
     // Group entries by table_name, preserving each entry's module_id
     const byTable = new Map<string, { data_id: number; module_id: number }[]>();
     for (const g of groups) {
@@ -400,27 +410,52 @@ export class DataAccessService {
       byTable.set(g.table_name, entries);
     }
 
-    const nameMap = new Map<string, string>();
+    const infoMap = new Map<string, { record_name: string; record_extra?: Record<string, any> }>();
     for (const [tableName, entries] of byTable) {
       const nameCol = getNameColumn(tableName);
+      // Extra fields from the dev-controlled whitelist (sanitized by regex in
+      // getExtraFields). Empty/missing → query stays id+display_name only.
+      const extraCols = getExtraFields(tableName);
+      const extraSelect = extraCols.length ? `, ${extraCols.map((c) => `"${c}"`).join(', ')}` : '';
       const ids = entries.map((e) => e.data_id);
-      const rows: { id: number; display_name: string }[] = await this.connection.query(
-        // Dual-column deleted check: is_deleted flagged OR deleted_at set (both
-        // columns live on every ALLOWED_TABLES row; two delete paths each set
-        // only one). Without is_deleted, records deleted via the flag path leak
-        // their name into the list as if still active.
-        `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = ANY($1) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
-        [ids],
-      );
-      // Map each row back using the entry's own module_id (handles same table, different modules)
-      const rowMap = new Map(rows.map((r) => [r.id, r.display_name]));
-      for (const entry of entries) {
-        const displayName = rowMap.get(entry.data_id);
-        nameMap.set(`${entry.data_id}-${entry.module_id}`, displayName || `ID: ${entry.data_id}`);
+      try {
+        const rows: { id: number; display_name: string; [key: string]: unknown }[] =
+          await this.connection.query(
+          // Dual-column deleted check: is_deleted flagged OR deleted_at set (both
+          // columns live on every ALLOWED_TABLES row; two delete paths each set
+          // only one). Without is_deleted, records deleted via the flag path leak
+          // their name into the list as if still active.
+          `SELECT id, "${nameCol}" as display_name${extraSelect} FROM "${tableName}" WHERE id = ANY($1) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
+          [ids],
+        );
+        const rowMap = new Map(rows.map((r) => [r.id, r]));
+        for (const entry of entries) {
+          const row = rowMap.get(entry.data_id);
+          if (!row) {
+            infoMap.set(`${entry.data_id}-${entry.module_id}`, { record_name: `ID: ${entry.data_id}` });
+            continue;
+          }
+          // record_extra only built when extra fields are declared. Aliases
+          // are the (lowercase) column names, so row[col] maps directly.
+          const record_extra = extraCols.length
+            ? Object.fromEntries(extraCols.map((c) => [c, row[c]]))
+            : undefined;
+          infoMap.set(`${entry.data_id}-${entry.module_id}`, {
+            record_name: row.display_name || `ID: ${entry.data_id}`,
+            record_extra,
+          });
+        }
+      } catch {
+        // Per-table failure (e.g. an EXTRA_FIELDS_MAP entry pointing at a column
+        // that does not exist on the table). Fall back to name-only with no extra
+        // so the list stays 200 OK — mirrors record_path try/catch above.
+        for (const entry of entries) {
+          infoMap.set(`${entry.data_id}-${entry.module_id}`, { record_name: `ID: ${entry.data_id}` });
+        }
       }
     }
 
-    return nameMap;
+    return infoMap;
   }
 
   async details(id: number) {
@@ -443,7 +478,7 @@ export class DataAccessService {
     if (tableName && ALLOWED_TABLES.has(tableName)) {
       const nameCol = getNameColumn(tableName);
       const rows: { id: number; display_name: string }[] = await this.connection.query(
-        // Dual-column deleted check (see batchFetchRecordNames comment).
+        // Dual-column deleted check (see batchFetchRecordInfo comment).
         `SELECT id, "${nameCol}" as display_name FROM "${tableName}" WHERE id = $1 AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
         [record.data_id],
       );

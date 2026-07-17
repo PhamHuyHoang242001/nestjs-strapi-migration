@@ -6,6 +6,7 @@ import { PermissionCacheService } from '@common/authorization';
 import { DataSource, Repository } from 'typeorm';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { SortParams } from '@common/decorators/sort.decorator';
+import { EXTRA_FIELDS_MAP } from '../constants/hierarchy-config';
 
 // ── Mock factory ────────────────────────────────────────────────────────────
 
@@ -51,6 +52,16 @@ const defaultPagination: PaginationParams = { page: 1, limit: 20, skip: 0 };
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('DataAccessService.list() — owner scoping', () => {
+  // Snapshot/restore EXTRA_FIELDS_MAP so per-test config mutations don't leak.
+  let originalMap: Record<string, string[]>;
+  beforeEach(() => {
+    originalMap = { ...EXTRA_FIELDS_MAP };
+  });
+  afterEach(() => {
+    for (const k of Object.keys(EXTRA_FIELDS_MAP)) delete EXTRA_FIELDS_MAP[k];
+    Object.assign(EXTRA_FIELDS_MAP, originalMap);
+  });
+
   describe('unscoped path (no userInfo — internal callers)', () => {
     it('query does NOT contain accessible CTE', async () => {
       const { service, queryMock } = createService([
@@ -203,6 +214,30 @@ describe('DataAccessService.list() — owner scoping', () => {
       // Count query params should include roleIds
       const countParams = queryMock.mock.calls[1][1] as any[];
       expect(countParams[0]).toEqual([3, 7]);
+    });
+
+    it('record_extra flows through the scoped (owner CTE) path', async () => {
+      EXTRA_FIELDS_MAP.bi_hub_reports = ['code', 'status'];
+      const { service } = createService([
+        [{ role_id: 3 }], // roleIds
+        [{ total: 1 }], // count (with accessible CTE)
+        [
+          {
+            data_id: 42,
+            module_id: 5,
+            table_name: 'bi_hub_reports',
+            module_path: '/BI Hub',
+            module_name: 'Reports',
+            latest_created_at: '2026-01-01',
+          },
+        ], // groups
+        [], // rules (none for brevity)
+        [{ id: 42, display_name: 'Q2 Report', code: 'RPT-01', status: 'active' }], // record info
+      ]);
+
+      const result = await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+
+      expect(result.data[0]).toHaveProperty('record_extra', { code: 'RPT-01', status: 'active' });
     });
   });
 

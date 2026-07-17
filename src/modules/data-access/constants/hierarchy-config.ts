@@ -136,3 +136,27 @@ export function getNameColumn(tableName: string): string {
   if (!/^[a-z_]+$/.test(col)) return 'id';
   return col;
 }
+
+/**
+ * Extra fields to select per table for the data-access list, on top of the
+ * display-name column. Dev-maintained whitelist — empty array or a missing
+ * table means "no extra fields". Field names are sanitized at read time by
+ * getExtraFields() so they are safe to interpolate into the SELECT statement.
+ *
+ * Example:
+ *   EXTRA_FIELDS_MAP = { bi_hub_reports: ['code', 'status'] }
+ * → each /list group for bi_hub_reports carries record_extra: {code, status}.
+ */
+export const EXTRA_FIELDS_MAP: Record<string, string[]> = {
+  // bi_hub_reports: ['code', 'status'],
+  // bi_payment_documents: ['doc_type', 'amount'],
+};
+
+/**
+ * Sanitized extra-field list for a table. Filters out any field failing the
+ * same /^[a-z_]+$/ regex as getNameColumn so a bad config entry can never reach
+ * the SELECT statement. Returns [] for tables not in the map.
+ */
+export function getExtraFields(tableName: string): string[] {
+  return (EXTRA_FIELDS_MAP[tableName] || []).filter((c) => /^[a-z_]+$/.test(c));
+}
