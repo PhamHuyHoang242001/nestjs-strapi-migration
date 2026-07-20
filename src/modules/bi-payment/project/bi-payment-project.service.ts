@@ -4,6 +4,8 @@ import { execQueryPaignation } from '@common/utils';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 import { BiPaymentProject } from '@modules/databases/bi-payment-project.entity';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import { DATA_ACCESS_TABLE } from '@common/enums';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
@@ -13,6 +15,7 @@ import type { DataScope } from '@common/authorization/types/data-scope.types';
 // bi_payment_projects lives under owner-scope root bi_hub_bicc_departments via the
 // bicc_department_id FK. Predicate-pushdown via applyDataScope walks that hierarchy.
 const PROJECT_TABLE = 'bi_payment_projects';
+const CREATE_PERMISSION = 'bp_project_create';
 
 @Injectable()
 export class BiPaymentProjectService {
@@ -21,6 +24,7 @@ export class BiPaymentProjectService {
     private readonly projectRepo: Repository<BiPaymentProject>,
     private readonly dataSource: DataSource,
     private readonly creatorAccessGrant: CreatorAccessGrantService,
+    private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
   async search(
@@ -57,7 +61,22 @@ export class BiPaymentProjectService {
     return project;
   }
 
-  async create(dto: CreateBiPaymentProjectDto, userId?: number) {
+  // Parent-scope gate: the target bicc_department must be bound (via role or user allow-grant)
+  // to a holder of the create verb, or fall within the caller's SO owned scope. super_admin bypasses.
+  // Record does not exist yet, so the check is on the parent bi_hub_bicc_departments, not via @RequireOwnerScope.
+  async create(dto: CreateBiPaymentProjectDto, userId: number, isSuperAdmin: boolean) {
+    if (!isSuperAdmin) {
+      const allowed = await this.ownerScope.canCreateUnderParent(
+        userId,
+        DATA_ACCESS_TABLE.BI_HUB_BICC_DEPARTMENTS,
+        dto.biccDepartmentId,
+        CREATE_PERMISSION,
+      );
+      if (!allowed) {
+        throw new ForbiddenException('Out of create scope for bi_hub_bicc_departments');
+      }
+    }
+
     let accessGranted = false;
     const result = await this.dataSource.transaction(async (manager) => {
       const entity = manager.create(BiPaymentProject, dto as unknown as Partial<BiPaymentProject>);
@@ -74,7 +93,7 @@ export class BiPaymentProjectService {
     });
 
     // Invalidate cache AFTER transaction commits to avoid stale cache race condition.
-    if (accessGranted && userId) {
+    if (accessGranted) {
       this.creatorAccessGrant.invalidateUserCache(userId).catch(() => {});
     }
     return result;
@@ -95,11 +114,23 @@ export class BiPaymentProjectService {
     return { id: project.id };
   }
 
-  // delete-many (body ids) — Strapi parity.
-  async deleteMany(ids: number[]) {
+  // delete-many (body ids) — Strapi parity. Filter requested IDs by data-scope predicate
+  // before soft-remove: @RequireOwnerScope on the route only covers single-record param path,
+  // so the service re-checks each id here to drop out-of-scope rows (defense-in-depth).
+  async deleteMany(ids: number[], scope: DataScope | null) {
     if (!ids.length) return { success: 0, error: 0 };
-    const projects = await this.projectRepo.find({ where: { id: In(ids) } });
-    if (!projects.length) return { success: 0, error: ids.length };
+
+    const qb = this.projectRepo
+      .createQueryBuilder('p')
+      .select('p.id', 'id')
+      .where('p.id IN (:...ids)', { ids })
+      .andWhere('p.deleted_at IS NULL');
+    applyDataScope(qb, 'p', PROJECT_TABLE, scope);
+    const rows = await qb.getRawMany<{ id: number }>();
+    const deletableIds = rows.map((r) => Number(r.id));
+
+    if (!deletableIds.length) return { success: 0, error: ids.length };
+    const projects = await this.projectRepo.find({ where: { id: In(deletableIds) } });
     await this.projectRepo.softRemove(projects);
     return { success: projects.length, error: ids.length - projects.length };
   }

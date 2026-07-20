@@ -9,6 +9,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.decorator';
 import {
   Body,
@@ -62,13 +63,16 @@ export class BiPaymentProjectController {
   }
 
   // POST /bi-payment/project — Strapi createProject.
+  // Parent-scope enforced in service.create() (canCreateUnderParent): no record exists yet,
+  // so the check is on the parent bicc_department, not via @RequireOwnerScope.
   @ApiOperation({ summary: 'Create BI Payment project' })
   @Post()
   @HttpCode(200)
   @RequirePermission('bp_project_create')
   create(@Body() body: CreateBiPaymentProjectDto, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.create(body, userId ? +userId : undefined);
+    const userId = Number(req.info?.user?.id);
+    const isSuperAdmin = req.info?.user?.type === UserType.SUPER_ADMIN;
+    return this.service.create(body, userId, isSuperAdmin);
   }
 
   // PATCH /bi-payment/project/:id — Strapi updateProject (PATCH, không PUT).
@@ -81,12 +85,14 @@ export class BiPaymentProjectController {
   }
 
   // DELETE /bi-payment/project — Strapi deleteManyProject (body ids).
+  // Multi-id body has no single record param for OwnerScopeGuard; data-access interceptor builds
+  // the scope predicate and service.deleteMany filters ids against it (defense-in-depth).
   @ApiOperation({ summary: 'Delete many projects' })
   @Delete()
   @RequirePermission('bp_project_delete')
-  @RequireOwnerScope({ table: 'bi_payment_projects' })
-  deleteMany(@Body() body: { ids: number[] }) {
-    return this.service.deleteMany(body.ids ?? []);
+  @RequireDataAccess(DATA_ACCESS_TABLE.BI_PAYMENT_PROJECTS, 'bp_project_delete')
+  deleteMany(@Body() body: { ids: number[] }, @Req() req: RequestWithInfo) {
+    return this.service.deleteMany(body.ids ?? [], req.info?.dataScope ?? null);
   }
 
   // DELETE /bi-payment/project/:id — Strapi deleteProject.

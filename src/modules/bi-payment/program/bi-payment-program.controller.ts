@@ -8,6 +8,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.decorator';
 import {
   Body,
@@ -63,13 +64,16 @@ export class BiPaymentProgramController {
   }
 
   // POST /bi-payment/program — Strapi createProgram.
+  // Parent-scope enforced in service.create() (canCreateUnderParent): no record exists yet,
+  // so the check is on the parent bi_payment_projects, not via @RequireOwnerScope.
   @ApiOperation({ summary: 'Create BI Payment program' })
   @Post()
   @HttpCode(200)
   @RequirePermission('bp_program_create')
   create(@Body() body: CreateBiPaymentProgramDto, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.create(body, userId ? +userId : undefined);
+    const userId = Number(req.info?.user?.id);
+    const isSuperAdmin = req.info?.user?.type === UserType.SUPER_ADMIN;
+    return this.service.create(body, userId, isSuperAdmin);
   }
 
   // PATCH /bi-payment/program/:id — Strapi updateProgram (PATCH, không PUT).

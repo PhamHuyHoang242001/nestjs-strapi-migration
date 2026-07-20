@@ -7,6 +7,8 @@ import { CreatorAccessGrantService } from '@modules/data-access/services/creator
 import { BiPaymentProgram } from '@modules/databases/bi-payment-program.entity';
 import { BiPaymentProgramPicConfirm } from '@modules/databases/bi-payment-program-pic-confirm.entity';
 import { BiPaymentCalculatingStatus, BiPaymentWorkstepCurrent } from '@common/enums/bi-payment.enums';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
@@ -15,6 +17,7 @@ import { isValidTransition } from './constants/workstep-transition';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 
 const PROGRAM_TABLE = 'bi_payment_programs';
+const CREATE_PERMISSION = 'bp_program_create';
 
 // Mapping camelCase DTO (Strapi parity) → snake_case entity cols cho program.
 const PROGRAM_FIELD_MAPPING: Record<string, string> = {
@@ -44,6 +47,7 @@ export class BiPaymentProgramService {
     private readonly programRepo: Repository<BiPaymentProgram>,
     private readonly dataSource: DataSource,
     private readonly creatorAccessGrant: CreatorAccessGrantService,
+    private readonly ownerScope: OwnerScopeResolverService,
   ) {}
 
   async search(
@@ -92,7 +96,22 @@ export class BiPaymentProgramService {
     return program;
   }
 
-  async create(dto: CreateBiPaymentProgramDto, userId?: number) {
+  // Parent-scope gate: the target project must be bound (via role or user allow-grant) to a
+  // holder of the create verb, or fall within the caller's SO owned scope. super_admin bypasses.
+  // Record does not exist yet, so the check is on the parent bi_payment_projects, not via @RequireOwnerScope.
+  async create(dto: CreateBiPaymentProgramDto, userId: number, isSuperAdmin: boolean) {
+    if (!isSuperAdmin) {
+      const allowed = await this.ownerScope.canCreateUnderParent(
+        userId,
+        DATA_ACCESS_TABLE.BI_PAYMENT_PROJECTS,
+        dto.projectId,
+        CREATE_PERMISSION,
+      );
+      if (!allowed) {
+        throw new ForbiddenException('Out of create scope for bi_payment_projects');
+      }
+    }
+
     let accessGranted = false;
     const result = await this.dataSource.transaction(async (manager) => {
       const entity = manager.create(BiPaymentProgram, dto as unknown as Partial<BiPaymentProgram>);
@@ -106,7 +125,7 @@ export class BiPaymentProgramService {
       }
       return { id: saved.id };
     });
-    if (accessGranted && userId) {
+    if (accessGranted) {
       this.creatorAccessGrant.invalidateUserCache(userId).catch(() => {});
     }
     return result;
