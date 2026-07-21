@@ -55,6 +55,8 @@ describe('DataAccessService.getRecords() — whole-table SO (own-all)', () => {
     const result = await service.getRecords(TABLE, {}, defaultPagination, { userId: 10, client: 'user' });
 
     expect(result.data).toHaveLength(2);
+    expect(result.data[0]).not.toHaveProperty('record_path');
+    expect(result.data[0]).not.toHaveProperty('record_extra');
     expect(result.meta.totalItems).toBe(2);
     // Ownership probe hit resource_owners with the sentinel resource_id.
     const probeSQL = queryMock.mock.calls[1][0] as string;

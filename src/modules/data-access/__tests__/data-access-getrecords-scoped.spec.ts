@@ -5,6 +5,7 @@ import { ChangeHistoryLogger } from '@modules/change-history/change-history-logg
 import { PermissionCacheService } from '@common/authorization';
 import { DataSource, Repository } from 'typeorm';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
+import { EXTRA_FIELDS_MAP } from '../constants/hierarchy-config';
 
 // ── Mock factory ────────────────────────────────────────────────────────────
 
@@ -132,6 +133,31 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
       // Count query params should include role_ids array
       const countParams = queryMock.mock.calls[1][1] as any[];
       expect(countParams).toContainEqual([3, 7]);
+    });
+
+    it('enriches scoped records with configured record_extra without record_path', async () => {
+      EXTRA_FIELDS_MAP.bi_hub_reports = ['code'];
+      try {
+        const { service } = createService([
+          [{ role_id: 3 }],
+          [{ total: 1 }],
+          [{ id: 10, display_name: 'Q2 Report', created_at: '2026-01-01' }],
+          [{ id: 10, code: 'RPT-10' }],
+        ]);
+
+        const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, {
+          userId: 10,
+          client: 'user',
+        });
+
+        expect(result.data[0]).toMatchObject({
+          id: 10,
+          record_extra: { code: 'RPT-10' },
+        });
+        expect(result.data[0]).not.toHaveProperty('record_path');
+      } finally {
+        delete EXTRA_FIELDS_MAP.bi_hub_reports;
+      }
     });
   });
 

@@ -6,6 +6,7 @@ import { PermissionCacheService } from '@common/authorization';
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { SCOPE_TYPE } from '@common/enums';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EXTRA_FIELDS_MAP } from '../constants/hierarchy-config';
 
 // ── Mock factory ────────────────────────────────────────────────────────────
 
@@ -39,7 +40,9 @@ function createService(
     invalidateByTable: jest.fn().mockReturnValue(Promise.resolve()),
     invalidateUser: jest.fn().mockReturnValue(Promise.resolve()),
   } as unknown as PermissionCacheService;
-  const mockRecordPath = { buildPath: jest.fn().mockResolvedValue("ID: 0") } as unknown as import("../services/record-path.service").RecordPathService;
+  const mockRecordPath = {
+    buildPath: jest.fn().mockResolvedValue('ID: 0'),
+  } as unknown as import('../services/record-path.service').RecordPathService;
 
   const mockModuleRepo = {} as unknown as Repository<any>;
   const mockRoleDataAccessRepo = {} as unknown as Repository<any>;
@@ -186,8 +189,61 @@ describe('DataAccessService.getRecords()', () => {
     const result = await service.getRecords('bi_hub_reports', {}, { page: 1, limit: 20, skip: 0 });
 
     expect(result.data).toHaveLength(2);
+    expect(result.data[0]).not.toHaveProperty('record_path');
+    expect(result.data[0]).not.toHaveProperty('record_extra');
     expect(result.meta.totalItems).toBe(5);
     expect(result.meta.itemsPerPage).toBe(20);
+  });
+
+  it('returns configured record_extra without record_path', async () => {
+    EXTRA_FIELDS_MAP.bi_hub_reports = ['code', 'status'];
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ total: 1 }])
+      .mockResolvedValueOnce([
+        {
+          id: 42,
+          display_name: 'Revenue',
+          created_at: '2026-01-01',
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 42, code: 'RPT-42', status: 'active' }]);
+
+    try {
+      const { service } = createService({ query });
+      const result = await service.getRecords('bi_hub_reports', {}, { page: 1, limit: 20, skip: 0 });
+
+      expect(result.data[0]).toEqual({
+        id: 42,
+        display_name: 'Revenue',
+        created_at: '2026-01-01',
+        record_extra: { code: 'RPT-42', status: 'active' },
+      });
+      const queryCalls = query.mock.calls as unknown as Array<[string, unknown[]?]>;
+      expect(queryCalls[2][0]).toContain('"code"');
+      expect(queryCalls[2][0]).toContain('"status"');
+    } finally {
+      delete EXTRA_FIELDS_MAP.bi_hub_reports;
+    }
+  });
+
+  it('omits record_extra when the configured extras query fails', async () => {
+    EXTRA_FIELDS_MAP.bi_hub_reports = ['missing_column'];
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ total: 1 }])
+      .mockResolvedValueOnce([{ id: 42, display_name: 'Revenue', created_at: '2026-01-01' }])
+      .mockRejectedValueOnce(new Error('column does not exist'));
+
+    try {
+      const { service } = createService({ query });
+      const result = await service.getRecords('bi_hub_reports', {}, { page: 1, limit: 20, skip: 0 });
+
+      expect(result.data[0]).not.toHaveProperty('record_path');
+      expect(result.data[0]).not.toHaveProperty('record_extra');
+    } finally {
+      delete EXTRA_FIELDS_MAP.bi_hub_reports;
+    }
   });
 
   it('applies search filter on id and name column', async () => {

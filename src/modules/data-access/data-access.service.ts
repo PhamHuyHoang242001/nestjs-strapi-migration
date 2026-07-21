@@ -957,7 +957,8 @@ export class DataAccessService {
 
     params.push(pagination.limit, pagination.skip || 0);
     const dataQuery = `SELECT id, ${nameCol} as display_name, created_at FROM "${tableName}" ${whereClause} ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
-    const data = await this.connection.query<Record<string, unknown>[]>(dataQuery, params);
+    const rows = await this.connection.query<Record<string, unknown>[]>(dataQuery, params);
+    const data = await this.enrichRecordBrowserRows(tableName, rows);
 
     return {
       data,
@@ -1036,7 +1037,8 @@ export class DataAccessService {
     // Fetch paginated scoped data
     params.push(pagination.limit, pagination.skip || 0);
     const dataQuery = `SELECT DISTINCT t0.id, t0."${nameCol}" as display_name, t0.created_at FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.deleted_at IS NULL AND t0.is_deleted IS NOT TRUE${whereExtra} ORDER BY t0.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
-    const data = await this.connection.query(dataQuery, params);
+    const rows = await this.connection.query<Record<string, unknown>[]>(dataQuery, params);
+    const data = await this.enrichRecordBrowserRows(tableName, rows);
 
     return {
       data,
@@ -1048,6 +1050,41 @@ export class DataAccessService {
         totalPages: Math.ceil(total / pagination.limit) || 1,
       },
     };
+  }
+
+  /** Add display metadata shared with the grouped data-access list response. */
+  private async enrichRecordBrowserRows(tableName: string, rows: Record<string, unknown>[]) {
+    if (!rows.length) return rows;
+
+    const extraFields = getExtraFields(tableName);
+    const extrasById = new Map<number, Record<string, unknown>>();
+
+    if (extraFields.length) {
+      const ids = rows.map((row) => Number(row.id)).filter(Number.isInteger);
+      try {
+        const extraRows = await this.connection.query<Record<string, unknown>[]>(
+          `SELECT id, ${extraFields.map((field) => `"${field}"`).join(', ')} FROM "${tableName}" WHERE id = ANY($1) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
+          [ids],
+        );
+        for (const extraRow of extraRows) {
+          extrasById.set(Number(extraRow.id), Object.fromEntries(extraFields.map((field) => [field, extraRow[field]])));
+        }
+      } catch {
+        // A stale extra-field config must not make the records browser unavailable.
+      }
+    }
+
+    return rows.map((row) => {
+      const id = Number(row.id);
+      // Temporarily disabled for the records browser only.
+      // const record_path = await this.recordPath.buildPath(tableName, id).catch(() => `ID: ${id}`);
+      const record_extra = extrasById.get(id);
+      return {
+        ...row,
+        // record_path,
+        ...(record_extra ? { record_extra } : {}),
+      };
+    });
   }
 
   /**
