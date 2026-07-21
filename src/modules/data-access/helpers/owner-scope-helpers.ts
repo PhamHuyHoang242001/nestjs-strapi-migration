@@ -1,6 +1,7 @@
 import {
   HIERARCHY_MAP,
   ALLOWED_TABLES,
+  RULE_TARGET_TABLES,
   ROOT_OWNER_CONFIG,
   OWNER_ALL_TABLES,
   OWNER_ALL_RESOURCE_ID,
@@ -85,7 +86,12 @@ export function buildOwnerJoinChain(
 export function buildAccessibleCTE(roleIdsParam: string): { cteSql: string } {
   const branches: string[] = [];
 
-  for (const tableName of ALLOWED_TABLES) {
+  // Iterate RULE_TARGET_TABLES (not ALLOWED_TABLES): only tables that may carry a
+  // data_access rule contribute a branch. Leaf tables (checklists, other_files,
+  // documents, ...) inherit scope from their ancestor and never hold a rule, so
+  // emitting their JOIN chain here only adds FK column references that can break
+  // on schema-drifted DBs — and never matches a real rule.
+  for (const tableName of RULE_TARGET_TABLES) {
     const rootTable = findRootTable(tableName);
     if (!rootTable) continue;
 

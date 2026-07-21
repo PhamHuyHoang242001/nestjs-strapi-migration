@@ -47,6 +47,34 @@ export const HIERARCHY_MAP: Record<string, HierarchyEntry | null> = {
 export const ALLOWED_TABLES = new Set(Object.keys(HIERARCHY_MAP));
 
 /**
+ * Subset of ALLOWED_TABLES that may be the TARGET of a data_access rule (i.e. a rule
+ * can be created against these tables). Business rule: in bi_payment, scoping stops at
+ * the program level — leaf tables (checklists, other_files, documents, templates,
+ * comments, work_steps, histories, log_changes, categories) inherit scope from their
+ * program/project ancestor and never carry their own rule. Restricting the rule-target
+ * set keeps the accessible-records CTE from emitting JOIN branches (and thus FK column
+ * references like bi_payment_checklist_id / bi_payment_document_id) for tables that will
+ * never hold a rule — which also avoids schema-drift errors on DBs using a different FK
+ * naming convention.
+ *
+ * Distinct from ALLOWED_TABLES: every table with a hierarchy entry is still browsable
+ * via the records browser (getScopedRecords walks HIERARCHY_MAP); only rule creation
+ * is gated by this set.
+ */
+export const RULE_TARGET_TABLES = new Set<string>([
+  // bi_hub roots + level-1 reports
+  'bi_hub_bicc_departments',
+  'bi_hub_reports',
+  'bi_hub_diagnostic_reports',
+  // bi_payment: scope stops at program (no leaf rules)
+  'bi_payment_projects',
+  'bi_payment_programs',
+  // ma_tool roots
+  'ma_tool_workspaces',
+  'ma_tool_cstb_rpt_properties',
+]);
+
+/**
  * Whole-table SO ("own-all") roots. Ownership here is not per-record: a role is
  * declared SO of the ENTIRE table via a single sentinel resource_owners row
  * (resource_id = OWNER_ALL_RESOURCE_ID). Members of such a role browse every row

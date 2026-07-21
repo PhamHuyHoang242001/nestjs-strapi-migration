@@ -102,11 +102,15 @@ describe('buildAccessibleCTE()', () => {
     expect(result.cteSql).toContain('bi_hub_diagnostic_reports');
   });
 
-  it('includes all ma_tool scoped tables', () => {
+  it('includes ma_tool rule-target tables only (root + own-all, not leaf docs/templates)', () => {
     const result = buildAccessibleCTE('$1');
+    // Rule targets: workspaces (root) + cstb_rpt_properties (own-all). ma_tool_templates
+    // and ma_tool_documents are leaf tables — they inherit scope and never carry a rule,
+    // so they are intentionally excluded from the accessible-records CTE.
     expect(result.cteSql).toContain('ma_tool_workspaces');
-    expect(result.cteSql).toContain('ma_tool_templates');
-    expect(result.cteSql).toContain('ma_tool_documents');
+    expect(result.cteSql).toContain('ma_tool_cstb_rpt_properties');
+    expect(result.cteSql).not.toContain('ma_tool_templates');
+    expect(result.cteSql).not.toContain('ma_tool_documents');
   });
 
   it('all branches join to resource_owners with correct resource_type', () => {
@@ -116,12 +120,20 @@ describe('buildAccessibleCTE()', () => {
     expect(result.cteSql).toContain("resource_type = 'workspace'");
   });
 
-  it('includes bi_payment branches (cascade to bicc-department root)', () => {
+  it('includes bi_payment rule-target branches (project + program), excludes leaf tables', () => {
     const result = buildAccessibleCTE('$1');
-    // bi_payment_projects now cascades to bi_hub_bicc_departments (ROOT_OWNER_CONFIG) → included.
+    // bi_payment scoping stops at program: only projects + programs are rule targets.
+    // Leaf tables (checklists, other_files, documents, templates, comments, work_steps,
+    // histories, log_changes) inherit scope and must NOT appear here — their FK column
+    // references (e.g. bi_payment_checklist_id) would otherwise leak into the CTE.
     expect(result.cteSql).toContain('bi_payment_projects');
     expect(result.cteSql).toContain('bi_payment_programs');
     expect(result.cteSql).toContain("resource_type = 'bicc_department'");
+    expect(result.cteSql).not.toContain('bi_payment_checklists');
+    expect(result.cteSql).not.toContain('bi_payment_other_files');
+    expect(result.cteSql).not.toContain('bi_payment_documents');
+    expect(result.cteSql).not.toContain('bi_payment_checklist_id');
+    expect(result.cteSql).not.toContain('bi_payment_document_id');
   });
 
   it('each branch selects data_id and table_name', () => {

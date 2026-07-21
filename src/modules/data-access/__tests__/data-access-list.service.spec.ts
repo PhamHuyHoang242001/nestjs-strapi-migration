@@ -67,9 +67,9 @@ const sampleGroups = [
   {
     data_id: 10,
     module_id: 3,
-    table_name: 'ma_tool_documents',
-    module_path: '/Data Uploader/Documents',
-    module_name: 'Documents',
+    table_name: 'ma_tool_workspaces',
+    module_path: '/Data Uploader/Workspaces',
+    module_name: 'Workspaces',
     latest_created_at: '2026-05-14T09:00:00Z',
   },
 ];
@@ -118,7 +118,7 @@ const sampleRules = [
 
 const sampleRecordNames = {
   bi_hub_reports: [{ id: 42, display_name: 'Q2 Revenue Analysis' }],
-  ma_tool_documents: [{ id: 10, display_name: 'Upload Template A' }],
+  ma_tool_workspaces: [{ id: 10, display_name: 'Workspace Alpha' }],
 };
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ describe('DataAccessService.list() — grouped', () => {
     });
 
     it('record_name falls back to "ID: {data_id}" when target record not found', async () => {
-      const { service } = setupGroupedMock({ recordNames: { bi_hub_reports: [], ma_tool_documents: [] } });
+      const { service } = setupGroupedMock({ recordNames: { bi_hub_reports: [], ma_tool_workspaces: [] } });
       const result = await service.list({}, defaultSort, defaultPagination);
 
       expect(result.data[0].record_name).toBe('ID: 42');
@@ -368,7 +368,7 @@ describe('DataAccessService.list() — grouped', () => {
       await service.list({}, defaultSort, defaultPagination);
 
       // After count(1) + groups(1) + rules(1) = 3 calls, there should be 2 record name queries
-      // (bi_hub_reports and ma_tool_documents)
+      // (bi_hub_reports and ma_tool_workspaces — both rule targets)
       expect(queryMock).toHaveBeenCalledTimes(5); // count + groups + rules + 2 record tables
     });
 
@@ -378,8 +378,8 @@ describe('DataAccessService.list() — grouped', () => {
 
       expect(result.data[0].table_name).toBe('bi_hub_reports');
       expect(result.data[0].record_name).toBe('Q2 Revenue Analysis');
-      expect(result.data[1].table_name).toBe('ma_tool_documents');
-      expect(result.data[1].record_name).toBe('Upload Template A');
+      expect(result.data[1].table_name).toBe('ma_tool_workspaces');
+      expect(result.data[1].record_name).toBe('Workspace Alpha');
     });
   });
 
@@ -390,7 +390,7 @@ describe('DataAccessService.list() — grouped', () => {
       EXTRA_FIELDS_MAP.bi_hub_reports = ['code', 'status'];
       const records = {
         bi_hub_reports: [{ id: 42, display_name: 'Q2 Revenue Analysis', code: 'RPT-01', status: 'active' }],
-        ma_tool_documents: [{ id: 10, display_name: 'Upload Template A' }],
+        ma_tool_workspaces: [{ id: 10, display_name: 'Workspace Alpha' }],
       };
       const { service } = setupGroupedMock({ recordNames: records });
       const result = await service.list({}, defaultSort, defaultPagination);
@@ -409,8 +409,8 @@ describe('DataAccessService.list() — grouped', () => {
       queryMock.mockResolvedValueOnce(sampleRules); // rules
       // bi_hub_reports fetch rejects (bad column) → per-table catch, name-only.
       queryMock.mockRejectedValueOnce(new Error('column "nonexistent_col" does not exist'));
-      // ma_tool_documents ok (no extra declared).
-      queryMock.mockResolvedValueOnce([{ id: 10, display_name: 'Upload Template A' }]);
+      // ma_tool_workspaces ok (no extra declared).
+      queryMock.mockResolvedValueOnce([{ id: 10, display_name: 'Workspace Alpha' }]);
       const service = createMockService(queryMock);
 
       const result = await service.list({}, defaultSort, defaultPagination);
@@ -418,7 +418,7 @@ describe('DataAccessService.list() — grouped', () => {
       // List stays 200 OK; failed table falls back, no record_extra.
       expect(result.data[0]).not.toHaveProperty('record_extra');
       expect(result.data[0].record_name).toBe('ID: 42');
-      expect(result.data[1].record_name).toBe('Upload Template A');
+      expect(result.data[1].record_name).toBe('Workspace Alpha');
     });
 
     it('missing target row → record_name fallback, record_extra absent', async () => {
@@ -426,7 +426,7 @@ describe('DataAccessService.list() — grouped', () => {
       const records = {
         // row 42 absent → falls back to ID: 42, no record_extra.
         bi_hub_reports: [],
-        ma_tool_documents: [{ id: 10, display_name: 'Upload Template A' }],
+        ma_tool_workspaces: [{ id: 10, display_name: 'Workspace Alpha' }],
       };
       const { service } = setupGroupedMock({ recordNames: records });
       const result = await service.list({}, defaultSort, defaultPagination);

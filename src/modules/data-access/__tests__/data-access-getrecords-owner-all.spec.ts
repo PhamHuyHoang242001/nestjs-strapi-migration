@@ -91,16 +91,22 @@ describe('DataAccessService.getRecords() — whole-table SO (own-all)', () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
-  it('still returns empty for owner-config-pending tables (bi_payment_projects)', async () => {
-    const { service, queryMock } = createService([[{ role_id: 3 }]]);
+  it('returns records for a rule-target table with full owner-config cascade (bi_payment_projects)', async () => {
+    // bi_payment_projects is a rule target: the scoped path runs the role lookup,
+    // then the owner-config JOIN chain (project → bicc_department → resource_owners).
+    const { service, queryMock } = createService([
+      [{ role_id: 3 }], // role lookup
+      [{ total: 1 }], // count
+      [{ id: 42, display_name: 'Project Alpha', created_at: '2026-01-01' }], // data
+    ]);
 
     const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, {
       userId: 10,
       client: 'user',
     });
 
-    expect(result.data).toHaveLength(0);
-    // Only the role lookup ran — bi_payment is not own-all and has no owner config.
-    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(result.data).toHaveLength(1);
+    // role lookup + count + data = 3 queries (not the old 1 — project is now owned).
+    expect(queryMock).toHaveBeenCalledTimes(3);
   });
 });

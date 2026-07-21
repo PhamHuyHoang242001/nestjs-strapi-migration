@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import {
   ALLOWED_TABLES,
+  RULE_TARGET_TABLES,
   NAME_COLUMN_MAP,
   OWNER_ALL_TABLES,
   OWNER_ALL_RESOURCE_ID,
@@ -200,7 +201,7 @@ export class DataAccessService {
     // walk via HIERARCHY_MAP; isolated catch so one bad record can't fail the list.
     const recordPaths = await Promise.all(
       groups.map((g) =>
-        g.table_name && ALLOWED_TABLES.has(g.table_name)
+        g.table_name && RULE_TARGET_TABLES.has(g.table_name)
           ? this.recordPath.buildPath(g.table_name, g.data_id).catch(() => `ID: ${g.data_id}`)
           : Promise.resolve(`ID: ${g.data_id}`),
       ),
@@ -260,23 +261,25 @@ export class DataAccessService {
    * data_access rule points at via da.data_id + m.table_name) is still live.
    *
    * Used by the unscoped list path (admin/super_admin) where no accessible CTE
-   * guards record visibility. Each ALLOWED_TABLE contributes one EXISTS branch
+   * guards record visibility. Each RULE_TARGET_TABLE contributes one EXISTS branch
    * gated on its own table_name; the dual-column deleted check (deleted_at +
    * is_deleted) mirrors the rest of the read path so records deleted via either
-   * path are excluded.
+   * path are excluded. RULE_TARGET_TABLES (not ALLOWED_TABLES) bounds the branch
+   * set to tables that may actually hold a rule — leaf tables inherit scope and
+   * never carry their own rule, so checking target-row existence for them is dead.
    *
    * A trailing catch-all (`m.table_name NOT IN (...)`) keeps rules pointing at
-   * non-ALLOWED tables visible — resolveModule() blocks creating such rules, but
+   * non-target tables visible — resolveModule() blocks creating such rules, but
    * legacy rows must not silently vanish from the list. Returns '' when no
-   * allowed tables exist.
+   * target tables exist.
    *
-   * No bind params: table names are static identifiers from ALLOWED_TABLES and
+   * No bind params: table names are static identifiers from RULE_TARGET_TABLES and
    * data_id is a column reference, so existing $N indexes in the caller stay valid.
    */
   private buildTargetExistsClause(): string {
     const branches: string[] = [];
     const allowedList: string[] = [];
-    for (const tableName of ALLOWED_TABLES) {
+    for (const tableName of RULE_TARGET_TABLES) {
       allowedList.push(`'${tableName}'`);
       branches.push(
         `(m.table_name = '${tableName}' AND EXISTS (SELECT 1 FROM "${tableName}" t WHERE t.id = da.data_id AND t.deleted_at IS NULL AND t.is_deleted IS NOT TRUE))`,
@@ -348,13 +351,15 @@ export class DataAccessService {
     return { ctePrefix, whereClause, params };
   }
 
-  /** Build UNION ALL branches for searching record names across target tables */
+  /** Build UNION ALL branches for searching record names across rule-target tables */
   private buildNameMatchesCTE(searchParam: string, moduleId?: number): string {
     // If module_id filter is set, we only need to search that specific module's table
-    // Otherwise search all allowed tables via modules join
+    // Otherwise search all rule-target tables via modules join. RULE_TARGET_TABLES
+    // (not ALLOWED_TABLES): a rule can only target these tables, so searching leaf
+    // tables for a name match would never correspond to a rule and only adds noise.
     const branches: string[] = [];
     for (const [tableName, nameCol] of Object.entries(NAME_COLUMN_MAP)) {
-      if (!ALLOWED_TABLES.has(tableName)) continue;
+      if (!RULE_TARGET_TABLES.has(tableName)) continue;
       const safeCol = /^[a-z_]+$/.test(nameCol) ? nameCol : 'id';
       branches.push(
         `SELECT t.id as data_id, m.id as module_id FROM "${tableName}" t JOIN modules m ON m.table_name = '${tableName}' AND m.deleted_at IS NULL WHERE CAST(t."${safeCol}" AS TEXT) ILIKE ${searchParam} AND t.deleted_at IS NULL${moduleId ? ` AND m.id = ${Number(moduleId)}` : ''}`,
@@ -401,10 +406,11 @@ export class DataAccessService {
   private async batchFetchRecordInfo(
     groups: { data_id: number; module_id: number; table_name: string }[],
   ): Promise<Map<string, { record_name: string; record_extra?: Record<string, any> }>> {
-    // Group entries by table_name, preserving each entry's module_id
+    // Group entries by table_name, preserving each entry's module_id.
+    // RULE_TARGET_TABLES: only resolve record info for tables that may carry a rule.
     const byTable = new Map<string, { data_id: number; module_id: number }[]>();
     for (const g of groups) {
-      if (!g.table_name || !ALLOWED_TABLES.has(g.table_name)) continue;
+      if (!g.table_name || !RULE_TARGET_TABLES.has(g.table_name)) continue;
       const entries = byTable.get(g.table_name) || [];
       entries.push({ data_id: g.data_id, module_id: g.module_id });
       byTable.set(g.table_name, entries);
@@ -472,10 +478,13 @@ export class DataAccessService {
     });
     if (!record) throw new NotFoundException(NOT_FOUND);
 
-    // Fetch the referenced record info from the target table
+    // Fetch the referenced record info from the target table.
+    // RULE_TARGET_TABLES: a rule can only target these tables, so we only resolve
+    // record info for them. A legacy row on a non-target table still returns with
+    // record_info = null (the rule itself remains visible for audit).
     const tableName = record.module?.table_name;
     let record_info: { id: number; display_name: string } | null = null;
-    if (tableName && ALLOWED_TABLES.has(tableName)) {
+    if (tableName && RULE_TARGET_TABLES.has(tableName)) {
       const nameCol = getNameColumn(tableName);
       const rows: { id: number; display_name: string }[] = await this.connection.query(
         // Dual-column deleted check (see batchFetchRecordInfo comment).
@@ -488,19 +497,22 @@ export class DataAccessService {
     }
 
     // root→leaf breadcrumb for the referenced record (e.g. "BICC / Report").
-    // Fallback ID:<data_id> on disallowed table or walk failure.
-    const record_path = tableName && ALLOWED_TABLES.has(tableName)
+    // Fallback ID:<data_id> on non-target table or walk failure.
+    const record_path = tableName && RULE_TARGET_TABLES.has(tableName)
       ? await this.recordPath.buildPath(tableName, record.data_id).catch(() => `ID: ${record.data_id}`)
       : `ID: ${record.data_id}`;
 
     return { ...record, record_info, record_path };
   }
 
-  /** Resolve module by ID and validate its table_name is allowed */
+  /** Resolve module by ID and validate its table_name is a valid rule target */
   private async resolveModule(moduleId: number): Promise<ModuleEntity> {
     const mod = await this.moduleRepo.findOne({ where: { id: moduleId } });
     if (!mod) throw new NotFoundException('module_not_found');
-    if (!mod.table_name || !ALLOWED_TABLES.has(mod.table_name)) {
+    // RULE_TARGET_TABLES (subset of ALLOWED_TABLES): only these tables may carry a
+    // data_access rule. Rejecting leaf modules here (checklists, other_files, ...)
+    // enforces the "bi_payment scoping stops at program" business rule at create time.
+    if (!mod.table_name || !RULE_TARGET_TABLES.has(mod.table_name)) {
       throw new BadRequestException('table_not_allowed');
     }
     return mod;
@@ -894,6 +906,8 @@ export class DataAccessService {
   // ── Records Browser ─────────────────────────────────────────────────────────
 
   async getRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams, userInfo?: ScopeUserInfo) {
+    // Records browser allows browsing any ALLOWED_TABLES member (leaf tables inherit
+    // scope but are still browsable); only rule creation is gated by RULE_TARGET_TABLES.
     if (!ALLOWED_TABLES.has(tableName)) {
       throw new BadRequestException('table_not_allowed');
     }

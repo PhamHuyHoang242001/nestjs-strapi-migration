@@ -114,11 +114,27 @@ describe('DataAccessService.create()', () => {
     await expect(service.create(baseDto)).rejects.toThrow('module_not_found');
   });
 
-  it('throws when module table_name not in ALLOWED_TABLES', async () => {
+  it('throws when module table_name not in RULE_TARGET_TABLES', async () => {
     const { service } = createService({
       moduleRepo: { findOne: jest.fn().mockResolvedValue({ id: 1, table_name: 'forbidden_table' }) },
     });
     await expect(service.create(baseDto)).rejects.toThrow('table_not_allowed');
+  });
+
+  it('rejects a leaf bi_payment table even though it is in ALLOWED_TABLES (bi_payment_documents)', async () => {
+    // bi_payment_documents is browsable (ALLOWED_TABLES) but not a rule target —
+    // bi_payment scoping stops at program, leaf tables inherit scope.
+    const { service } = createService({
+      moduleRepo: { findOne: jest.fn().mockResolvedValue({ id: 1, table_name: 'bi_payment_documents' }) },
+    });
+    await expect(service.create(baseDto)).rejects.toThrow('table_not_allowed');
+  });
+
+  it('accepts a valid rule target (bi_payment_programs)', async () => {
+    const { service } = createService({
+      moduleRepo: { findOne: jest.fn().mockResolvedValue({ id: 1, table_name: 'bi_payment_programs' }) },
+    });
+    await expect(service.create(baseDto)).resolves.toBeDefined();
   });
 
   it('calls hierarchy enforce for ALLOW scope', async () => {
