@@ -6,26 +6,19 @@ import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import { PaginationDecorator, PaginationParams } from '@common/decorators/pagination.decorator';
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BiPaymentDocumentService } from './bi-payment-document.service';
 import { SearchBiPaymentDocumentDto, UploadBiPaymentDocumentDto } from './dto';
 import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.decorator';
 
-// Strapi parity: /bi-payment/document (flat), programId via @Query. File ăn theo step perm.
-// Guard order LOCKED. Sale chỉ upload+view recon_data (verb-gate _sale chặn download/delete).
+const DOCUMENT_READ_PERMS = ['bp_program_view', 'bp_program_upload', 'bp_program_upload_recon'];
+const DOCUMENT_UPLOAD_PERMS = ['bp_program_upload', 'bp_program_upload_recon'];
+const DOCUMENT_STATUS_PERMS = ['bp_program_upload', 'bp_program_upload_recon', 'bp_program_approve'];
+
+// Strapi parity: /bi-payment/document (flat), programId via @Query.
+// Guard order LOCKED. Service resolves per-program workstep scope and own-only
+// recon visibility after this coarse OR-gate.
 @Controller('bi-payment/document')
 @ApiTags('bi-payment-document')
 @ApiBearerAuth()
@@ -42,13 +35,7 @@ export class BiPaymentDocumentController {
   // per-record data-scope (the doc table carries no data_access rules by design).
   @ApiOperation({ summary: 'List documents (filter by workstep)' })
   @Get()
-  @RequirePermission(
-    'bp_program_preparing',
-    'bp_program_calculating',
-    'bp_program_reconciliation_bicc',
-    'bp_program_reconciliation_sale',
-    'bp_program_confirm_release',
-  )
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   list(
     @Query() q: SearchBiPaymentDocumentDto,
     @SortCamel({
@@ -63,74 +50,29 @@ export class BiPaymentDocumentController {
     return this.service.list(q.programId, q, userId, sortParams, pagination);
   }
 
-  // GET /bi-payment/document/:id — Strapi findOneDocumentById: doc + flags.
-  @ApiOperation({ summary: 'Get document detail' })
-  @Get(':id')
-  @RequirePermission(
-    'bp_program_preparing',
-    'bp_program_calculating',
-    'bp_program_reconciliation_bicc',
-    'bp_program_reconciliation_sale',
-    'bp_program_confirm_release',
-  )
-  details(@Param('id') id: number, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.findOne(+id, adminFlag(req), userId);
-  }
-
-  // GET /bi-payment/document/:id/download — Strapi dowloadFileDocument (metadata; stream deferred).
-  @ApiOperation({ summary: 'Download document' })
-  @Get(':id/download')
-  @RequirePermission(
-    'bp_program_preparing',
-    'bp_program_calculating',
-    'bp_program_reconciliation_bicc',
-    'bp_program_reconciliation_sale',
-    'bp_program_confirm_release',
-  )
-  download(@Param('id') id: number, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.download(+id, adminFlag(req), userId);
-  }
-
   // POST /bi-payment/document — Strapi createDocument. workStep trong body (EworkstepType).
   @ApiOperation({ summary: 'Upload document' })
   @Post()
-  @RequirePermission(
-    'bp_program_preparing',
-    'bp_program_calculating',
-    'bp_program_reconciliation_bicc',
-    'bp_program_reconciliation_sale',
-    'bp_program_confirm_release',
-  )
+  @RequirePermission(...DOCUMENT_UPLOAD_PERMS)
   upload(@Body() dto: UploadBiPaymentDocumentDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.upload(dto, req.info?.dataScope ?? null, userId ? +userId : undefined);
-  }
-
-  // DELETE /bi-payment/document/:id — soft delete (no Strapi parity; NestJS-only endpoint).
-  @ApiOperation({ summary: 'Delete document (soft delete)' })
-  @Delete(':id')
-  @RequirePermission('bp_program_preparing', 'bp_program_reconciliation_bicc', 'bp_program_confirm_release')
-  delete(@Param('id') id: number, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.delete(+id, adminFlag(req), userId);
   }
 
   // PATCH /bi-payment/document/update-status — Strapi updateStatusDocuments (batch).
   // Body { ids, status, rejectionReason } → { success, error, idsSuccess, idsError }.
   @ApiOperation({ summary: 'Update document status (batch)' })
   @Patch('update-status')
-  @RequirePermission('bp_program_preparing', 'bp_program_reconciliation_bicc')
+  @RequirePermission(...DOCUMENT_STATUS_PERMS)
   updateStatus(@Body() dto: { ids: number[]; status: string; rejectionReason?: string }, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
-    return this.service.updateStatus(dto, userId);
+    return this.service.updateStatus(dto, userId, adminFlag(req));
   }
 
   // POST /bi-payment/document/merge-file — Strapi mergeFile. Body { documentIds, mode, templateId }.
   @ApiOperation({ summary: 'Merge documents' })
   @Post('merge-file')
-  @RequirePermission('bp_program_confirm_release')
+  @RequirePermission('bp_program_upload')
   merge(
     @Body() dto: { documentIds: number[]; mode: 'csv' | 'excel'; templateId: number },
     @Req() req: RequestWithInfo,
@@ -142,7 +84,7 @@ export class BiPaymentDocumentController {
   // GET /bi-payment/document/get-merged-status-reconcilation/:id — Strapi.
   @ApiOperation({ summary: 'Get merge status' })
   @Get('get-merged-status-reconcilation/:id')
-  @RequirePermission('bp_program_confirm_release')
+  @RequirePermission('bp_program_upload')
   getMergeStatus(@Param('id') id: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.getMergeStatus(+id, adminFlag(req), userId);
@@ -151,7 +93,7 @@ export class BiPaymentDocumentController {
   // GET /bi-payment/document/download-merged-reconcilation/:id — Strapi.
   @ApiOperation({ summary: 'Download merged file' })
   @Get('download-merged-reconcilation/:id')
-  @RequirePermission('bp_program_confirm_release')
+  @RequirePermission('bp_program_upload')
   downloadMerged(@Param('id') id: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.downloadMerged(+id, adminFlag(req), userId);
@@ -161,7 +103,7 @@ export class BiPaymentDocumentController {
   // stats: full IFindDocument filters → { total, SUBMIT, APPROVAL, REJECTED }.
   @ApiOperation({ summary: 'Document stats by status' })
   @Get('stats')
-  @RequirePermission('bp_program_view')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   stats(@Query() q: SearchBiPaymentDocumentDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.stats(q.programId ?? 0, q, userId);
@@ -170,7 +112,7 @@ export class BiPaymentDocumentController {
   // upload-status: query ids (csv) → [{ id, s3_upload_status }] for the visible subset.
   @ApiOperation({ summary: 'Document s3 upload-status by ids' })
   @Get('upload-status')
-  @RequirePermission('bp_program_view')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   uploadStatus(@Query('ids') ids: string, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.uploadStatus(ids, userId);
@@ -180,7 +122,7 @@ export class BiPaymentDocumentController {
   // created/updated/approved/rejected bi-payment docs the caller may see. keyword filters email.
   @ApiOperation({ summary: 'Users who created documents' })
   @Get('user-created')
-  @RequirePermission('bp_program_view')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   userCreated(
     @Query('keyword') keyword: string,
     @PaginationDecorator() pagination: PaginationParams,
@@ -192,7 +134,7 @@ export class BiPaymentDocumentController {
 
   @ApiOperation({ summary: 'Users who updated documents' })
   @Get('user-updated')
-  @RequirePermission('bp_program_view')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   userUpdated(
     @Query('keyword') keyword: string,
     @PaginationDecorator() pagination: PaginationParams,
@@ -204,7 +146,7 @@ export class BiPaymentDocumentController {
 
   @ApiOperation({ summary: 'Users who approved documents' })
   @Get('user-approved')
-  @RequirePermission('bp_program_view')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   userApproved(
     @Query('keyword') keyword: string,
     @PaginationDecorator() pagination: PaginationParams,
@@ -216,7 +158,7 @@ export class BiPaymentDocumentController {
 
   @ApiOperation({ summary: 'Users who rejected documents' })
   @Get('user-rejected')
-  @RequirePermission('bp_program_view')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
   userRejected(
     @Query('keyword') keyword: string,
     @PaginationDecorator() pagination: PaginationParams,
@@ -224,6 +166,24 @@ export class BiPaymentDocumentController {
   ) {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.listUserRejected(keyword, pagination, userId);
+  }
+
+  // Dynamic GET routes stay after one-segment static routes so paths such as
+  // /stats and /user-created are never captured as an `id` by Express.
+  @ApiOperation({ summary: 'Get document detail' })
+  @Get(':id')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
+  details(@Param('id') id: number, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.findOne(+id, adminFlag(req), userId);
+  }
+
+  @ApiOperation({ summary: 'Download document' })
+  @Get(':id/download')
+  @RequirePermission(...DOCUMENT_READ_PERMS)
+  download(@Param('id') id: number, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.download(+id, adminFlag(req), userId);
   }
 }
 

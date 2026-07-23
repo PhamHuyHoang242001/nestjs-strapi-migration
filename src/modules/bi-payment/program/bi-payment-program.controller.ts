@@ -54,6 +54,17 @@ export class BiPaymentProgramController {
     return this.service.search(query, sortParams, pagination, req.info?.dataScope ?? null);
   }
 
+  // Keep one-segment static routes before /:id so Express does not treat the
+  // action name as a program id.
+  @ApiOperation({ summary: 'List programs updated by current user' })
+  @Get('user-updated')
+  @RequirePermission('bp_program_view')
+  @RequireDataAccess(TABLE, 'bp_program_view')
+  userUpdated(@Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.listUserUpdated(userId ? +userId : 0, req.info?.dataScope ?? null);
+  }
+
   // GET /bi-payment/program/:id — Strapi findProgramById.
   @ApiOperation({ summary: 'Get BI Payment program details' })
   @Get(':id')
@@ -101,15 +112,5 @@ export class BiPaymentProgramController {
   @RequireDataAccess(TABLE, 'bp_program_delete')
   delete(@Param('id') id: number, @Req() req: RequestWithInfo) {
     return this.service.delete(+id, req.info?.dataScope ?? null);
-  }
-
-  // GET /bi-payment/program/user-updated — Strapi findUserUpdatedProgram.
-  @ApiOperation({ summary: 'List programs updated by current user' })
-  @Get('user-updated')
-  @RequirePermission('bp_program_view')
-  @RequireDataAccess(TABLE, 'bp_program_view')
-  userUpdated(@Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.listUserUpdated(userId ? +userId : 0, req.info?.dataScope ?? null);
   }
 }

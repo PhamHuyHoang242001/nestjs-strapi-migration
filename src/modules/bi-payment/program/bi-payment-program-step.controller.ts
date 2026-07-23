@@ -38,8 +38,8 @@ export class BiPaymentProgramStepController {
   // (Strapi next_step nằm trong next-step handler; giữ endpoint này cho frontend mới.)
   @ApiOperation({ summary: 'Chuyển bước program (next_step)' })
   @Patch('next-step/:id')
-  @RequirePermission('bp_program_next_step')
-  @RequireDataAccess(TABLE, 'bp_program_next_step')
+  @RequirePermission('bp_program_edit')
+  @RequireDataAccess(TABLE, 'bp_program_edit')
   nextStep(@Param('id') id: number, @Body() dto: NextStepDto, @Req() req: RequestWithInfo) {
     return this.service.nextStep(+id, dto, req.info?.dataScope ?? null);
   }
@@ -47,43 +47,80 @@ export class BiPaymentProgramStepController {
   // ── Workstep PATCH (Strapi parity: /program/<step>-workstep/:id) ──
   @ApiOperation({ summary: 'Màn Chuẩn bị — cập nhật workstep' })
   @Patch('preparing-workstep/:id')
-  @RequirePermission('bp_program_preparing')
-  @RequireDataAccess(TABLE, 'bp_program_preparing')
-  updatePreparingWorkstep(@Param('id') id: number, @Body() dto: UpdatePreparingWorkstepDto, @Req() req: RequestWithInfo) {
-    return this.service.updatePreparing(+id, dto as unknown as Partial<UpdateBiPaymentProgramDto>, req.info?.dataScope ?? null);
+  @RequirePermission('bp_program_edit')
+  @RequireDataAccess(TABLE, 'bp_program_edit')
+  updatePreparingWorkstep(
+    @Param('id') id: number,
+    @Body() dto: UpdatePreparingWorkstepDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    return this.service.updatePreparing(
+      +id,
+      dto as unknown as Partial<UpdateBiPaymentProgramDto>,
+      req.info?.dataScope ?? null,
+    );
   }
 
   @ApiOperation({ summary: 'Màn Tính toán — cập nhật workstep' })
   @Patch('calculating-workstep/:id')
-  @RequirePermission('bp_program_calculating')
-  @RequireDataAccess(TABLE, 'bp_program_calculating')
-  updateCalculatingWorkstep(@Param('id') id: number, @Body() dto: UpdateCalculatingWorkstepDto, @Req() req: RequestWithInfo) {
-    return this.service.updateCalculating(+id, dto as unknown as Partial<UpdateBiPaymentProgramDto>, req.info?.dataScope ?? null);
+  @RequirePermission('bp_program_edit')
+  @RequireDataAccess(TABLE, 'bp_program_edit')
+  updateCalculatingWorkstep(
+    @Param('id') id: number,
+    @Body() dto: UpdateCalculatingWorkstepDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    return this.service.updateCalculating(
+      +id,
+      dto as unknown as Partial<UpdateBiPaymentProgramDto>,
+      req.info?.dataScope ?? null,
+    );
   }
 
   @ApiOperation({ summary: 'Màn Tra soát (BICC) — cập nhật workstep' })
   @Patch('reconciliation-workstep/:id')
-  @RequirePermission('bp_program_reconciliation_bicc')
-  @RequireDataAccess(TABLE, 'bp_program_reconciliation_bicc')
-  updateReconciliationWorkstep(@Param('id') id: number, @Body() dto: UpdateReconciliationWorkstepDto, @Req() req: RequestWithInfo) {
-    return this.service.updateReconciliationBicc(+id, dto as unknown as Partial<UpdateBiPaymentProgramDto>, req.info?.dataScope ?? null);
+  @RequirePermission('bp_program_edit')
+  @RequireDataAccess(TABLE, 'bp_program_edit')
+  updateReconciliationWorkstep(
+    @Param('id') id: number,
+    @Body() dto: UpdateReconciliationWorkstepDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    return this.service.updateReconciliationBicc(
+      +id,
+      dto as unknown as Partial<UpdateBiPaymentProgramDto>,
+      req.info?.dataScope ?? null,
+    );
   }
 
   @ApiOperation({ summary: 'Màn Waiting-for-approval — cập nhật workstep' })
   @Patch('waiting-for-approval-workstep/:id')
-  @RequirePermission('bp_program_confirm_release')
-  @RequireDataAccess(TABLE, 'bp_program_confirm_release')
-  updateWaitingForApprovalWorkstep(@Param('id') id: number, @Body() dto: UpdateWaitingForApprovalWorkstepDto, @Req() req: RequestWithInfo) {
-    return this.service.updateCalculating(+id, dto as unknown as Partial<UpdateBiPaymentProgramDto>, req.info?.dataScope ?? null);
+  @RequirePermission('bp_program_edit')
+  @RequireDataAccess(TABLE, 'bp_program_edit')
+  updateWaitingForApprovalWorkstep(
+    @Param('id') id: number,
+    @Body() dto: UpdateWaitingForApprovalWorkstepDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    return this.service.updateCalculating(
+      +id,
+      dto as unknown as Partial<UpdateBiPaymentProgramDto>,
+      req.info?.dataScope ?? null,
+    );
   }
 
   // PATCH /bi-payment/program/pic-confirm-final-link — Strapi parity (body programId).
   @ApiOperation({ summary: 'PIC confirm final link (màn confirm)' })
   @Patch('pic-confirm-final-link')
-  @RequirePermission('bp_program_confirm_release')
-  @RequireDataAccess(TABLE, 'bp_program_confirm_release')
+  @RequirePermission('bp_program_confirm')
+  @RequireDataAccess(TABLE, 'bp_program_confirm')
   picConfirmFinalLink(@Body() dto: PicConfirmFinalLinkDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
-    return this.service.picConfirmFinalLink(+dto.programId, dto, req.info?.dataScope ?? null, userId ? +userId : undefined);
+    return this.service.picConfirmFinalLink(
+      +dto.programId,
+      dto,
+      req.info?.dataScope ?? null,
+      userId ? +userId : undefined,
+    );
   }
 }

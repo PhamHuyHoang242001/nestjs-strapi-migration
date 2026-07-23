@@ -94,6 +94,7 @@ describe('BiPaymentTemplateService', () => {
     };
     programRepo = { findOne: jest.fn().mockResolvedValue(null) };
     projectRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    (ds as any).transaction = jest.fn(async (cb: any) => cb({ getRepository: () => repo }));
 
     service = new BiPaymentTemplateService(repo, programRepo, projectRepo, ds, stepScope, permissionCache);
   });
@@ -107,12 +108,12 @@ describe('BiPaymentTemplateService', () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([{ one: 1 }]); // isInOwnedScope true
   };
-  // non-SO with preparing code at program → allowed = {prepare, ex_prepare}.
-  const mockPrepareOnly = () => {
+  // non-SO with upload code at program → allowed = all worksteps.
+  const mockUploadFull = () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]); // isInOwnedScope false
     queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-      Promise.resolve(code === 'bp_program_preparing' ? [PROGRAM_ID] : []),
+      Promise.resolve(code === 'bp_program_upload' ? [PROGRAM_ID] : []),
     );
   };
 
@@ -123,23 +124,43 @@ describe('BiPaymentTemplateService', () => {
       );
     });
 
-    it('non-SO prepare at program → t.workstep_type IN (prepare, ex_prepare), no data-scope', async () => {
-      mockPrepareOnly();
+    it('view-only program → empty response', async () => {
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      const out = await service.search(USER_ID, searchQuery(), sortParams, pagination);
+      expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('non-SO upload at program → all worksteps, no data-scope', async () => {
+      mockUploadFull();
       await service.search(USER_ID, searchQuery(), sortParams, pagination);
       const qb = repo.lastQb;
       const joined = qb.capturedWheres.join(' | ');
       expect(joined).toContain('t.workstep_type IN (:...wts)');
-      expect(qb.capturedParams.wts).toEqual(expect.arrayContaining([MaToolWorkstepType.PREPARE, MaToolWorkstepType.EX_PREPARE]));
-      expect(qb.capturedParams.wts).not.toContain(MaToolWorkstepType.RECON_DATA);
+      expect(qb.capturedParams.wts).toEqual(
+        expect.arrayContaining([
+          MaToolWorkstepType.PREPARE,
+          MaToolWorkstepType.EX_PREPARE,
+          MaToolWorkstepType.RECON_DATA,
+          MaToolWorkstepType.RECON_FEEDBACK,
+        ]),
+      );
       // Visibility = step×program: no per-record data-scope predicate.
       expect(joined).not.toContain('1 = 0');
     });
 
-    it('workstepType=recon_data but only prepare → ForbiddenException', async () => {
-      mockPrepareOnly();
+    it('workstepType=recon_data with upload at program → allowed', async () => {
+      mockUploadFull();
       await expect(
         service.search(USER_ID, searchQuery({ workstepType: MaToolWorkstepType.RECON_DATA }), sortParams, pagination),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      ).resolves.toBeDefined();
+    });
+
+    it('workstepType=recon_data but only view → empty response', async () => {
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      const out = await service.search(USER_ID, searchQuery({ workstepType: MaToolWorkstepType.RECON_DATA }), sortParams, pagination);
+      expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
     it('SO owner → all worksteps, no throw', async () => {
@@ -165,11 +186,13 @@ describe('BiPaymentTemplateService', () => {
       expect(repo.lastQb.capturedParams.ver).toBe(2);
     });
 
-    it('non-SO no code at program → ForbiddenException', async () => {
+    it('non-SO no code at program → empty response', async () => {
       dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
       dsQuery.mockResolvedValueOnce([]);
       queryService.getAccessibleRecords.mockResolvedValue([]);
-      await expect(service.search(USER_ID, searchQuery(), sortParams, pagination)).rejects.toBeInstanceOf(ForbiddenException);
+      const out = await service.search(USER_ID, searchQuery(), sortParams, pagination);
+      expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
     });
 
     it('invalid workstepType value → BadRequestException (no silent fallback)', async () => {
@@ -203,8 +226,8 @@ describe('BiPaymentTemplateService', () => {
       expect(out.canDuplicate).toBe(true);
     });
 
-    it('non-admin with prepare at program → canDuplicate resolves true when create-code held', async () => {
-      mockPrepareOnly();
+    it('non-admin with upload at program → canDuplicate resolves true when create-code held', async () => {
+      mockUploadFull();
       repo.createQueryBuilder = jest.fn().mockImplementation(() => {
         const qb = makeQueryBuilder();
         qb.getOne = jest.fn().mockResolvedValue(tpl());
@@ -212,7 +235,7 @@ describe('BiPaymentTemplateService', () => {
         return qb;
       });
       queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-        Promise.resolve(code === 'bp_program_preparing' || code === 'bp_template_create' ? [PROGRAM_ID] : []),
+        Promise.resolve(code === 'bp_program_upload' || code === 'bp_template_create' ? [PROGRAM_ID] : []),
       );
       const out = await service.details(1, USER_ID, { isAdmin: false });
       expect(out.canDuplicate).toBe(true);
@@ -225,6 +248,76 @@ describe('BiPaymentTemplateService', () => {
         return qb;
       });
       await expect(service.details(99, USER_ID, { isAdmin: true })).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('create / duplicate / delete — program capability, not view permission', () => {
+    const createDto = () =>
+      ({
+        name: 'template-a',
+        description: 'desc',
+        uploadMethod: 'manual',
+        projectId: PROJECT_ID,
+        programId: PROGRAM_ID,
+        workstepType: MaToolWorkstepType.PREPARE,
+      }) as any;
+
+    it('create succeeds with template_create even if view scope is empty', async () => {
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      const capabilitySpy = jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(true);
+      programRepo.findOne = jest.fn().mockResolvedValue({ id: PROGRAM_ID, version: 1, is_deleted: false });
+      projectRepo.findOne = jest.fn().mockResolvedValue({ id: PROJECT_ID, project_status: 'active', is_deleted: false });
+      repo.findOne = jest.fn().mockResolvedValue(null);
+      const out = await service.create(createDto(), USER_ID);
+
+      expect(out).toEqual({ id: 1, name: 'template-a' });
+      expect(capabilitySpy).toHaveBeenCalledWith(USER_ID, PROGRAM_ID, 'bp_template_create');
+      expect(stepScope.resolveWorkstepScopesOrEmpty).not.toHaveBeenCalled();
+    });
+
+    it('duplicateMany succeeds with create code on source and target, regardless of view scope', async () => {
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(true);
+      programRepo.findOne = jest.fn().mockResolvedValue({ id: PROGRAM_ID + 1, version: 2, is_deleted: false });
+      repo.save = jest.fn(async (x: any) => (Array.isArray(x) ? x.map((item: any, index: number) => ({ ...item, id: index + 1 })) : { ...x, id: 1 }));
+      repo.find = jest
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { id: 11, name: 'copy-a', description: 'src', upload_method: 'manual', workstep_type: MaToolWorkstepType.PREPARE },
+        ]);
+      const out = await service.duplicateMany(
+        {
+          fromProgramId: PROGRAM_ID,
+          toProgramId: PROGRAM_ID + 1,
+          fromProjectId: PROJECT_ID,
+          listTemplate: [{ id: 11, name: 'copy-a' }],
+        } as any,
+        USER_ID,
+      );
+
+      expect(out.template_duplicate).toEqual([{ id: 1, name: 'copy-a' }]);
+      expect(stepScope.hasProgramCapability).toHaveBeenCalledWith(USER_ID, PROGRAM_ID, 'bp_template_create');
+      expect(stepScope.hasProgramCapability).toHaveBeenCalledWith(USER_ID, PROGRAM_ID + 1, 'bp_template_create');
+    });
+
+    it('delete succeeds with delete code even when view scope is empty', async () => {
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      const capabilitySpy = jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(true);
+      repo.createQueryBuilder = jest.fn().mockImplementation(() => {
+        const qb = makeQueryBuilder();
+        qb.getOne = jest.fn().mockResolvedValue({
+          id: 1,
+          bi_payment_program_id: PROGRAM_ID,
+          bi_payment_program: { project: { project_status: 'active' } },
+          documents: [],
+        });
+        return qb;
+      });
+      const out = await service.delete(1, USER_ID, { isAdmin: false });
+
+      expect(out).toEqual({ id: 1 });
+      expect(capabilitySpy).toHaveBeenCalledWith(USER_ID, PROGRAM_ID, 'bp_template_delete');
     });
   });
 
@@ -326,7 +419,7 @@ describe('BiPaymentTemplateService', () => {
       const out = await service.listUserCreated('a', pagination, USER_ID, { isAdmin: false });
       expect(out.data).toEqual([{ id: 5, email: 'a@x.com' }]);
       expect(out.meta.total).toBe(3);
-      expect(repo.lastQb.capturedWheres.join(' | ')).toContain('t.bi_payment_program_id IN (:...pids)');
+      expect(repo.lastQb.capturedWheres.join(' | ')).toContain('t.bi_payment_program_id IN (:...crossUploadPrograms)');
     });
 
     it('listUserUpdated uses template_updated_by_id column', async () => {

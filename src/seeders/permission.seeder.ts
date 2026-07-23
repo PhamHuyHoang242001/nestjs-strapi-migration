@@ -264,7 +264,15 @@ const PERM_MGMT_SERVICE_TOKEN: PermissionSeedItem[] = [
     is_active: true,
     module_id: 105,
   },
-  { id: 111, code: 'service_token_edit', name: 'Sửa', method: 'PATCH', action: 'update', is_active: true, module_id: 105 },
+  {
+    id: 111,
+    code: 'service_token_edit',
+    name: 'Sửa',
+    method: 'PATCH',
+    action: 'update',
+    is_active: true,
+    module_id: 105,
+  },
   {
     id: 112,
     code: 'service_token_delete',
@@ -276,33 +284,110 @@ const PERM_MGMT_SERVICE_TOKEN: PermissionSeedItem[] = [
   },
 ];
 
-// ── BI Payment (module_id=12,13,15) — gộp theo màn step v2 ─────────
-// 17 codes. File & comment không có code riêng — ăn theo permission màn step.
-// Exception = bp_program_next_step. Role không seed.
+// ── BI Payment (module_id=12,13,15) — 8-code program matrix ─────────
+// 14 codes total: project 4 + program 8 + template lifecycle 2.
 const BI_PAYMENT_PROJECT: PermissionSeedItem[] = [
   { id: 35, code: 'bp_project_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 12 },
-  { id: 36, code: 'bp_project_create', name: 'Tạo mới', method: 'POST', action: 'create', is_active: true, module_id: 12 },
+  {
+    id: 36,
+    code: 'bp_project_create',
+    name: 'Tạo mới',
+    method: 'POST',
+    action: 'create',
+    is_active: true,
+    module_id: 12,
+  },
   { id: 37, code: 'bp_project_edit', name: 'Sửa', method: 'PUT', action: 'update', is_active: true, module_id: 12 },
-  { id: 38, code: 'bp_project_delete', name: 'Xóa', method: 'DELETE', action: 'delete', is_active: true, module_id: 12 },
+  {
+    id: 38,
+    code: 'bp_project_delete',
+    name: 'Xóa',
+    method: 'DELETE',
+    action: 'delete',
+    is_active: true,
+    module_id: 12,
+  },
 ];
 
 const BI_PAYMENT_PROGRAM: PermissionSeedItem[] = [
   { id: 39, code: 'bp_program_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 13 },
-  { id: 40, code: 'bp_program_create', name: 'Tạo mới', method: 'POST', action: 'create', is_active: true, module_id: 13 },
+  {
+    id: 40,
+    code: 'bp_program_create',
+    name: 'Tạo mới',
+    method: 'POST',
+    action: 'create',
+    is_active: true,
+    module_id: 13,
+  },
   { id: 41, code: 'bp_program_edit', name: 'Sửa', method: 'PUT', action: 'update', is_active: true, module_id: 13 },
-  { id: 42, code: 'bp_program_delete', name: 'Xóa', method: 'DELETE', action: 'delete', is_active: true, module_id: 13 },
-  { id: 43, code: 'bp_program_next_step', name: 'Chuyển bước', method: 'PATCH', action: 'next_step', is_active: true, module_id: 13 },
-  { id: 44, code: 'bp_program_preparing', name: 'Màn Chuẩn bị', method: 'PATCH', action: 'preparing', is_active: true, module_id: 13 },
-  { id: 45, code: 'bp_program_calculating', name: 'Màn Tính toán', method: 'PATCH', action: 'calculating', is_active: true, module_id: 13 },
-  { id: 46, code: 'bp_program_reconciliation_bicc', name: 'Màn Tra soát (BICC)', method: 'PATCH', action: 'reconciliation_bicc', is_active: true, module_id: 13 },
-  { id: 47, code: 'bp_program_reconciliation_sale', name: 'Màn Tra soát (Sale)', method: 'PATCH', action: 'reconciliation_sale', is_active: true, module_id: 13 },
-  { id: 48, code: 'bp_program_confirm_release', name: 'Màn Confirm + Release', method: 'PATCH', action: 'confirm_release', is_active: true, module_id: 13 },
+  {
+    id: 42,
+    code: 'bp_program_delete',
+    name: 'Xóa',
+    method: 'DELETE',
+    action: 'delete',
+    is_active: true,
+    module_id: 13,
+  },
+  {
+    id: 49,
+    code: 'bp_program_upload',
+    name: 'Upload',
+    method: 'POST',
+    action: 'upload',
+    is_active: true,
+    module_id: 13,
+  },
+  {
+    id: 52,
+    code: 'bp_program_upload_recon',
+    name: 'Upload tra soát',
+    method: 'POST',
+    action: 'upload_recon',
+    is_active: true,
+    module_id: 13,
+  },
+  {
+    id: 53,
+    code: 'bp_program_approve',
+    name: 'Approve',
+    method: 'PATCH',
+    action: 'approve',
+    is_active: true,
+    module_id: 13,
+  },
+  {
+    id: 54,
+    code: 'bp_program_confirm',
+    name: 'Confirm',
+    method: 'PATCH',
+    action: 'confirm',
+    is_active: true,
+    module_id: 13,
+  },
 ];
 
 const BI_PAYMENT_TEMPLATE: PermissionSeedItem[] = [
-  // bp_template_view đã bỏ — view template ăn theo từng step (controller dùng OR của 5 step perm).
-  { id: 50, code: 'bp_template_create', name: 'Tạo mới', method: 'POST', action: 'create', is_active: true, module_id: 15 },
-  { id: 51, code: 'bp_template_delete', name: 'Xóa', method: 'DELETE', action: 'delete', is_active: true, module_id: 15 },
+  // Template visibility follows program upload capabilities; lifecycle verbs stay separate.
+  {
+    id: 50,
+    code: 'bp_template_create',
+    name: 'Tạo mới',
+    method: 'POST',
+    action: 'create',
+    is_active: true,
+    module_id: 15,
+  },
+  {
+    id: 51,
+    code: 'bp_template_delete',
+    name: 'Xóa',
+    method: 'DELETE',
+    action: 'delete',
+    is_active: true,
+    module_id: 15,
+  },
 ];
 
 // ── MA Tool / Report (module_id=107) ─────────────────────────────
@@ -333,7 +418,7 @@ export class PermissionSeeder implements Seeder {
       ...PERM_MGMT_DATA_ACCESS,
       ...PERM_MGMT_HISTORY,
       ...PERM_MGMT_SERVICE_TOKEN,
-      // BI Payment — gộp theo màn step (17 codes)
+      // BI Payment — project 4 + program 8 + template lifecycle 2
       ...BI_PAYMENT_PROJECT,
       ...BI_PAYMENT_PROGRAM,
       ...BI_PAYMENT_TEMPLATE,

@@ -7,7 +7,6 @@ import { Repository } from 'typeorm';
 import { CreateBiPaymentCommentDto } from './dto';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 
-const TABLE = 'bi_payment_comments';
 const PROGRAM_TABLE = 'bi_payment_programs';
 
 // Comment ăn theo workstep — endpoint tách theo workstep (preparing/reconciliation/...).
@@ -25,7 +24,6 @@ export class BiPaymentCommentService {
       .where('cm.program_id = :pid', { pid: programId })
       .andWhere('cm.workstep = :ws', { ws: workstep })
       .andWhere('cm.deleted_at IS NULL');
-    applyDataScope(qb, 'cm', TABLE, scope);
     return qb.getMany();
   }
 
@@ -49,12 +47,9 @@ export class BiPaymentCommentService {
 
   private async assertProgramInScope(programId: number, scope: DataScope | null): Promise<void> {
     if (scope === null) return;
-    const qb = this.programRepo
-      .createQueryBuilder('pg')
-      .select('1', 'one')
-      .where('pg.id = :pid', { pid: programId });
+    const qb = this.programRepo.createQueryBuilder('pg').select('1', 'one').where('pg.id = :pid', { pid: programId });
     applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
-    const ok = await qb.getRawOne();
+    const ok = await qb.getRawOne<{ one: number }>();
     if (!ok) throw new ForbiddenException('No permission');
   }
 }

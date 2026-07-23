@@ -1,17 +1,16 @@
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
 import { BiPaymentChecklist } from '@modules/databases/bi-payment-checklist.entity';
 import { BiPaymentOtherFile } from '@modules/databases/bi-payment-other-file.entity';
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SearchBiPaymentOtherFileDto, UploadBiPaymentOtherFileDto } from './dto';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 
-const TABLE = 'bi_payment_other_files';
-const CHECKLIST_TABLE = 'bi_payment_checklists';
+const PROGRAM_TABLE = 'bi_payment_programs';
 
 // Other-file = file đính kèm checklist. Record-scope = subtree checklist→program→project.
-// Perm màn Chuẩn bị (bp_program_preparing) gắn ở controller. Sale ko có perm này.
+// Attachment endpoints use the full upload capability configured at the controller.
 @Injectable()
 export class BiPaymentOtherFileService {
   constructor(
@@ -25,9 +24,10 @@ export class BiPaymentOtherFileService {
     // Scope-check the checklist itself (walks checklist→program→project→bicc via HIERARCHY_MAP).
     const qb = this.checklistRepo
       .createQueryBuilder('cl')
+      .innerJoin('cl.program', 'pg', 'pg.deleted_at IS NULL')
       .where('cl.id = :id', { id: dto.checkListId })
       .andWhere('cl.deleted_at IS NULL');
-    applyDataScope(qb, 'cl', CHECKLIST_TABLE, scope);
+    applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
     const checklist = await qb.getOne();
     if (!checklist) throw new NotFoundException('Checklist not found or out of scope');
 
@@ -54,10 +54,10 @@ export class BiPaymentOtherFileService {
     const qb = this.repo
       .createQueryBuilder('f')
       .innerJoin('f.bi_payment_checklist', 'cl', 'cl.deleted_at IS NULL')
-      .innerJoin('cl.bi_payment_program', 'pg', 'pg.deleted_at IS NULL')
+      .innerJoin('cl.program', 'pg', 'pg.deleted_at IS NULL')
       .where('pg.id = :pid', { pid: query.programId })
       .andWhere('f.deleted_at IS NULL');
-    applyDataScope(qb, 'f', TABLE, scope);
+    applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
     if (query.keyword) qb.andWhere('f.name ILIKE :kw', { kw: `%${query.keyword.trim()}%` });
     if (query.type) qb.andWhere('f.type = :type', { type: query.type });
     const ids = this.parseIds(query.checkListIds);
@@ -70,9 +70,11 @@ export class BiPaymentOtherFileService {
   async listUserCreated(userId: number, scope: DataScope | null) {
     const qb = this.repo
       .createQueryBuilder('f')
+      .innerJoin('f.bi_payment_checklist', 'cl', 'cl.deleted_at IS NULL')
+      .innerJoin('cl.program', 'pg', 'pg.deleted_at IS NULL')
       .where('f.deleted_at IS NULL')
       .andWhere('f.orther_file_created_by_id = :uid', { uid: userId });
-    applyDataScope(qb, 'f', TABLE, scope);
+    applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
     qb.orderBy('f.created_at', 'DESC');
     return qb.getMany();
   }
@@ -83,15 +85,21 @@ export class BiPaymentOtherFileService {
     if (!ids.length) return [];
     const qb = this.repo
       .createQueryBuilder('f')
+      .innerJoin('f.bi_payment_checklist', 'cl', 'cl.deleted_at IS NULL')
+      .innerJoin('cl.program', 'pg', 'pg.deleted_at IS NULL')
       .where('f.id IN (:...ids)', { ids })
       .andWhere('f.deleted_at IS NULL');
-    applyDataScope(qb, 'f', TABLE, scope);
+    applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
     return qb.getMany();
   }
 
   async delete(id: number, scope: DataScope | null) {
-    const qb = this.repo.createQueryBuilder('f').where('f.id = :id', { id });
-    applyDataScope(qb, 'f', TABLE, scope);
+    const qb = this.repo
+      .createQueryBuilder('f')
+      .innerJoin('f.bi_payment_checklist', 'cl', 'cl.deleted_at IS NULL')
+      .innerJoin('cl.program', 'pg', 'pg.deleted_at IS NULL')
+      .where('f.id = :id', { id });
+    applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
     const file = await qb.getOne();
     if (!file) throw new NotFoundException('Other file not found');
     await this.repo.softRemove(file);

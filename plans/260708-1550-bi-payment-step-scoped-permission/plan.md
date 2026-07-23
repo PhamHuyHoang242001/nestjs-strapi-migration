@@ -1,18 +1,23 @@
 ---
 title: "Bi-Payment Step-Scoped Permission (programId + workstep) — pilot list-doc"
 description: "Enforce per-program + per-workstep permission on bi-payment list-doc. StepScopeService resolves allowed workstep_types for user at a program (SO owner = own-all via isInOwnedScope; role/user-exception = code effective only at programs with data_access rule). Keeps per-document DENY via applyDataScope. Pilot list-doc ONLY; other doc handlers deferred."
-status: pending
+status: cancelled
 priority: P1
 branch: "main"
 tags: [permission, data-access, bi-payment, step-scope]
 blockedBy: []
 blocks: []
+supersededBy: 260723-1600-bi-payment-program-permission-rebuild
 created: "2026-07-08T08:56:15.908Z"
 createdBy: "ck:plan"
 source: skill
 ---
 
 # Bi-Payment Step-Scoped Permission (programId + workstep) — pilot list-doc
+
+> Cancelled on 2026-07-23. Superseded by
+> `plans/260723-1600-bi-payment-program-permission-rebuild/`, which replaces the
+> legacy step-code model across all BI Payment consumers.
 
 ## Overview
 

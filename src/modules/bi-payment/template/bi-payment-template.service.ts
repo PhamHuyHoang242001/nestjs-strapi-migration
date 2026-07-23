@@ -2,19 +2,13 @@ import { BiPaymentTemplate } from '@modules/databases/bi-payment-template.entity
 import { BiPaymentProgram } from '@modules/databases/bi-payment-program.entity';
 import { BiPaymentProject } from '@modules/databases/bi-payment-project.entity';
 import { BiPaymentProjectStatus } from '@common/enums/bi-payment.enums';
-import { UserType } from '@modules/databases/user.entity';
 import { StepScopeService } from '@modules/bi-payment/common/step-scope.service';
 import { MaToolWorkstepType, MaToolTemplateStatus, MaToolTemplateType } from '@common/enums/ma-tool.enums';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { execQueryPaignation } from '@common/utils';
 import { PermissionCacheService } from '@common/authorization';
 import { SortCamelParams } from '../common/decorators/sort-camel.decorator';
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import {
@@ -28,19 +22,11 @@ import {
 // PermissionGuard's super-admin verb-gate bypass). Read from req.info.user.type.
 type AdminFlag = { isAdmin: boolean };
 
-const TEMPLATE_TABLE = 'bi_payment_templates';
 const PROGRAM_TABLE = 'bi_payment_programs';
 const CREATE_CODE = 'bp_template_create';
-
-// Step codes that grant ANY program access — used to enumerate accessible
-// programs for cross-program endpoints (user-created/updated distinct users).
-const STEP_CODES = [
-  'bp_program_preparing',
-  'bp_program_calculating',
-  'bp_program_reconciliation_bicc',
-  'bp_program_reconciliation_sale',
-  'bp_program_confirm_release',
-];
+const DELETE_CODE = 'bp_template_delete';
+const UPLOAD_CODE = 'bp_program_upload';
+const RECON_UPLOAD_CODE = 'bp_program_upload_recon';
 
 // workstep_type values allowed per program.version (Strapi validationCreateTemplate).
 // version 0 admits ex_prepare; later versions drop it.
@@ -50,11 +36,7 @@ const V0_WORKSTEPS = [
   MaToolWorkstepType.RECON_DATA,
   MaToolWorkstepType.RECON_FEEDBACK,
 ];
-const NON_V0_WORKSTEPS = [
-  MaToolWorkstepType.PREPARE,
-  MaToolWorkstepType.RECON_DATA,
-  MaToolWorkstepType.RECON_FEEDBACK,
-];
+const NON_V0_WORKSTEPS = [MaToolWorkstepType.PREPARE, MaToolWorkstepType.RECON_DATA, MaToolWorkstepType.RECON_FEEDBACK];
 
 @Injectable()
 export class BiPaymentTemplateService {
@@ -81,7 +63,11 @@ export class BiPaymentTemplateService {
       throw new BadRequestException('programId required');
     }
 
-    const allowed = await this.stepScope.resolveAllowedWorksteps(userId, dto.programId);
+    const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, dto.programId);
+    if (scopes.size === 0) {
+      return { data: [], meta: { total: 0, page: pagination.page, limit: pagination.limit } };
+    }
+    const allowed = new Set(scopes.keys());
     const worksteps = this.intersectWorksteps(dto.workstepType, allowed);
 
     const qb = this.repo
@@ -154,7 +140,7 @@ export class BiPaymentTemplateService {
   // require project ACTIVE; step-scope at program. Soft-delete.
   async delete(id: number, userId: number | undefined, admin: AdminFlag) {
     const tpl = await this.loadTemplateWithRelations(id);
-    await this.assertTemplateStep(userId, tpl, admin); // 403 before leaking project state
+    await this.assertTemplateLifecycleScope(userId, tpl.bi_payment_program_id, DELETE_CODE, admin);
     if (tpl.bi_payment_program?.project?.project_status !== BiPaymentProjectStatus.ACTIVE) {
       throw new BadRequestException('Project not active');
     }
@@ -184,7 +170,7 @@ export class BiPaymentTemplateService {
     for (const tpl of tpls) {
       const linkedDocs = (tpl.documents ?? []).filter((d) => d.document_status !== 'draft');
       if (linkedDocs.length > 0) continue; // skip linked
-      const ok = admin.isAdmin || (await this.holdsAnyStepAt(userId, tpl.bi_payment_program_id));
+      const ok = admin.isAdmin || (await this.hasProgramCapability(userId, tpl.bi_payment_program_id, DELETE_CODE));
       if (!ok) continue;
       tpl.template_updated_by_id = userId ?? tpl.template_updated_by_id;
       deletable.push(tpl);
@@ -207,9 +193,6 @@ export class BiPaymentTemplateService {
     if (!userId) throw new ForbiddenException('User not authenticated');
     const { fromProgramId, toProgramId, listTemplate } = dto;
     if (!listTemplate?.length) throw new BadRequestException('listTemplate required');
-
-    // Caller must hold step at fromProgram.
-    const fromAllowed = await this.stepScope.resolveAllowedWorksteps(userId, fromProgramId);
 
     const names = listTemplate.map((t) => t.name?.trim()).filter(Boolean);
     if (new Set(names).size !== names.length) {
@@ -241,6 +224,10 @@ export class BiPaymentTemplateService {
     if (!toProgram || toProgram.is_deleted) {
       throw new NotFoundException('Target program not found');
     }
+    await Promise.all([
+      this.assertProgramCapability(userId, fromProgramId, CREATE_CODE),
+      this.assertProgramCapability(userId, toProgramId, CREATE_CODE),
+    ]);
     if (existingNames.length > 0) {
       throw new BadRequestException('templateName exists');
     }
@@ -249,13 +236,6 @@ export class BiPaymentTemplateService {
     }
 
     const nameById = new Map(listTemplate.map((t) => [t.id, t.name.trim()]));
-    // Validate every source's workstep is in the caller's allowed set BEFORE any
-    // insert (fail-fast; avoids partial duplicate when a later source is denied).
-    for (const src of sources) {
-      if (!fromAllowed.has(src.workstep_type)) {
-        throw new ForbiddenException(`No permission for workstep ${src.workstep_type}`);
-      }
-    }
     const saved = await this.dataSource.transaction(async (manager) => {
       const repo = manager.getRepository(BiPaymentTemplate);
       const rows = sources.map((src) =>
@@ -292,10 +272,7 @@ export class BiPaymentTemplateService {
   // ---- helpers ----
 
   // Apply IFindTemplate optional filters (project/version/createdBy/updatedBy/keyword).
-  private applySearchFilters(
-    qb: SelectQueryBuilder<BiPaymentTemplate>,
-    dto: SearchBiPaymentTemplateDto,
-  ) {
+  private applySearchFilters(qb: SelectQueryBuilder<BiPaymentTemplate>, dto: SearchBiPaymentTemplateDto) {
     if (dto.projectId) {
       qb.andWhere('pg.project_id = :pjid', { pjid: dto.projectId });
     }
@@ -365,14 +342,19 @@ export class BiPaymentTemplateService {
       throw new BadRequestException('Invalid workstepType for program version');
     }
 
-    // step-scope: caller must hold the workstep's code at the program.
-    await this.stepScope.assertWorkstep(userId, dto.programId, dto.workstepType);
+    // Template lifecycle uses its own verb + program data access. It must not
+    // silently require an upload/view permission for the selected workstep.
+    await this.assertProgramCapability(userId, dto.programId, CREATE_CODE);
     return program;
   }
 
   // canDuplicate: caller holds the create step-code at the template's program
   // (proxy for Strapi's bicc-of-program + project-active). R5 deviation.
-  private async canDuplicateAt(userId: number | undefined, programId: number | null, admin: AdminFlag): Promise<boolean> {
+  private async canDuplicateAt(
+    userId: number | undefined,
+    programId: number | null,
+    admin: AdminFlag,
+  ): Promise<boolean> {
     if (admin.isAdmin) return true;
     if (!userId || !programId) return false;
     const ids = await this.permCache.getAccessibleRecords(userId, PROGRAM_TABLE, CREATE_CODE);
@@ -396,7 +378,11 @@ export class BiPaymentTemplateService {
   }
 
   // Step-scoped assert for a single template. Admin bypasses.
-  private async assertTemplateStep(userId: number | undefined, tpl: BiPaymentTemplate, admin: AdminFlag): Promise<void> {
+  private async assertTemplateStep(
+    userId: number | undefined,
+    tpl: BiPaymentTemplate,
+    admin: AdminFlag,
+  ): Promise<void> {
     if (admin.isAdmin) return;
     if (!userId) throw new ForbiddenException('User not authenticated');
     const programId = tpl.bi_payment_program_id;
@@ -405,15 +391,26 @@ export class BiPaymentTemplateService {
     if (!allowed.has(tpl.workstep_type)) throw new ForbiddenException('No permission for workstep');
   }
 
-  // Non-throwing: does the caller hold ANY step code at the program?
-  private async holdsAnyStepAt(userId: number | undefined, programId: number | null): Promise<boolean> {
-    if (!userId || !programId) return false;
-    try {
-      const allowed = await this.stepScope.resolveAllowedWorksteps(userId, programId);
-      return allowed.size > 0;
-    } catch {
-      return false;
+  private async assertTemplateLifecycleScope(
+    userId: number | undefined,
+    programId: number | null,
+    code: string,
+    admin: AdminFlag,
+  ): Promise<void> {
+    if (admin.isAdmin) return;
+    if (!userId || !programId || !(await this.stepScope.hasProgramCapability(userId, programId, code))) {
+      throw new ForbiddenException('No permission for program');
     }
+  }
+
+  private async assertProgramCapability(userId: number, programId: number, code: string): Promise<void> {
+    if (!(await this.stepScope.hasProgramCapability(userId, programId, code))) {
+      throw new ForbiddenException('No permission for program');
+    }
+  }
+
+  private async hasProgramCapability(userId: number | undefined, programId: number | null, code: string) {
+    return Boolean(userId && programId && (await this.stepScope.hasProgramCapability(userId, programId, code)));
   }
 
   // Distinct users (id + email) who touched templates (via `userCol`) within
@@ -434,10 +431,14 @@ export class BiPaymentTemplateService {
         .andWhere(`${userCol} IS NOT NULL`);
     };
 
-    let pids: number[] = [];
+    let uploadPrograms: number[] = [];
+    let reconPrograms: number[] = [];
     if (!admin.isAdmin) {
-      pids = await this.getAccessibleProgramIds(userId);
-      if (!pids.length) {
+      [uploadPrograms, reconPrograms] = await Promise.all([
+        this.getAccessibleProgramIds(userId, UPLOAD_CODE),
+        this.getAccessibleProgramIds(userId, RECON_UPLOAD_CODE),
+      ]);
+      if (!uploadPrograms.length && !reconPrograms.length) {
         return { data: [], meta: { total: 0, page: pagination.page, limit: pagination.limit } };
       }
     }
@@ -446,18 +447,15 @@ export class BiPaymentTemplateService {
     // Count query: COUNT(DISTINCT userCol) over the same joins/filters (no paging).
     const countQb = this.repo.createQueryBuilder('t').select(`COUNT(DISTINCT ${userCol})`, 'count');
     applyScope(countQb);
-    if (pids.length) countQb.andWhere('t.bi_payment_program_id IN (:...pids)', { pids });
+    if (!admin.isAdmin) this.applyCrossProgramScope(countQb, uploadPrograms, reconPrograms);
     if (kw) countQb.andWhere('LOWER(u.email) ILIKE :kw', { kw });
     const totalRow = await countQb.getRawOne<{ count: string }>();
     const total = totalRow ? Number(totalRow.count) : 0;
 
     // Page query: DISTINCT userCol + email, ordered + paged.
-    const qb = this.repo
-      .createQueryBuilder('t')
-      .select(`DISTINCT ${userCol}`, 'id')
-      .addSelect('u.email', 'email');
+    const qb = this.repo.createQueryBuilder('t').select(`DISTINCT ${userCol}`, 'id').addSelect('u.email', 'email');
     applyScope(qb);
-    if (pids.length) qb.andWhere('t.bi_payment_program_id IN (:...pids)', { pids });
+    if (!admin.isAdmin) this.applyCrossProgramScope(qb, uploadPrograms, reconPrograms);
     if (kw) qb.andWhere('LOWER(u.email) ILIKE :kw', { kw });
     qb.orderBy('u.id', 'DESC')
       .skip((pagination.page - 1) * pagination.limit)
@@ -467,12 +465,27 @@ export class BiPaymentTemplateService {
     return { data, meta: { total, page: pagination.page, limit: pagination.limit } };
   }
 
-  // Programs where the caller holds ANY step code (union across all step codes).
-  private async getAccessibleProgramIds(userId: number): Promise<number[]> {
-    const sets = await Promise.all(
-      STEP_CODES.map((c) => this.permCache.getAccessibleRecords(userId, PROGRAM_TABLE, c)),
-    );
-    return [...new Set(sets.flat())];
+  private applyCrossProgramScope(
+    qb: SelectQueryBuilder<BiPaymentTemplate>,
+    uploadPrograms: number[],
+    reconPrograms: number[],
+  ) {
+    const clauses: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (uploadPrograms.length) {
+      clauses.push('t.bi_payment_program_id IN (:...crossUploadPrograms)');
+      params.crossUploadPrograms = uploadPrograms;
+    }
+    if (reconPrograms.length) {
+      clauses.push('(t.bi_payment_program_id IN (:...crossReconPrograms) AND t.workstep_type = :crossReconWorkstep)');
+      params.crossReconPrograms = reconPrograms;
+      params.crossReconWorkstep = MaToolWorkstepType.RECON_DATA;
+    }
+    qb.andWhere(`(${clauses.join(' OR ')})`, params);
+  }
+
+  private async getAccessibleProgramIds(userId: number, code: string): Promise<number[]> {
+    return this.permCache.getAccessibleRecords(userId, PROGRAM_TABLE, code);
   }
 
   private parseIdsCsv(raw: string | undefined): number[] {
@@ -482,6 +495,3 @@ export class BiPaymentTemplateService {
       .filter((n) => Number.isInteger(n) && n > 0);
   }
 }
-
-// Re-export for existing consumers (template service owns the workstep→code map).
-export { WORKSTEP_TYPE_PERM } from '../common/step-scope.constants';

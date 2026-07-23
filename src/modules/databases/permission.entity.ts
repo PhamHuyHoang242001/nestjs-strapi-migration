@@ -18,6 +18,9 @@ export class Permission extends BaseSoftDeleteEntity {
   @Column()
   action: string;
 
+  @Column({ default: true })
+  is_active: boolean;
+
   @OneToMany(() => RolePermission, (rp) => rp.permission)
   role_permissions: RolePermission[];
 

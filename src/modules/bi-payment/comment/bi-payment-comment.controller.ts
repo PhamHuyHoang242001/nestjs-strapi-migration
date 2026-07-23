@@ -15,7 +15,7 @@ import { CreateBiPaymentCommentDto } from './dto';
 const TABLE = DATA_ACCESS_TABLE.BI_PAYMENT_PROGRAMS;
 
 // Strapi parity: /bi-payment/comment (flat), programId+workStep trong body/query.
-// Comment không code riêng — ăn theo step perm (workStep trong body ICreateComment).
+// Comment là thao tác nội dung trên doc/step → gate bp_program_upload (full uploader).
 @Controller('bi-payment/comment')
 @ApiTags('bi-payment-comment')
 @ApiBearerAuth()
@@ -27,8 +27,8 @@ export class BiPaymentCommentController {
   // GET /bi-payment/comment?programId=X&workStep=preparing — Strapi findComment.
   @ApiOperation({ summary: 'List comments by workstep' })
   @Get()
-  @RequirePermission('bp_program_preparing', 'bp_program_reconciliation_bicc', 'bp_program_reconciliation_sale')
-  @RequireDataAccess(TABLE)
+  @RequirePermission('bp_program_upload')
+  @RequireDataAccess(TABLE, 'bp_program_upload')
   list(@Query('programId') pid: number, @Query('workStep') workStep: string, @Req() req: RequestWithInfo) {
     return this.service.list(+pid, workStep, req.info?.dataScope ?? null);
   }
@@ -36,10 +36,16 @@ export class BiPaymentCommentController {
   // POST /bi-payment/comment — Strapi createComment. workStep trong body (ICreateComment).
   @ApiOperation({ summary: 'Create comment' })
   @Post()
-  @RequirePermission('bp_program_preparing', 'bp_program_reconciliation_bicc', 'bp_program_reconciliation_sale')
-  @RequireDataAccess(TABLE)
+  @RequirePermission('bp_program_upload')
+  @RequireDataAccess(TABLE, 'bp_program_upload')
   create(@Body() dto: CreateBiPaymentCommentDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number | undefined;
-    return this.service.create(dto.programId, dto.workStep, dto, req.info?.dataScope ?? null, userId ? +userId : undefined);
+    return this.service.create(
+      dto.programId,
+      dto.workStep,
+      dto,
+      req.info?.dataScope ?? null,
+      userId ? +userId : undefined,
+    );
   }
 }

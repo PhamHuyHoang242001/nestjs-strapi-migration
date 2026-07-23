@@ -5,7 +5,7 @@ import { BiPaymentHistoryController } from '../bi-payment-history.controller';
 // History/log-change perm mapping — program history/log = bp_program_view, project history = bp_project_view.
 describe('BiPaymentHistoryController perm mapping', () => {
   const getPerm = (prop: string): string[] | undefined =>
-    Reflect.getMetadata(PERMISSION_META_KEY, BiPaymentHistoryController.prototype, prop);
+    Reflect.getMetadata(PERMISSION_META_KEY, BiPaymentHistoryController.prototype[prop]);
 
   it('listProgramHistory gắn bp_program_view', () =>
     expect(getPerm('listProgramHistory')).toEqual(['bp_program_view']));

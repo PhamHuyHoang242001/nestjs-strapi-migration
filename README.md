@@ -75,3 +75,10 @@ Nest is [MIT licensed](LICENSE).
 ## run newrelic: 
 - yarn add newrelic
 - NEW_RELIC_APP_NAME=name NEW_RELIC_LICENSE_KEY=key node -r newrelic dist/main.js
+
+## Authorization docs
+
+- [Authorization system overview](./AUTHORIZATION_SYSTEM_VI.md)
+- [BI Payment permission rebuild plan](./plans/260723-1600-bi-payment-program-permission-rebuild/plan.md)
+- [BI Payment rollout checklist](./plans/260723-1600-bi-payment-program-permission-rebuild/reports/rollout-checklist.md)
+- [BI Payment test summary](./plans/260723-1600-bi-payment-program-permission-rebuild/reports/test-summary.md)

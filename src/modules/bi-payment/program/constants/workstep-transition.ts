@@ -1,6 +1,6 @@
 import { BiPaymentWorkstepCurrent } from '@common/enums/bi-payment.enums';
 
-// Transition map cho bp_program_next_step. Service chỉ cho phép step kế hợp lệ.
+// Program transition map. Service only allows the configured next workstep.
 // exception → preparing: vòng mới (xử lý ngoại lệ xong quay lại chuẩn bị).
 export const WORKSTEP_TRANSITIONS: Record<BiPaymentWorkstepCurrent, BiPaymentWorkstepCurrent[]> = {
   [BiPaymentWorkstepCurrent.CREATE_A_PROGRAM]: [BiPaymentWorkstepCurrent.PREPARING],

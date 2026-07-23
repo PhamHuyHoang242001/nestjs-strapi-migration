@@ -11,8 +11,7 @@ import { BiPaymentProgram } from './bi-payment-program.entity';
 import { BiPaymentDocument } from './bi-payment-document.entity';
 
 // Template bi-payment (tách khỏi ma_tool_templates). workstep_type drives file permission:
-// prepare/ex_prepare → bp_program_preparing; recon_data → bp_program_reconciliation_sale (sale) OR _bicc;
-// recon_feedback → bp_program_reconciliation_bicc.
+// Workstep visibility is resolved by the BI Payment content-scope matrix.
 @Entity('bi_payment_templates')
 export class BiPaymentTemplate extends BaseSoftDeleteEntity {
   @Column({ nullable: true })

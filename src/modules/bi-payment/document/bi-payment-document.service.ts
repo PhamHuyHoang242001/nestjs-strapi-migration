@@ -4,29 +4,33 @@ import { BiPaymentTemplate } from '@modules/databases/bi-payment-template.entity
 import { BiPaymentLogMergeFile } from '@modules/databases/bi-payment-log-merge-file.entity';
 import { BiPaymentProgram } from '@modules/databases/bi-payment-program.entity';
 import { MaToolWorkstepType } from '@common/enums/ma-tool.enums';
-import { BiPaymentLogMergeFileStatus, BiPaymentLogMergeFileMode } from '@common/enums/bi-payment.enums';
+import {
+  BiPaymentLogMergeFileStatus,
+  BiPaymentLogMergeFileMode,
+  BiPaymentProgressStatus,
+} from '@common/enums/bi-payment.enums';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { execQueryPaignation } from '@common/utils';
 import { PermissionCacheService } from '@common/authorization';
 import { SortCamelParams } from '../common/decorators/sort-camel.decorator';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { SearchBiPaymentDocumentDto, UploadBiPaymentDocumentDto } from './dto';
-import { StepScopeService } from '../common/step-scope.service';
+import { StepScopeService, WorkstepScope } from '../common/step-scope.service';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 
-// Re-export the workstep→code map from its single source of truth so existing
-// consumers (template service, workstep-type-perm.spec.ts) keep their import path.
-export { WORKSTEP_TYPE_PERM } from '../common/step-scope.constants';
-
 const PROGRAM_TABLE = 'bi_payment_programs';
+const UPLOAD_CODE = 'bp_program_upload';
+const RECON_UPLOAD_CODE = 'bp_program_upload_recon';
+const APPROVE_CODE = 'bp_program_approve';
 
 // Admin signal — super_admin bypasses the step×program check (mirrors PermissionGuard).
 // Passed explicitly from the controller (read from req.info.user.type) instead of inferring
 // from a null DataScope, because single-record endpoints have no @RequireDataAccess and a null
 // scope would otherwise mean "every non-admin" → admin bypass for everyone (the template bug).
 type AdminFlag = { isAdmin: boolean };
+type CapabilityCheck = (programId: number, code: string) => Promise<boolean>;
 
 @Injectable()
 export class BiPaymentDocumentService {
@@ -64,15 +68,19 @@ export class BiPaymentDocumentService {
     if (!userId) throw new ForbiddenException('User not authenticated');
 
     const workstep = this.parseWorkstepType(query.workstep);
-    const allowed = await this.stepScope.resolveAllowedWorksteps(userId, programId);
+    const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, programId);
 
-    if (workstep && !allowed.has(workstep)) {
+    // `bp_program_view` is the base gate but does not grant document content.
+    // Preserve the agreed empty-200 contract instead of throwing a 403.
+    if (scopes.size === 0) return { data: [], total: 0 };
+
+    if (workstep && !scopes.has(workstep)) {
       throw new ForbiddenException('No permission for workstep');
     }
 
     const qb = this.buildDocQuery();
     this.applyProgramFilter(qb, programId);
-    this.applyWorkstepFilter(qb, workstep, allowed);
+    this.applyWorkstepFilter(qb, workstep, scopes, userId);
     this.applyListFilters(qb, query);
 
     // Sort on the document table (Strapi's phase-2 sorts document attributes only).
@@ -86,7 +94,7 @@ export class BiPaymentDocumentService {
     return this.docRepo
       .createQueryBuilder('d')
       .innerJoin('d.template', 't', 't.deleted_at IS NULL')
-      .innerJoin('d.program', 'pg', 'pg.deleted_at IS NULL')
+      .innerJoinAndSelect('d.program', 'pg', 'pg.deleted_at IS NULL')
       .where('d.deleted_at IS NULL');
   }
 
@@ -98,12 +106,35 @@ export class BiPaymentDocumentService {
   private applyWorkstepFilter(
     qb: ReturnType<BiPaymentDocumentService['buildDocQuery']>,
     workstep: MaToolWorkstepType | undefined,
-    allowed: Set<MaToolWorkstepType>,
+    scopes: Map<MaToolWorkstepType, WorkstepScope>,
+    userId: number,
   ) {
     if (workstep) {
       qb.andWhere('t.workstep_type = :wt', { wt: workstep });
+      if (scopes.get(workstep)?.own) {
+        qb.andWhere('d.uploaded_by_id = :scopeUserId', { scopeUserId: userId });
+      }
+      return;
+    }
+
+    const fullWorksteps: MaToolWorkstepType[] = [];
+    const ownWorksteps: MaToolWorkstepType[] = [];
+    for (const [type, scope] of scopes) {
+      (scope.own ? ownWorksteps : fullWorksteps).push(type);
+    }
+
+    if (fullWorksteps.length && ownWorksteps.length) {
+      qb.andWhere(
+        '(t.workstep_type IN (:...fullWorksteps) OR (t.workstep_type IN (:...ownWorksteps) AND d.uploaded_by_id = :scopeUserId))',
+        { fullWorksteps, ownWorksteps, scopeUserId: userId },
+      );
+    } else if (fullWorksteps.length) {
+      qb.andWhere('t.workstep_type IN (:...fullWorksteps)', { fullWorksteps });
     } else {
-      qb.andWhere('t.workstep_type IN (:...allowed)', { allowed: [...allowed] });
+      qb.andWhere('t.workstep_type IN (:...ownWorksteps) AND d.uploaded_by_id = :scopeUserId', {
+        ownWorksteps,
+        scopeUserId: userId,
+      });
     }
   }
 
@@ -185,10 +216,14 @@ export class BiPaymentDocumentService {
   // hard-limited to SUBMIT/APPROVAL/REJECTED (DRAFT excluded). Returns {total,SUBMIT,APPROVAL,REJECTED}.
   async stats(programId: number, query: SearchBiPaymentDocumentDto, userId: number | undefined) {
     if (!userId) throw new ForbiddenException('User not authenticated');
-    const allowed = await this.stepScope.resolveAllowedWorksteps(userId, programId);
+    if (!programId || !Number.isFinite(programId) || programId <= 0) {
+      throw new BadRequestException('programId required');
+    }
+    const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, programId);
+    if (scopes.size === 0) return { total: 0, SUBMIT: 0, APPROVAL: 0, REJECTED: 0 };
     const qb = this.buildDocQuery();
     this.applyProgramFilter(qb, programId);
-    this.applyWorkstepFilter(qb, undefined, allowed);
+    this.applyWorkstepFilter(qb, undefined, scopes, userId);
     this.applyListFilters(qb, query);
     qb.andWhere('d.document_status IN (:...visible)', {
       visible: ['submit', 'approval', 'rejected'],
@@ -245,12 +280,23 @@ export class BiPaymentDocumentService {
   // Upload — DTO camelCase (Strapi parity). Service map → entity snake_case.
   // workStep trong body (EworkstepType) — validate khớp template.workstep_type.
   async upload(dto: UploadBiPaymentDocumentDto, scope: DataScope | null, userId?: number) {
+    if (!userId) throw new ForbiddenException('User not authenticated');
     await this.assertProgramInScope(dto.programId, scope);
+    const workstep = this.parseWorkstepType(dto.workStep);
+    if (!workstep) throw new BadRequestException('workStep required');
+    const hasFullUpload = await this.stepScope.hasProgramCapability(userId, dto.programId, UPLOAD_CODE);
+    const hasReconUpload =
+      !hasFullUpload &&
+      workstep === MaToolWorkstepType.RECON_DATA &&
+      (await this.stepScope.hasProgramCapability(userId, dto.programId, RECON_UPLOAD_CODE));
+    if (!hasFullUpload && !hasReconUpload) {
+      throw new ForbiddenException('No upload permission for workstep');
+    }
     const template = await this.templateRepo.findOne({ where: { id: dto.templateId } });
     if (!template) throw new NotFoundException('Template not found');
-    if (template.workstep_type !== dto.workStep) {
+    if (template.workstep_type !== workstep) {
       throw new ForbiddenException(
-        `Template workstep_type mismatch (expected ${template.workstep_type}, got ${dto.workStep})`,
+        `Template workstep_type mismatch (expected ${template.workstep_type}, got ${workstep})`,
       );
     }
     if (template.bi_payment_program_id !== dto.programId) {
@@ -270,9 +316,9 @@ export class BiPaymentDocumentService {
       template_id: dto.templateId,
       program_id: dto.programId,
       bi_payment_checklist_id: dto.checklistId,
-      uploaded_by_id: userId ?? null,
+      uploaded_by_id: userId,
       // A freshly uploaded doc's last editor is its uploader (backs user-updated).
-      updated_by_id: userId ?? null,
+      updated_by_id: userId,
     } as unknown as Partial<BiPaymentDocument>);
     const saved = await this.docRepo.save(doc);
     return { id: saved.id };
@@ -284,7 +330,7 @@ export class BiPaymentDocumentService {
   async findOne(docId: number, admin: AdminFlag, userId?: number) {
     const doc = await this.loadDocWithWorkstep(docId);
     await this.assertDocStep(userId, doc, admin);
-    const canUpdate = await this.checkDocStep(userId, doc);
+    const canUpdate = await this.canUpdateAnyStatus(doc, userId, admin);
     return { ...doc, is_exist_validation_log: false, isCanUpdateStatus: canUpdate };
   }
 
@@ -292,13 +338,6 @@ export class BiPaymentDocumentService {
     const doc = await this.loadDocWithWorkstep(docId);
     await this.assertDocStep(userId, doc, admin);
     return doc;
-  }
-
-  async delete(docId: number, admin: AdminFlag, userId?: number) {
-    const doc = await this.loadDocWithWorkstep(docId);
-    await this.assertDocStep(userId, doc, admin);
-    await this.docRepo.softRemove(doc);
-    return { id: doc.id };
   }
 
   // Strapi parity (mergeFile): body {documentIds, mode, templateId}. Resolve program from
@@ -311,8 +350,9 @@ export class BiPaymentDocumentService {
     if (!template) throw new NotFoundException('Template not found');
     const programId = template.bi_payment_program_id;
     if (!programId) throw new NotFoundException('Template has no program');
-    const allowed = await this.stepScope.resolveAllowedWorksteps(userId, programId);
-    if (!allowed.has(template.workstep_type)) throw new ForbiddenException('No permission for workstep');
+    if (!(await this.stepScope.hasProgramCapability(userId, programId, UPLOAD_CODE))) {
+      throw new ForbiddenException('No merge permission for program');
+    }
     const docs = await this.docRepo
       .createQueryBuilder('d')
       .where('d.id IN (:...ids)', { ids: dto.documentIds })
@@ -361,9 +401,9 @@ export class BiPaymentDocumentService {
       ? (log as unknown as { documents: Array<{ program_id?: number }> }).documents
       : [];
     if (!docs.length) throw new ForbiddenException('No permission');
-    const accessible = await this.getAccessibleProgramIds(userId);
-    for (const d of docs) {
-      if (d.program_id != null && accessible.includes(d.program_id)) return;
+    const programIds = [...new Set(docs.map((doc) => doc.program_id).filter((id): id is number => id != null))];
+    for (const programId of programIds) {
+      if (await this.stepScope.hasProgramCapability(userId, programId, UPLOAD_CODE)) return;
     }
     throw new ForbiddenException('No permission');
   }
@@ -372,7 +412,11 @@ export class BiPaymentDocumentService {
   // Only docs in an INPROGRESS program + ACTIVE project; APPROVAL/REJECTED require the caller
   // to hold the doc's step at its program (BICC proxy) AND the doc currently SUBMIT.
   // Returns {success, error, idsSuccess, idsError}.
-  async updateStatus(dto: { ids: number[]; status: string; rejectionReason?: string }, userId?: number) {
+  async updateStatus(
+    dto: { ids: number[]; status: string; rejectionReason?: string },
+    userId?: number,
+    admin: AdminFlag = { isAdmin: false },
+  ) {
     if (!userId) throw new ForbiddenException('User not authenticated');
     if (!['submit', 'approval', 'rejected'].includes(dto.status)) {
       throw new BadRequestException('Invalid status');
@@ -383,22 +427,26 @@ export class BiPaymentDocumentService {
       .innerJoin('d.program', 'pg', 'pg.deleted_at IS NULL')
       .where('d.deleted_at IS NULL')
       .andWhere('d.id IN (:...ids)', { ids: dto.ids })
-      .andWhere('pg.progress_status = :ps', { ps: 'in_progress' })
+      .andWhere('pg.progress_status = :ps', { ps: BiPaymentProgressStatus.INPROGRESS })
       .getMany();
     if (!docs.length) throw new NotFoundException('No matching documents');
     const idsSuccess: number[] = [];
+    const capabilityCache = new Map<string, Promise<boolean>>();
+    const hasCapability = (programId: number, code: string) => {
+      if (admin.isAdmin) return Promise.resolve(true);
+      const key = `${programId}:${code}`;
+      const cached = capabilityCache.get(key);
+      if (cached !== undefined) return cached;
+      const resolved = this.stepScope.hasProgramCapability(userId, programId, code);
+      capabilityCache.set(key, resolved);
+      return resolved;
+    };
+
     for (const doc of docs) {
       const workstep = doc.template?.workstep_type;
-      const canUpdate = workstep ? await this.checkDocStep(userId, doc) : false;
-      if (dto.status === 'submit') {
-        // SUBMIT: any step-holder may submit.
-        if (!canUpdate) {
-          continue;
-        }
-      } else {
-        // APPROVAL/REJECTED: caller holds step at program AND doc currently SUBMIT.
-        if (!canUpdate || doc.document_status !== 'submit') continue;
-      }
+      if (!workstep || !doc.program_id) continue;
+
+      if (!(await this.canSetDocumentStatus(doc, dto.status, userId, admin, hasCapability))) continue;
       doc.document_status = dto.status;
       // Every status change records the editor (backs updatedByIds + user-updated).
       doc.updated_by_id = userId;
@@ -445,9 +493,12 @@ export class BiPaymentDocumentService {
     userId?: number,
   ) {
     if (!userId) throw new ForbiddenException('User not authenticated');
-    // Caller's accessible programs: programs where they hold ANY step code (global viewable steps).
-    const accessiblePrograms = await this.getAccessibleProgramIds(userId);
-    if (!accessiblePrograms.length) {
+    const [uploadPrograms, reconPrograms, approvePrograms] = await Promise.all([
+      this.getAccessibleProgramIds(userId, [UPLOAD_CODE]),
+      this.getAccessibleProgramIds(userId, [RECON_UPLOAD_CODE]),
+      this.getAccessibleProgramIds(userId, [APPROVE_CODE]),
+    ]);
+    if (!uploadPrograms.length && !reconPrograms.length && !approvePrograms.length) {
       return { data: [], meta: { total: 0, page: pagination.page, limit: pagination.limit } };
     }
     const kw = keyword?.trim() ? `%${keyword.trim().toLowerCase()}%` : undefined;
@@ -456,11 +507,12 @@ export class BiPaymentDocumentService {
     // meta.total must reflect the full match set, not the page-row count.
     const countQb = this.docRepo
       .createQueryBuilder('d')
+      .innerJoin('d.template', 't', 't.deleted_at IS NULL')
       .innerJoin('users', 'u', `u.id = ${userCol} AND u.deleted_at IS NULL`)
       .where('d.deleted_at IS NULL')
       .andWhere(`${userCol} IS NOT NULL`)
-      .andWhere('d.program_id IN (:...pids)', { pids: accessiblePrograms })
       .select(`COUNT(DISTINCT ${userCol})`, 'count');
+    this.applyCrossProgramScope(countQb, uploadPrograms, reconPrograms, approvePrograms, userId, userCol);
     if (kw) countQb.andWhere('LOWER(u.email) ILIKE :kw', { kw });
     const totalRow = await countQb.getRawOne<{ count: string }>();
     const total = totalRow ? Number(totalRow.count) : 0;
@@ -468,12 +520,13 @@ export class BiPaymentDocumentService {
     // Page query: DISTINCT userCol + email, ordered + paged.
     const qb = this.docRepo
       .createQueryBuilder('d')
+      .innerJoin('d.template', 't', 't.deleted_at IS NULL')
       .innerJoin('users', 'u', `u.id = ${userCol} AND u.deleted_at IS NULL`)
       .where('d.deleted_at IS NULL')
       .andWhere(`${userCol} IS NOT NULL`)
-      .andWhere('d.program_id IN (:...pids)', { pids: accessiblePrograms })
       .select(`DISTINCT ${userCol}`, 'id')
       .addSelect('u.email', 'email');
+    this.applyCrossProgramScope(qb, uploadPrograms, reconPrograms, approvePrograms, userId, userCol);
     if (kw) qb.andWhere('LOWER(u.email) ILIKE :kw', { kw });
     qb.orderBy('u.id', 'DESC')
       .skip((pagination.page - 1) * pagination.limit)
@@ -483,16 +536,38 @@ export class BiPaymentDocumentService {
     return { data, meta: { total, page: pagination.page, limit: pagination.limit } };
   }
 
-  // Programs the caller holds any step code at (via getAccessibleRecords on the program table
-  // across all bi-payment step codes). Used by user-* endpoints to scope the distinct-user set.
-  private async getAccessibleProgramIds(userId: number): Promise<number[]> {
-    const codes = [
-      'bp_program_preparing',
-      'bp_program_calculating',
-      'bp_program_reconciliation_bicc',
-      'bp_program_reconciliation_sale',
-      'bp_program_confirm_release',
-    ];
+  // Keep cross-program visibility permission-code specific. A full upload grant
+  // on program A must not widen an own-only recon grant on program B.
+  private applyCrossProgramScope(
+    qb: SelectQueryBuilder<BiPaymentDocument>,
+    uploadPrograms: number[],
+    reconPrograms: number[],
+    approvePrograms: number[],
+    userId: number,
+    userCol: string,
+  ) {
+    const clauses: string[] = [];
+    const params: Record<string, unknown> = { crossScopeUserId: userId };
+    if (uploadPrograms.length) {
+      clauses.push('d.program_id IN (:...crossUploadPrograms)');
+      params.crossUploadPrograms = uploadPrograms;
+    }
+    if (approvePrograms.length) {
+      clauses.push('(d.program_id IN (:...crossApprovePrograms) AND t.workstep_type IN (:...crossApproveWorksteps))');
+      params.crossApprovePrograms = approvePrograms;
+      params.crossApproveWorksteps = [MaToolWorkstepType.PREPARE, MaToolWorkstepType.EX_PREPARE];
+    }
+    if (reconPrograms.length) {
+      clauses.push(
+        `(d.program_id IN (:...crossReconPrograms) AND t.workstep_type = :crossReconWorkstep AND d.uploaded_by_id = :crossScopeUserId AND ${userCol} = :crossScopeUserId)`,
+      );
+      params.crossReconPrograms = reconPrograms;
+      params.crossReconWorkstep = MaToolWorkstepType.RECON_DATA;
+    }
+    qb.andWhere(`(${clauses.join(' OR ')})`, params);
+  }
+
+  private async getAccessibleProgramIds(userId: number, codes: readonly string[]): Promise<number[]> {
     const sets = await Promise.all(
       codes.map((c) => this.permCache.getAccessibleRecords(userId, 'bi_payment_programs', c)),
     );
@@ -505,7 +580,7 @@ export class BiPaymentDocumentService {
     if (!programId) throw new ForbiddenException('No permission');
     const qb = this.programRepo.createQueryBuilder('pg').select('1', 'one').where('pg.id = :pid', { pid: programId });
     applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
-    const ok = await qb.getRawOne();
+    const ok = await qb.getRawOne<{ one: number }>();
     if (!ok) throw new ForbiddenException('No permission');
   }
 
@@ -516,6 +591,7 @@ export class BiPaymentDocumentService {
     const doc = await this.docRepo
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.template', 't')
+      .leftJoinAndSelect('d.program', 'pg')
       .where('d.id = :id', { id: docId })
       .getOne();
     if (!doc) throw new NotFoundException('Document not found');
@@ -536,12 +612,52 @@ export class BiPaymentDocumentService {
   private async checkDocStep(userId: number | undefined, doc: BiPaymentDocument): Promise<boolean> {
     if (!userId) return false;
     if (!doc.program_id || !doc.template?.workstep_type) return false;
-    const allowed = await this.stepScope.resolveAllowedWorksteps(userId, doc.program_id);
-    return allowed.has(doc.template.workstep_type);
+    const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, doc.program_id);
+    const scope = scopes.get(doc.template.workstep_type);
+    if (!scope) return false;
+    return !scope.own || doc.uploaded_by_id === userId;
   }
 
-  // Global viewable worksteps (not per-program) — used by cross-program endpoints.
-  private async resolveGlobalViewableSteps(userId: number): Promise<MaToolWorkstepType[]> {
-    return this.stepScope.resolveGlobalViewableWorksteps(userId);
+  private async canUpdateAnyStatus(
+    doc: BiPaymentDocument,
+    userId: number | undefined,
+    admin: AdminFlag,
+  ): Promise<boolean> {
+    if (!userId) return false;
+    const hasCapability: CapabilityCheck = (programId, code) =>
+      this.stepScope.hasProgramCapability(userId, programId, code);
+    for (const status of ['submit', 'approval', 'rejected']) {
+      if (await this.canSetDocumentStatus(doc, status, userId, admin, hasCapability)) return true;
+    }
+    return false;
+  }
+
+  private async canSetDocumentStatus(
+    doc: BiPaymentDocument,
+    status: string,
+    userId: number,
+    admin: AdminFlag,
+    hasCapability: CapabilityCheck,
+  ): Promise<boolean> {
+    const workstep = doc.template?.workstep_type;
+    if (!workstep || !doc.program_id || doc.program?.progress_status !== BiPaymentProgressStatus.INPROGRESS) {
+      return false;
+    }
+    if (admin.isAdmin) return true;
+
+    if (status === 'submit') {
+      if (doc.uploaded_by_id !== userId) return false;
+      return (
+        (await hasCapability(doc.program_id, UPLOAD_CODE)) ||
+        (workstep === MaToolWorkstepType.RECON_DATA && (await hasCapability(doc.program_id, RECON_UPLOAD_CODE)))
+      );
+    }
+
+    if (!['approval', 'rejected'].includes(status)) return false;
+    return (
+      [MaToolWorkstepType.PREPARE, MaToolWorkstepType.EX_PREPARE].includes(workstep) &&
+      doc.document_status === 'submit' &&
+      (await hasCapability(doc.program_id, APPROVE_CODE))
+    );
   }
 }

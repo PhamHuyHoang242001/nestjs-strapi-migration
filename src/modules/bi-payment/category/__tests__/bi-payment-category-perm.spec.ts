@@ -6,7 +6,7 @@ import { BiPaymentCategoryController } from '../bi-payment-category.controller';
 // create/delete = project create/edit OR; view = project view. Whole-table (no DA).
 describe('BiPaymentCategoryController perm mapping', () => {
   const getPerm = (prop: string): string[] | undefined =>
-    Reflect.getMetadata(PERMISSION_META_KEY, BiPaymentCategoryController.prototype, prop);
+    Reflect.getMetadata(PERMISSION_META_KEY, BiPaymentCategoryController.prototype[prop]);
 
   it('search gắn bp_project_view', () => {
     expect(getPerm('search')).toEqual(['bp_project_view']);

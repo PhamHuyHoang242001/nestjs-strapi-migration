@@ -58,8 +58,8 @@ import { BiPaymentReportController } from './report/bi-payment-report.controller
   ],
   controllers: [
     BiPaymentProjectController,
-    BiPaymentProgramController,
     BiPaymentProgramStepController,
+    BiPaymentProgramController,
     BiPaymentDocumentController,
     BiPaymentChecklistController,
     BiPaymentCommentController,

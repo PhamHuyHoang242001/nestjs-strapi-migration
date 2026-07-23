@@ -1,441 +1,161 @@
 # Hệ thống Permission & Data Access Authorization
 
-Tài liệu này tóm tắt các phần đã thêm trong `src/common/authorization`, mục đích từng hàm/chức năng chính, cách dùng và ví dụ tích hợp vào controller/service.
+Tài liệu này phản ánh hành vi hiện tại của `src/common/authorization` và các gate BI Payment đã chốt trong code. Trọng tâm: `PermissionGuard` dùng **OR semantics**, child records luôn scope theo parent `bi_payment_programs`, và BI Payment permission matrix đã rút về 8 code nghiệp-vụ.
 
-## Tổng quan luồng xử lý
+## Luồng xử lý
 
 ```text
 Request
   -> BearerGuard xác thực JWT và set req.info.user, req.info.client
-  -> PermissionGuard kiểm tra quyền theo @RequirePermission(...)
-  -> DataAccessInterceptor lấy danh sách record id được phép truy cập theo @RequireDataAccess(...)
-  -> Controller/Service xử lý business logic
+  -> PermissionGuard kiểm tra @RequirePermission(...)
+  -> DataAccessInterceptor gắn req.info.dataScope cho @RequireDataAccess(...)
+  -> Controller / Service xử lý business logic
 ```
 
-Quy ước chính:
+## Quy tắc lõi
 
-- Admin client (`req.info.client === 'admin'`) được bypass permission và data access.
-- User phải có toàn bộ permission code được khai báo trong `@RequirePermission(...)`.
-- Data access `deny` luôn thắng `allow`.
-- Data access rule không gắn permission cụ thể sẽ áp dụng cho mọi permission.
-- Cache Redis:
-  - Permission codes: 300 giây.
-  - Data access ids: 120 giây.
+| Quy tắc | Hành vi hiện tại |
+| --- | --- |
+| `@RequirePermission(...codes)` | `PermissionGuard` pass nếu user có **ít nhất một** code trong danh sách. Không phải AND. |
+| Super admin | `users.type === 'super_admin'` bypass verb gate. |
+| Data access | `deny` luôn thắng `allow`. Rule không gắn permission cụ thể áp dụng cho mọi permission. |
+| Cache Redis | Permission codes cache 300s. Data access ids cache 120s. |
+| Child scope | Luôn đi qua parent `bi_payment_programs`; không so sánh program explicit IDs với child IDs. |
 
-## File chính
-
-| File                                                                   | Mục đích                                                            |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `src/common/authorization/authorization.module.ts`                     | Global module, khai báo Redis client, service, guard, interceptor   |
-| `src/common/authorization/decorators/require-permission.decorator.ts`  | Decorator khai báo permission bắt buộc                              |
-| `src/common/authorization/decorators/require-data-access.decorator.ts` | Decorator khai báo bảng và permission dùng để lọc data access       |
-| `src/common/authorization/guards/permission.guard.ts`                  | Guard kiểm tra user có đủ permission không                          |
-| `src/common/authorization/interceptors/data-access.interceptor.ts`     | Interceptor lấy danh sách `accessibleDataIds` và gắn vào `req.info` |
-| `src/common/authorization/services/permission-query.service.ts`        | Query DB bằng raw SQL để lấy permission/data access                 |
-| `src/common/authorization/services/permission-cache.service.ts`        | Bọc query service bằng Redis cache và các hàm invalidate            |
-| `src/common/authorization/helpers/data-access-scope.helper.ts`         | Helper lọc TypeORM QueryBuilder bằng `accessibleDataIds`            |
-| `src/migration/2605050944-add-authorization-indexes.ts`                | Migration thêm index phục vụ query authorization                    |
-
-## Decorators
-
-### `@RequirePermission(...codes)`
-
-Mục đích: khai báo endpoint yêu cầu user có đủ các permission code.
-
-Logic:
-
-- Không có decorator: `PermissionGuard` cho qua.
-- Có nhiều code: user phải có tất cả.
-- Thiếu bất kỳ code nào: trả `403 Forbidden`.
-
-Ví dụ:
+### Ví dụ OR semantics
 
 ```ts
-@Get()
-@RequirePermission('report_view')
-listReports() {
-  return this.reportService.list();
-}
-
-@Put(':id')
-@RequirePermission('report_view', 'report_edit')
-updateReport() {
-  return this.reportService.update();
-}
+@RequirePermission('bp_program_upload', 'bp_program_upload_recon')
 ```
 
-### `@RequireDataAccess(tableName, permissionCode?)`
+Nghĩa là:
 
-Mục đích: khai báo endpoint cần lọc dữ liệu theo bảng và permission code.
+- đủ `bp_program_upload` là pass
+- đủ `bp_program_upload_recon` là pass
+- không cần cả hai
 
-Kết quả: `DataAccessInterceptor` sẽ set:
+## BI Payment permission matrix
 
-```ts
-req.info.accessibleDataIds = [1, 2, 3];
-```
+### 8 code đang dùng
 
-Ý nghĩa:
+| ID | Code | Ý nghĩa | Ghi chú |
+| --- | --- | --- | --- |
+| 39 | `bp_program_view` | Xem | Base gate cho list/report. |
+| 40 | `bp_program_create` | Tạo mới | Program create. |
+| 41 | `bp_program_edit` | Sửa | Gộp `next_step`, `calculating`, các PATCH workstep của program. |
+| 42 | `bp_program_delete` | Xóa | Program delete. |
+| 49 | `bp_program_upload` | Upload | Full upload, merge, checklist CRUD, comment, other-file. |
+| 52 | `bp_program_upload_recon` | Upload tra soát | Chỉ `RECON_DATA` docs do chính mình upload; template recon vẫn full-view. |
+| 53 | `bp_program_approve` | Approve | Duyệt/từ chối document `PREPARE`/`EX_PREPARE` đã submit + checklist approval. |
+| 54 | `bp_program_confirm` | Confirm | Chỉ `pic-confirm-final-link`. |
 
-- `undefined`: endpoint không dùng data access, service không cần lọc.
-- `[]`: user không có quyền với record nào, service phải trả rỗng.
-- `[1, 2, 3]`: chỉ cho phép các record có `id` nằm trong danh sách.
+### Template verbs còn tách riêng
 
-Ví dụ:
+| ID | Code | Ghi chú |
+| --- | --- | --- |
+| 50 | `bp_template_create` | Tạo template, độc lập với content-view. |
+| 51 | `bp_template_delete` | Xóa template, độc lập với content-view. |
 
-```ts
-@Get()
-@RequirePermission('report_view')
-@RequireDataAccess('bi_hub_reports', 'report_view')
-list(@Req() req: RequestWithInfo) {
-  return this.reportService.findAll(req.info.accessibleDataIds);
-}
-```
+## BI Payment behavior đã chốt
 
-## Guard và Interceptor
+### Document
 
-### `PermissionGuard.canActivate(context)`
+| Endpoint / rule | Behavior |
+| --- | --- |
+| `list`, `stats` | Nếu user chỉ có view/base gate nhưng không có content capability, service trả `200` với `data: []`, `total: 0` thay vì `403`. |
+| `details`, `download` | Vẫn cần content capability; view-only không đủ. |
+| `upload` | `bp_program_upload` cover toàn bộ workstep; `bp_program_upload_recon` chỉ cover `RECON_DATA` và chỉ own-doc (`uploaded_by_id = self`). |
+| `update-status` | Chỉ chạy khi `BiPaymentProgressStatus.INPROGRESS`. `approval/rejected` chỉ áp cho `PREPARE` + `EX_PREPARE` và require `bp_program_approve`. |
+| `user-created` / `user-updated` / `user-approved` / `user-rejected` | Trả distinct users theo cột `uploaded_by_id`, `updated_by_id`, `approved_by_id`, `rejected_by_id`. |
+| delete route | Đã bỏ. Route static luôn đứng trước dynamic `:id`. |
 
-Mục đích: đọc metadata từ `@RequirePermission(...)` và kiểm tra permission của user.
+### Template
 
-Cách dùng: đặt sau `BearerGuard` trong `@UseGuards`.
+| Endpoint / rule | Behavior |
+| --- | --- |
+| `search` | Step×program scope. `bp_program_view` alone không mở content nếu service không có workstep capability. |
+| `details`, `download` | Cần content capability (`bp_program_upload` hoặc `bp_program_upload_recon`). |
+| `create`, `duplicate-many` | Dùng `bp_template_create`. Không phụ thuộc content-view. |
+| `delete`, `delete-many` | Dùng `bp_template_delete`. Không phụ thuộc content-view. |
+| `user-created`, `user-updated` | Distinct users, không trả template rows. |
 
-```ts
-@Controller('v1/reports')
-@UseGuards(BearerGuard, PermissionGuard)
-export class ReportController {}
-```
+### Checklist / comment / other-file
 
-Nếu `BearerGuard` chưa chạy trước, `req.info.user` có thể chưa có, guard sẽ trả `403`.
+| Area | Rule |
+| --- | --- |
+| Checklist CRUD | Dùng `bp_program_upload`. |
+| Checklist approval | Dùng `bp_program_approve`; body `programId` active tất cả checklist rows chưa xóa mềm của program đó. |
+| Comment / other-file | Dùng `bp_program_upload`. |
 
-### `DataAccessInterceptor.intercept(context, next)`
+### Program confirm
 
-Mục đích: đọc metadata từ `@RequireDataAccess(...)`, lấy danh sách record id user được phép truy cập, rồi gắn vào request.
+| Endpoint | Gate |
+| --- | --- |
+| `PATCH /bi-payment/program/pic-confirm-final-link` | Chỉ `bp_program_confirm`. |
 
-Cách dùng:
+## Parent-scope examples
 
-```ts
-@Controller('v1/reports')
-@UseGuards(BearerGuard, PermissionGuard)
-@UseInterceptors(DataAccessInterceptor)
-export class ReportController {}
-```
+Child records luôn đọc quyền từ parent program, rồi mới lọc record con.
 
-Ví dụ đầy đủ:
+| Child area | Parent key |
+| --- | --- |
+| Checklist | `program_id` |
+| Document | `program_id` |
+| Template | `bi_payment_program_id` |
+| Comment / other-file / history / program-step | `program_id` hoặc bảng program/hierarchy tương ứng |
 
-```ts
-@Controller('v1/reports')
-@UseGuards(BearerGuard, PermissionGuard)
-@UseInterceptors(DataAccessInterceptor)
-export class ReportController {
-  constructor(private readonly reportService: ReportService) {}
+### Luôn đúng
 
-  @Get()
-  @RequirePermission('report_view')
-  @RequireDataAccess('bi_hub_reports', 'report_view')
-  list(@Req() req: RequestWithInfo) {
-    return this.reportService.findAll(req.info.accessibleDataIds);
-  }
-}
-```
+- resolve access trên `bi_payment_programs`
+- sau đó mới scope child rows bằng parent id
+- không compare program explicit ids với child ids
 
-## PermissionQueryService
+## Migration & rollout
 
-Service này query trực tiếp DB bằng `DataSource.query()`.
+### Active add migration
 
-### `getUserPermissions(userId: number): Promise<string[]>`
+| File | Facts đã verify |
+| --- | --- |
+| `src/migration/1784797200000-add-bi-payment-program-permissions.ts` | Timestamp 13 digits, lookup physical table động (`permissions` / `permission`), chặn schema ambiguity, fail closed khi collision id/module, down cleanup FK-safe. |
 
-Mục đích: lấy tất cả permission code user có.
+### Deferred cleanup migration
 
-Nguồn permission:
+| File | Facts đã verify |
+| --- | --- |
+| `src/deferred-migrations/1784804400000-remove-legacy-bi-payment-program-permissions.ts` | Cố ý nằm ngoài glob active. Chỉ move sang `src/migration/` ở release cleanup sau khi manual re-grant đã smoke pass. |
 
-- Permission từ role active của user.
-- Permission exception từ `data_access_users` có `scope_type = 'allow'`.
+### Safe order
 
-Ví dụ:
-
-```ts
-const codes = await permissionQueryService.getUserPermissions(10);
-// ['report_view', 'report_edit']
-```
-
-### `hasPermission(userId: number, code: string): Promise<boolean>`
-
-Mục đích: kiểm tra user có một permission code cụ thể không.
-
-Ví dụ:
-
-```ts
-const canView = await permissionQueryService.hasPermission(10, 'report_view');
-```
-
-Ghi chú: trong runtime nên ưu tiên dùng `PermissionCacheService.hasPermission(...)` để tận dụng Redis.
-
-### `getAccessibleRecords(userId, tableName, permissionCode?)`
-
-Mục đích: lấy danh sách `data_id` user được phép truy cập trong một bảng.
-
-Logic:
-
-- Lấy `allow` qua role.
-- Lấy `allow` qua user exception.
-- Trừ toàn bộ `deny` qua role/user.
-- Nếu truyền `permissionCode`, rule `allow` chỉ match khi:
-  - Rule không có dòng `data_permissions`, hoặc
-  - Rule có permission đúng code đó.
-
-Ví dụ:
-
-```ts
-const ids = await permissionQueryService.getAccessibleRecords(10, 'bi_hub_reports', 'report_view');
-// [101, 102, 205]
-```
-
-### `getUserIdsByRole(roleId: number): Promise<number[]>`
-
-Mục đích: lấy user id đang thuộc một role, dùng cho cache invalidation.
-
-Ví dụ:
-
-```ts
-const userIds = await permissionQueryService.getUserIdsByRole(3);
-```
-
-## PermissionCacheService
-
-Service này bọc `PermissionQueryService` bằng Redis cache.
-
-### `getPermissions(userId: number): Promise<Set<string>>`
-
-Mục đích: lấy permission code của user theo cache-first.
-
-Ví dụ:
-
-```ts
-const permissions = await permissionCacheService.getPermissions(10);
-if (permissions.has('report_view')) {
-  // cho phép xử lý
-}
-```
-
-### `hasPermission(userId: number, code: string): Promise<boolean>`
-
-Mục đích: kiểm tra permission bằng Redis `SISMEMBER` nếu cache đã có.
-
-Ví dụ:
-
-```ts
-if (!(await permissionCacheService.hasPermission(10, 'report_edit'))) {
-  throw new ForbiddenException('Missing permission');
-}
-```
-
-### `getAccessibleRecords(userId, tableName, permissionCode?)`
-
-Mục đích: lấy danh sách id được truy cập theo cache-first.
-
-Ví dụ:
-
-```ts
-const accessibleIds = await permissionCacheService.getAccessibleRecords(10, 'bi_hub_reports', 'report_view');
-```
-
-### `invalidateUser(userId: number)`
-
-Mục đích: xóa mọi cache permission/data access của một user.
-
-Dùng khi:
-
-- Gán role cho user.
-- Xóa role khỏi user.
-- Thay đổi trực tiếp permission/data access riêng của user.
-
-Ví dụ:
-
-```ts
-this.permissionCache.invalidateUser(userId).catch(() => {});
-```
-
-### `invalidateByRole(roleId: number)`
-
-Mục đích: tìm tất cả user thuộc role và xóa cache của từng user.
-
-Dùng khi:
-
-- Role đổi permission.
-- Role bị active/inactive.
-- Role bị xóa.
-
-Ví dụ:
-
-```ts
-this.permissionCache.invalidateByRole(roleId).catch(() => {});
-```
-
-### `invalidateByTable(tableName: string)`
-
-Mục đích: xóa cache data access liên quan đến một bảng.
-
-Dùng khi:
-
-- Tạo data access rule.
-- Update data access rule.
-- Delete data access rule.
-- Remove link role/user khỏi rule.
-
-Ví dụ:
-
-```ts
-this.permissionCache.invalidateByTable('bi_hub_reports').catch(() => {});
-```
-
-### `invalidateAll()`
-
-Mục đích: xóa toàn bộ cache authorization.
-
-Dùng khi:
-
-- Có thay đổi lớn về permission/module.
-- Cần reset cache thủ công.
-
-Ví dụ:
-
-```ts
-await permissionCacheService.invalidateAll();
-```
-
-## Helper applyDataAccessScope
-
-### `applyDataAccessScope(qb, alias, accessibleIds)`
-
-Mục đích: thêm điều kiện lọc data access vào TypeORM `SelectQueryBuilder`.
-
-Logic:
-
-- `accessibleIds === undefined`: không thêm filter.
-- `accessibleIds.length === 0`: thêm `WHERE 1 = 0` để trả rỗng.
-- Có ids: thêm `alias.id IN (:...accessibleIds)`.
-
-Ví dụ trong service:
-
-```ts
-import { applyDataAccessScope } from '@common/authorization';
-
-async findAll(accessibleIds?: number[]) {
-  const qb = this.repo
-    .createQueryBuilder('report')
-    .where('report.deleted_at IS NULL');
-
-  applyDataAccessScope(qb, 'report', accessibleIds);
-
-  return qb.orderBy('report.created_at', 'DESC').getMany();
-}
-```
-
-## Ví dụ kiểm tra access cho endpoint update/delete
-
-Với endpoint thao tác một record cụ thể, interceptor chỉ set danh sách id. Controller hoặc service vẫn cần tự check `id` có nằm trong danh sách không.
-
-```ts
-@Put(':id')
-@RequirePermission('report_edit')
-@RequireDataAccess('bi_hub_reports', 'report_edit')
-async update(
-  @Param('id') id: string,
-  @Body() body: UpdateReportDto,
-  @Req() req: RequestWithInfo,
-) {
-  const recordId = Number(id);
-  const accessibleIds = req.info.accessibleDataIds;
-
-  if (accessibleIds !== undefined && !accessibleIds.includes(recordId)) {
-    throw new ForbiddenException('No access to this record');
-  }
-
-  return this.reportService.update(recordId, body);
-}
-```
-
-## Ví dụ tích hợp controller hoàn chỉnh
-
-```ts
-import { DataAccessInterceptor, PermissionGuard, RequireDataAccess, RequirePermission } from '@common/authorization';
-import { RequestWithInfo } from '@common/types/request-with-info';
-import { BearerGuard } from '@common/guards';
-import { Controller, Get, Req, UseGuards, UseInterceptors } from '@nestjs/common';
-
-@Controller('v1/reports')
-@UseGuards(BearerGuard, PermissionGuard)
-@UseInterceptors(DataAccessInterceptor)
-export class ReportController {
-  constructor(private readonly reportService: ReportService) {}
-
-  @Get()
-  @RequirePermission('report_view')
-  @RequireDataAccess('bi_hub_reports', 'report_view')
-  list(@Req() req: RequestWithInfo) {
-    return this.reportService.findAll(req.info.accessibleDataIds);
-  }
-}
-```
-
-## Các hook invalidation đã tích hợp
-
-| Service                                       | Khi nào invalidate                                    |
-| --------------------------------------------- | ----------------------------------------------------- |
-| `PermissionMatrixService.updateMatrixForRole` | Sau khi update permission matrix của role             |
-| `DataAccessService.create`                    | Sau khi tạo/upsert data access rule                   |
-| `DataAccessService.update`                    | Sau khi update data access rule                       |
-| `DataAccessService.delete`                    | Sau khi xóa data access rule                          |
-| `DataAccessService.removeLink`                | Sau khi remove role/user khỏi rule                    |
-| `RoleService.assignUsers`                     | Sau khi gán user vào role                             |
-| `RoleService.removeUsers`                     | Sau khi xóa user khỏi role                            |
-| `RoleService.update`                          | Sau khi đổi permission hoặc user assignments của role |
-| `RoleService.setStatus`                       | Sau khi active/inactive role                          |
-| `RoleService.delete`                          | Sau khi xóa role                                      |
-
-Các hook đang chạy kiểu fire-and-forget:
-
-```ts
-this.permissionCache.invalidateByRole(roleId).catch(() => {});
-```
-
-Lý do: thay đổi business data không bị fail chỉ vì Redis/cache invalidation gặp lỗi.
-
-## Migration index
-
-Migration:
-
-```text
-src/migration/2605050944-add-authorization-indexes.ts
-```
-
-Mục đích: thêm index cho các query thường dùng:
-
-- `user_roles(user_id)` khi `deleted_at IS NULL`
-- `roles_permissions(role_id)`
-- `data_access(table_name, scope_type)`
-- `data_access(table_name, scope_type, start_date, end_date)`
-- `data_access_roles(role_id)`
-- `data_access_users(user_id)`
-- `data_permissions(data_access_id)`
-
-Chạy migration:
-
-```bash
-npm run typeorm:run
-```
-
-Rollback:
-
-```bash
-npm run typeorm:revert
-```
-
-## Lưu ý khi thêm endpoint mới
-
-1. Nếu endpoint chỉ cần auth, dùng `BearerGuard` như hiện tại.
-2. Nếu endpoint cần permission, thêm `PermissionGuard` và `@RequirePermission(...)`.
-3. Nếu endpoint cần lọc dữ liệu theo record, thêm `DataAccessInterceptor` và `@RequireDataAccess(...)`.
-4. Với list endpoint, truyền `req.info.accessibleDataIds` xuống service và dùng `applyDataAccessScope`.
-5. Với update/delete/detail endpoint theo `:id`, phải check `accessibleDataIds.includes(id)` trước khi xử lý.
-6. Khi code làm thay đổi role/permission/data_access, cần gọi đúng hàm invalidate cache.
+1. Preflight live schema bằng `to_regclass` cho `permissions` / `permission`, `role_permissions` / `roles_permissions`, `data_access_users`.
+2. Deploy code + add migration.
+3. Admin manually grant new codes while legacy codes still exist.
+4. Flush Redis prefix `perm:user:*`.
+5. Smoke matrix.
+6. Later cleanup release: activate deferred cleanup migration.
+7. Remove old grants/definitions.
+8. Flush cache lại.
+9. Smoke matrix lại.
+
+### Rollback rule
+
+- Nếu issue xảy ra trước cleanup release: down migration add-code, re-flush cache, giữ legacy codes.
+- Nếu issue xảy ra sau cleanup release: down deferred cleanup migration chỉ restore legacy definitions; assignments vẫn phải re-grant tay.
+
+## Verification status
+
+| Check | Status |
+| --- | --- |
+| Jest BI Payment + migration spec | Passed: 20 suites, 167 tests, 0 failed. |
+| Full repository Jest | 65/69 suites, 602/604 tests passed; 4 failing suites nằm ngoài BI Payment. |
+| `git diff --check` | Passed. |
+| ESLint on changed runtime/migration sources | Passed. |
+| ESLint on changed test specs | Strict lint still has mock typing / `unsafe-any` issues; Jest compile/run remains green. |
+| repo-wide `tsc` | Still has pre-existing unrelated Role property errors. |
+| PostgreSQL live migration / smoke | Not run here. |
+| Coverage | Command chạy và tests pass, nhưng reporter chỉ trả `All files 0%`; per-file coverage chưa xác minh được. |
+
+## References
+
+- [BI Payment program permission rebuild plan](plans/260723-1600-bi-payment-program-permission-rebuild/plan.md)
+- [Rollout checklist](plans/260723-1600-bi-payment-program-permission-rebuild/reports/rollout-checklist.md)
+- [Test summary](plans/260723-1600-bi-payment-program-permission-rebuild/reports/test-summary.md)

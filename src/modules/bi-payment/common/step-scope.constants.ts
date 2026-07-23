@@ -1,35 +1,27 @@
 import { MaToolWorkstepType } from '@common/enums/ma-tool.enums';
 
-// Map template.workstep_type → permission code. Single source of truth — drives
-// which step a document/template belongs to and which code gates it. Frozen so
-// no consumer can mutate the shared map at runtime.
-export const WORKSTEP_TYPE_PERM: Readonly<Record<MaToolWorkstepType, string>> = Object.freeze({
-  [MaToolWorkstepType.PREPARE]: 'bp_program_preparing',
-  [MaToolWorkstepType.RECON_DATA]: 'bp_program_reconciliation_sale',
-  [MaToolWorkstepType.RECON_FEEDBACK]: 'bp_program_reconciliation_bicc',
-  [MaToolWorkstepType.EX_PREPARE]: 'bp_program_preparing',
-});
-
 // Full set of template workstep_type values. SO owners are granted all of these
 // (own-all); non-SO users only the subset whose code they hold at the program.
 export const ALL_WORKSTEP_TYPES: readonly MaToolWorkstepType[] = Object.freeze(Object.values(MaToolWorkstepType));
 
-// One-way VIEW-only bonuses: a code that lets the holder ALSO view a workstep
-// not their own primary code. Bicc owns the full reconciliation picture, so it
-// can additionally read sale's recon_data. Sale does NOT inherit bicc's
-// recon_feedback (asymmetric). Only affects view/list flows; create/own still
-// use WORKSTEP_TYPE_PERM so recon_data stays sale-owned for writes.
-export const WORKSTEP_BONUS_VIEW_BY_CODE: Readonly<Record<string, readonly MaToolWorkstepType[]>> = Object.freeze({
-  bp_program_reconciliation_bicc: [MaToolWorkstepType.RECON_DATA],
+// Permission codes that grant document/template visibility for each workstep.
+// Template lifecycle permissions remain independent from this content map.
+//
+// - PREPARE / EX_PREPARE ("prepare" docs): upload (full) uploads them; approve
+//   sees them read-only to approve/reject.
+// - RECON_DATA ("tra soát" / sale step): upload (full) sees all; upload_recon
+//   sees only its own (own-filter applied by the resolver, see OWN_ONLY_CODES).
+// - RECON_FEEDBACK ("feedback" / bicc step): only upload (full).
+// confirm grants no document view — it only gates the final pic-confirm action.
+export const WORKSTEP_VIEW_CODES: Readonly<Record<MaToolWorkstepType, readonly string[]>> = Object.freeze({
+  [MaToolWorkstepType.PREPARE]: ['bp_program_upload', 'bp_program_approve'],
+  [MaToolWorkstepType.EX_PREPARE]: ['bp_program_upload', 'bp_program_approve'],
+  [MaToolWorkstepType.RECON_DATA]: ['bp_program_upload', 'bp_program_upload_recon'],
+  [MaToolWorkstepType.RECON_FEEDBACK]: ['bp_program_upload'],
 });
 
-// All codes that grant VIEW access to a workstep: its primary code (gate for
-// create/own) ∪ any code that carries a view-bonus for it. View flows use this
-// instead of WORKSTEP_TYPE_PERM so a bonus code widens visible worksteps.
-export function viewCodesForWorkstep(ws: MaToolWorkstepType): readonly string[] {
-  const codes = [WORKSTEP_TYPE_PERM[ws]];
-  for (const [code, steps] of Object.entries(WORKSTEP_BONUS_VIEW_BY_CODE)) {
-    if (steps.includes(ws)) codes.push(code);
-  }
-  return codes;
-}
+// Codes whose access to a workstep is restricted to documents the holder created
+// (uploaded_by_id = self). A workstep is own-only for a user when the ONLY view
+// code they hold for it is in this set. The resolver widens to full-view the
+// moment the user also holds a non-own code (e.g. upload) for that workstep.
+export const OWN_ONLY_CODES: ReadonlySet<string> = Object.freeze(new Set(['bp_program_upload_recon']));

@@ -149,7 +149,7 @@ export class BiPaymentProgramService {
   }
 
   // Đẩy workstep_current sang step kế. Validate transition.
-  // Caller đã được verb-gate che bởi bp_program_next_step + data_access scope.
+  // Caller is already protected by the program edit verb and data-access scope.
   async nextStep(id: number, dto: NextStepDto, scope: DataScope | null) {
     const program = await this.programRepo.findOne({ where: { id } });
     if (!program) throw new NotFoundException('BI Payment program not found');
@@ -246,7 +246,7 @@ export class BiPaymentProgramService {
     if (scope === null) return;
     const qb = this.programRepo.createQueryBuilder('pg').select('1', 'one').where('pg.id = :id', { id });
     applyDataScope(qb, 'pg', PROGRAM_TABLE, scope);
-    const ok = await qb.getRawOne();
+    const ok = await qb.getRawOne<{ one: number }>();
     if (!ok) throw new ForbiddenException('No permission');
   }
 

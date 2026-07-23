@@ -122,13 +122,22 @@ describe('BiPaymentDocumentService.list — step-scoped', () => {
     );
   });
 
-  // Test C: non-SO with preparing at program, no workstep → IN (prepare, ex_prepare).
+  it('view-only program → empty 200 response', async () => {
+    jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+
+    const out = await service.list(PROGRAM_ID, query(), USER_ID, sortParams, pagination);
+
+    expect(out).toEqual({ data: [], total: 0 });
+    expect(docRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  // Test C: non-SO with upload at program, no workstep → all worksteps.
   // No per-record data-scope: query must NOT carry the applyDataScope predicate.
-  it('non-SO preparing at program, no workstep → filter t.workstep_type IN (prepare, ex_prepare), no data-scope', async () => {
+  it('non-SO upload at program, no workstep → filter all worksteps, no data-scope', async () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]); // isInOwnedScope false
     queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-      Promise.resolve(code === 'bp_program_preparing' ? [PROGRAM_ID] : []),
+      Promise.resolve(code === 'bp_program_upload' ? [PROGRAM_ID] : []),
     );
 
     await service.list(PROGRAM_ID, query(), USER_ID, sortParams, pagination);
@@ -137,50 +146,61 @@ describe('BiPaymentDocumentService.list — step-scoped', () => {
     const sharedQb = docRepo.lastQb;
     const fragments: string[] = sharedQb.capturedWheres;
     const joined = fragments.join(' | ');
-    expect(joined).toContain('t.workstep_type IN (:...allowed)');
-    expect(sharedQb.capturedParams.allowed).toEqual(
-      expect.arrayContaining([MaToolWorkstepType.PREPARE, MaToolWorkstepType.EX_PREPARE]),
+    expect(joined).toContain('t.workstep_type IN (:...fullWorksteps)');
+    expect(sharedQb.capturedParams.fullWorksteps).toEqual(
+      expect.arrayContaining([
+        MaToolWorkstepType.PREPARE,
+        MaToolWorkstepType.EX_PREPARE,
+        MaToolWorkstepType.RECON_DATA,
+        MaToolWorkstepType.RECON_FEEDBACK,
+      ]),
     );
-    expect(sharedQb.capturedParams.allowed).not.toContain(MaToolWorkstepType.RECON_DATA);
     // Visibility = step×program: no per-record data-scope predicate (no 1=0, no dsExplicit/EXISTS).
     expect(joined).not.toContain('1 = 0');
     expect(joined).not.toContain('dsExplicit_');
     expect(joined).not.toContain('EXISTS');
   });
 
-  // Test D: workstep=recon_data but only preparing → Forbidden.
-  it('workstep=recon_data but only preparing → ForbiddenException', async () => {
+  // Test D: non-SO with upload_recon at program, no workstep → recon_data own-only.
+  it('non-SO upload_recon at program, no workstep → recon_data own-only', async () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]);
     queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-      Promise.resolve(code === 'bp_program_preparing' ? [PROGRAM_ID] : []),
+      Promise.resolve(code === 'bp_program_upload_recon' ? [PROGRAM_ID] : []),
     );
 
-    await expect(
-      service.list(PROGRAM_ID, query({ workstep: MaToolWorkstepType.RECON_DATA }), USER_ID, sortParams, pagination),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await service.list(PROGRAM_ID, query(), USER_ID, sortParams, pagination);
+
+    const sharedQb = docRepo.lastQb;
+    const joined = sharedQb.capturedWheres.join(' | ');
+    expect(joined).toContain('t.workstep_type IN (:...ownWorksteps) AND d.uploaded_by_id = :scopeUserId');
+    expect(sharedQb.capturedParams.ownWorksteps).toEqual([MaToolWorkstepType.RECON_DATA]);
+    expect(sharedQb.capturedParams.scopeUserId).toBe(USER_ID);
   });
 
-  // Test E: workstep=prepare + has preparing → query contains workstep_type = prepare.
-  it('workstep=prepare + has preparing → single-step filter applied', async () => {
+  // Test E: workstep=recon_data + upload_recon → query contains step filter + own filter.
+  it('workstep=recon_data + upload_recon → single-step own filter applied', async () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]);
     queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-      Promise.resolve(code === 'bp_program_preparing' ? [PROGRAM_ID] : []),
+      Promise.resolve(code === 'bp_program_upload_recon' ? [PROGRAM_ID] : []),
     );
 
-    await service.list(PROGRAM_ID, query({ workstep: MaToolWorkstepType.PREPARE }), USER_ID, sortParams, pagination);
-    // StepScope resolved allowed set including prepare; service did not throw.
-    expect(queryService.getAccessibleRecords).toHaveBeenCalled();
+    await service.list(PROGRAM_ID, query({ workstep: MaToolWorkstepType.RECON_DATA }), USER_ID, sortParams, pagination);
+    const joined = docRepo.lastQb.capturedWheres.join(' | ');
+    expect(joined).toContain('t.workstep_type = :wt');
+    expect(joined).toContain('d.uploaded_by_id = :scopeUserId');
   });
 
-  // Test G: program out of scope (no code at program) → Forbidden.
-  it('non-SO with no code at program → ForbiddenException', async () => {
+  // Test G: no code at program → empty 200 response.
+  it('non-SO with no code at program → empty 200 response', async () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]);
     queryService.getAccessibleRecords.mockResolvedValue([]);
 
-    await expect(service.list(PROGRAM_ID, query(), USER_ID, sortParams, pagination)).rejects.toBeInstanceOf(ForbiddenException);
+    const out = await service.list(PROGRAM_ID, query(), USER_ID, sortParams, pagination);
+    expect(out).toEqual({ data: [], total: 0 });
+    expect(docRepo.createQueryBuilder).not.toHaveBeenCalled();
   });
 
   // Test E2 (SO): SO owner → all worksteps; no Forbidden.
@@ -194,21 +214,21 @@ describe('BiPaymentDocumentService.list — step-scoped', () => {
     expect(queryService.getAccessibleRecords).not.toHaveBeenCalled();
   });
 
-  // Test H: non-SO with bicc at program → sees recon_feedback AND recon_data (view bonus).
-  it('non-SO with bicc at program → allowed includes recon_feedback + recon_data, no data-scope', async () => {
+  // Test H: non-SO with approve at program → prepare + ex_prepare.
+  it('non-SO with approve at program → allowed includes prepare + ex_prepare, no data-scope', async () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]);
     queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-      Promise.resolve(code === 'bp_program_reconciliation_bicc' ? [PROGRAM_ID] : []),
+      Promise.resolve(code === 'bp_program_approve' ? [PROGRAM_ID] : []),
     );
 
     await service.list(PROGRAM_ID, query(), USER_ID, sortParams, pagination);
 
     const sharedQb = docRepo.lastQb;
-    expect(sharedQb.capturedParams.allowed).toEqual(
-      expect.arrayContaining([MaToolWorkstepType.RECON_FEEDBACK, MaToolWorkstepType.RECON_DATA]),
+    expect(sharedQb.capturedParams.fullWorksteps).toEqual(
+      expect.arrayContaining([MaToolWorkstepType.PREPARE, MaToolWorkstepType.EX_PREPARE]),
     );
-    expect(sharedQb.capturedParams.allowed).not.toContain(MaToolWorkstepType.PREPARE);
+    expect(sharedQb.capturedParams.fullWorksteps).not.toContain(MaToolWorkstepType.RECON_DATA);
     // No per-record data-scope predicate — visibility = step×program.
     expect(sharedQb.capturedWheres.join(' | ')).not.toContain('1 = 0');
   });
@@ -219,7 +239,7 @@ describe('BiPaymentDocumentService.list — step-scoped', () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]);
     queryService.getAccessibleRecords.mockImplementation((_u, _t, code) =>
-      Promise.resolve(code === 'bp_program_preparing' ? [PROGRAM_ID] : []),
+      Promise.resolve(code === 'bp_program_upload' ? [PROGRAM_ID] : []),
     );
 
     await service.list(
