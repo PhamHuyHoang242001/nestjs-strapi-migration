@@ -3,6 +3,7 @@ import { BiPaymentProgram } from '@modules/databases/bi-payment-program.entity';
 import { BiPaymentProject } from '@modules/databases/bi-payment-project.entity';
 import { BiPaymentProjectStatus } from '@common/enums/bi-payment.enums';
 import { StepScopeService } from '@modules/bi-payment/common/step-scope.service';
+import { ALL_WORKSTEP_TYPES } from '@modules/bi-payment/common/step-scope.constants';
 import { MaToolWorkstepType, MaToolTemplateStatus, MaToolTemplateType } from '@common/enums/ma-tool.enums';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { execQueryPaignation } from '@common/utils';
@@ -63,12 +64,21 @@ export class BiPaymentTemplateService {
       throw new BadRequestException('programId required');
     }
 
-    const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, dto.programId);
-    if (scopes.size === 0) {
-      return { data: [], meta: { total: 0, page: pagination.page, limit: pagination.limit } };
+    // bp_template_create mở full-view mọi workstep trong program: người tạo
+    // template cần thấy toàn bộ template của program để duplicate. Nó độc lập
+    // với content-view map (WORKSTEP_VIEW_CODES), nên check riêng trước khi fall
+    // back về step-scope thông thường.
+    const hasCreateCap = await this.stepScope.hasProgramCapability(userId, dto.programId, CREATE_CODE);
+    let worksteps: MaToolWorkstepType[] | null = null;
+    if (hasCreateCap) {
+      worksteps = this.intersectWorksteps(dto.workstepType, new Set(ALL_WORKSTEP_TYPES));
+    } else {
+      const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, dto.programId);
+      if (scopes.size === 0) {
+        return { data: [], meta: { total: 0, page: pagination.page, limit: pagination.limit } };
+      }
+      worksteps = this.intersectWorksteps(dto.workstepType, new Set(scopes.keys()));
     }
-    const allowed = new Set(scopes.keys());
-    const worksteps = this.intersectWorksteps(dto.workstepType, allowed);
 
     const qb = this.repo
       .createQueryBuilder('t')
@@ -378,6 +388,9 @@ export class BiPaymentTemplateService {
   }
 
   // Step-scoped assert for a single template. Admin bypasses.
+  // bp_template_create cũng mở view: ai có create-code ở program xem được
+  // template bất kể workstep (đồng bộ với list). Phục vụ luồng duplicate
+  // (người tạo template cần xem chi tiết template nguồn).
   private async assertTemplateStep(
     userId: number | undefined,
     tpl: BiPaymentTemplate,
@@ -387,6 +400,7 @@ export class BiPaymentTemplateService {
     if (!userId) throw new ForbiddenException('User not authenticated');
     const programId = tpl.bi_payment_program_id;
     if (!programId) throw new ForbiddenException('No permission');
+    if (await this.stepScope.hasProgramCapability(userId, programId, CREATE_CODE)) return;
     const allowed = await this.stepScope.resolveAllowedWorksteps(userId, programId);
     if (!allowed.has(tpl.workstep_type)) throw new ForbiddenException('No permission for workstep');
   }

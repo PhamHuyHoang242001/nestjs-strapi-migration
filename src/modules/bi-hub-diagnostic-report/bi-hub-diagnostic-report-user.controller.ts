@@ -10,7 +10,15 @@ import { UserType } from '@modules/databases/user.entity';
 import { Body, Controller, Get, HttpCode, Post, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
-import { SearchDiagnosticReportDto, SearchDiagnosticHistoryDto, SearchUpdatedUserDto, IncreaseViewDto } from './dto';
+import { BiHubDiagnosticReportPicService } from './bi-hub-diagnostic-report-pic.service';
+import {
+  SearchDiagnosticReportDto,
+  SearchDiagnosticHistoryDto,
+  SearchUpdatedUserDto,
+  IncreaseViewDto,
+  SearchPicUserDto,
+  SearchPicByDepartmentDto,
+} from './dto';
 
 // User-facing diagnostic report endpoints — paths match Strapi exactly for FE compatibility
 @Controller('bi-hub/diagnostic-report')
@@ -19,7 +27,10 @@ import { SearchDiagnosticReportDto, SearchDiagnosticHistoryDto, SearchUpdatedUse
 @UseGuards(BearerGuard, IsMaintenanceGuard, PermissionGuard)
 @UseInterceptors(DataAccessInterceptor)
 export class BiHubDiagnosticReportUserController {
-  constructor(private readonly service: BiHubDiagnosticReportService) {}
+  constructor(
+    private readonly service: BiHubDiagnosticReportService,
+    private readonly picService: BiHubDiagnosticReportPicService,
+  ) {}
 
   @ApiOperation({ summary: 'List diagnostic reports with pagination and data-access filtering' })
   @Get()
@@ -44,6 +55,20 @@ export class BiHubDiagnosticReportUserController {
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   findHistory(@Query() query: SearchDiagnosticHistoryDto, @Req() req: RequestWithInfo) {
     return this.service.findHistory(query, req.info?.dataScope ?? null);
+  }
+
+  @ApiOperation({ summary: 'Search users by email keyword (returns [] when no keyword)' })
+  @Get('pic-users')
+  @RequirePermission('bh_diag_report_view')
+  searchPicUsers(@Query() query: SearchPicUserDto) {
+    return this.picService.searchUsers(query);
+  }
+
+  @ApiOperation({ summary: 'List distinct PIC users across all reports in a BICC department' })
+  @Get('pic-users/by-department')
+  @RequirePermission('bh_diag_report_view')
+  findPicUsersByDepartment(@Query() query: SearchPicByDepartmentDto) {
+    return this.picService.findUsersByDepartment(query);
   }
 
   @ApiOperation({ summary: 'Increase view count of a report' })

@@ -1,5 +1,6 @@
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { BiHubDiagnosticFile } from '@modules/databases/bi-diagnostic-file.entity';
+import { BIHubDiagnosticReportPics } from '@modules/databases/bi-hub-diagnostic-report-pic.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { BiHubBiccDepartment } from '@modules/databases/bi-hub-bicc-department.entity';
 import { exportExcelToResponse, ExcelColumn } from '@common/utils';
@@ -104,6 +105,10 @@ export class BiHubDiagnosticReportWriteService {
         await manager.createQueryBuilder().relation(BIHubDiagnosticReport, 'labels').of(saved.id).add(dto.labels);
       }
 
+      if (dto.pics !== undefined) {
+        await this.replacePics(manager, saved.id, dto.pics);
+      }
+
       await this.createHistoryRecord(manager, saved.id, undefined, undefined, userId);
 
       accessGranted = await this.creatorAccessGrant.grantCreatorAccess(manager, {
@@ -189,11 +194,27 @@ export class BiHubDiagnosticReportWriteService {
           .addAndRemove(dto.labels, existingLabelIds);
       }
 
+      // PICs are metadata (not change-tracked in history). Replace-all when provided.
+      if (dto.pics !== undefined) {
+        await this.replacePics(manager, id, dto.pics);
+      }
+
       if (changedKeys.length > 0) {
         await this.createHistoryRecord(manager, id, existing, changedKeys, userId);
       }
       return { id };
     });
+  }
+
+  // ── Replace all PICs of a report (hard delete old + insert new) ─
+  private async replacePics(manager: EntityManager, reportId: number, userIds: number[]): Promise<void> {
+    await manager.delete(BIHubDiagnosticReportPics, { bi_hub_diagnostic_report_id: reportId });
+    const unique = [...new Set(userIds.filter(Boolean))];
+    if (!unique.length) return;
+    const rows = unique.map((user_id) =>
+      manager.create(BIHubDiagnosticReportPics, { user_id, bi_hub_diagnostic_report_id: reportId }),
+    );
+    await manager.save(rows);
   }
 
   // ── Delete single report ───────────────────────────────────────

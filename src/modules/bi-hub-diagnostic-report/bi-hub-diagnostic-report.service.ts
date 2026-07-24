@@ -10,6 +10,7 @@ import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
 import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import { BiHubDiagnosticReportPicService } from './bi-hub-diagnostic-report-pic.service';
 
 const REPORT_TABLE = 'bi_hub_diagnostic_reports';
 
@@ -36,6 +37,7 @@ export class BiHubDiagnosticReportService {
     readonly dataSource: DataSource,
     private readonly permissionCache: PermissionCacheService,
     private readonly ownerScope: OwnerScopeResolverService,
+    private readonly picService: BiHubDiagnosticReportPicService,
   ) {}
 
   // ── List reports with pagination + data-access filtering ───────
@@ -87,8 +89,11 @@ export class BiHubDiagnosticReportService {
       .getMany();
     const totalItems = await qb.getCount();
 
+    const picsMap = await this.picService.getPicsByReportIds(data.map((r) => r.id));
+    const formatted = data.map((r) => ({ ...formatReport(r), pics: picsMap.get(r.id) || [] }));
+
     return {
-      data: data.map((r) => formatReport(r)),
+      data: formatted,
       meta: standardizePagination(totalItems, data.length, limit, page),
     };
   }
@@ -110,7 +115,8 @@ export class BiHubDiagnosticReportService {
 
     report.bi_hub_diagnostic_files = report.bi_hub_diagnostic_files?.filter((f) => f.lastest_version) || [];
     const { isUpdate, isDelete } = await this.resolveWriteFlags(id, auth);
-    return { ...formatReport(report), isUpdate, isDelete };
+    const picsMap = await this.picService.getPicsByReportIds([id]);
+    return { ...formatReport(report), pics: picsMap.get(id) || [], isUpdate, isDelete };
   }
 
   // ── Derive per-record write capability for the current viewer ──

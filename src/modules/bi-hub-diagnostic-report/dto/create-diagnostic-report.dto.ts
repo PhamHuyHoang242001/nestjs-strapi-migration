@@ -80,4 +80,10 @@ export class CreateDiagnosticReportDto {
   @IsArray()
   @IsNumber({}, { each: true })
   readonly labels?: number[];
+
+  @ApiProperty({ required: false, type: [Number], description: 'PIC user IDs (replace-all on update)' })
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  readonly pics?: number[];
 }

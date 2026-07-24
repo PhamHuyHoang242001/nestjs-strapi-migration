@@ -33,6 +33,10 @@ describe('BiHubDiagnosticReportService.findOne write flags', () => {
       getUserImpliedVerbs: jest.fn().mockResolvedValue(overrides?.impliedVerbs ?? new Set<string>()),
       isInOwnedScope: jest.fn().mockResolvedValue(overrides?.inOwnedScope ?? false),
     };
+    // PICs are decorative metadata here; return an empty map so findOne stays focused on flags.
+    const picService = {
+      getPicsByReportIds: jest.fn().mockResolvedValue(new Map()),
+    };
 
     const service = new BiHubDiagnosticReportService(
       reportRepo as any,
@@ -40,6 +44,7 @@ describe('BiHubDiagnosticReportService.findOne write flags', () => {
       dataSource as any,
       permissionCache as any,
       ownerScope as any,
+      picService as any,
     );
     // scope=null → assertReportInScope admin-bypass; flags are derived from auth only.
     return { service, permissionCache, ownerScope };

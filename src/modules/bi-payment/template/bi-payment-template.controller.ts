@@ -28,8 +28,16 @@ import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.deco
 // Template view ăn theo step×program: uploader (full) hoặc recon-uploader mới
 // thấy template của step tương ứng trong program. Template không own-filter —
 // recon-uploader thấy toàn bộ template tra soát (own-only chỉ áp cho document).
+// bp_template_create cũng mở list (search) + content (details/download): người
+// tạo template ở program phải thấy hết template của program đó để chọn template
+// cần duplicate (data-scope ở service). Cross-program endpoints (user-created/
+// updated) KHÔNG nhận code này — tạo template ở 1 program không lý do để liệt
+// kê user mọi program.
 const TEMPLATE_LIST_PERMS = ['bp_program_view', 'bp_program_upload', 'bp_program_upload_recon'];
-const TEMPLATE_CONTENT_PERMS = ['bp_program_upload', 'bp_program_upload_recon'];
+const TEMPLATE_SEARCH_PERMS = [...TEMPLATE_LIST_PERMS, 'bp_template_create'];
+// Content perms cho details/download: ai có upload/upload_recon (content-view)
+// HOẶC create-code (luồng duplicate cần xem template nguồn).
+const TEMPLATE_CONTENT_PERMS = ['bp_program_upload', 'bp_program_upload_recon', 'bp_template_create'];
 
 @Controller('bi-payment/template')
 @ApiTags('bi-payment-template')
@@ -43,7 +51,7 @@ export class BiPaymentTemplateController {
   // sort + pagination → {data, meta}. programId required (step×program scope).
   @ApiOperation({ summary: 'List BI Payment templates' })
   @Get()
-  @RequirePermission(...TEMPLATE_LIST_PERMS)
+  @RequirePermission(...TEMPLATE_SEARCH_PERMS)
   search(
     @Query() dto: SearchBiPaymentTemplateDto,
     @SortCamel({

@@ -125,6 +125,7 @@ describe('BiPaymentTemplateService', () => {
     });
 
     it('view-only program → empty response', async () => {
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(false);
       jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
       const out = await service.search(USER_ID, searchQuery(), sortParams, pagination);
       expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
@@ -133,6 +134,7 @@ describe('BiPaymentTemplateService', () => {
 
     it('non-SO upload at program → all worksteps, no data-scope', async () => {
       mockUploadFull();
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(false);
       await service.search(USER_ID, searchQuery(), sortParams, pagination);
       const qb = repo.lastQb;
       const joined = qb.capturedWheres.join(' | ');
@@ -151,12 +153,14 @@ describe('BiPaymentTemplateService', () => {
 
     it('workstepType=recon_data with upload at program → allowed', async () => {
       mockUploadFull();
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(false);
       await expect(
         service.search(USER_ID, searchQuery({ workstepType: MaToolWorkstepType.RECON_DATA }), sortParams, pagination),
       ).resolves.toBeDefined();
     });
 
     it('workstepType=recon_data but only view → empty response', async () => {
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(false);
       jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
       const out = await service.search(USER_ID, searchQuery({ workstepType: MaToolWorkstepType.RECON_DATA }), sortParams, pagination);
       expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
@@ -187,9 +191,8 @@ describe('BiPaymentTemplateService', () => {
     });
 
     it('non-SO no code at program → empty response', async () => {
-      dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
-      dsQuery.mockResolvedValueOnce([]);
-      queryService.getAccessibleRecords.mockResolvedValue([]);
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(false);
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
       const out = await service.search(USER_ID, searchQuery(), sortParams, pagination);
       expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
       expect(repo.createQueryBuilder).not.toHaveBeenCalled();
@@ -200,6 +203,37 @@ describe('BiPaymentTemplateService', () => {
       await expect(
         service.search(USER_ID, searchQuery({ workstepType: 'bogus' }), sortParams, pagination),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    // bp_template_create mở full-view mọi workstep trong program, bất kể content-view.
+    // Người hold create-code (không có upload/recon) vẫn thấy hết template để duplicate.
+    it('non-SO with bp_template_create only → all worksteps (no upload/view needed)', async () => {
+      // resolveWorkstepScopes sẽ trả rỗng (không có content code), nhưng create-capability
+      // trả true → service phải vẫn query với full workstep set.
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      jest
+        .spyOn(stepScope, 'hasProgramCapability')
+        .mockImplementation((_u, _p, code) => Promise.resolve(code === 'bp_template_create'));
+
+      await service.search(USER_ID, searchQuery(), sortParams, pagination);
+      const qb = repo.lastQb;
+      expect(qb.capturedParams.wts).toEqual(
+        expect.arrayContaining([
+          MaToolWorkstepType.PREPARE,
+          MaToolWorkstepType.EX_PREPARE,
+          MaToolWorkstepType.RECON_DATA,
+          MaToolWorkstepType.RECON_FEEDBACK,
+        ]),
+      );
+      expect(stepScope.hasProgramCapability).toHaveBeenCalledWith(USER_ID, PROGRAM_ID, 'bp_template_create');
+    });
+
+    it('non-SO with neither create nor content code → empty response', async () => {
+      jest.spyOn(stepScope, 'resolveWorkstepScopesOrEmpty').mockResolvedValue(new Map());
+      jest.spyOn(stepScope, 'hasProgramCapability').mockResolvedValue(false);
+      const out = await service.search(USER_ID, searchQuery(), sortParams, pagination);
+      expect(out).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
+      expect(repo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 

@@ -3,6 +3,8 @@ export { SearchDiagnosticHistoryDto } from './search-diagnostic-history.dto';
 export { SearchUpdatedUserDto } from './search-updated-user.dto';
 export { IncreaseViewDto } from './increase-view.dto';
 export { CreateDiagnosticReportDto, DiagnosticFileDto } from './create-diagnostic-report.dto';
+export { SearchPicUserDto } from './search-pic-user.dto';
+export { SearchPicByDepartmentDto } from './search-pic-by-department.dto';
 export { UpdateDiagnosticReportDto } from './update-diagnostic-report.dto';
 export { DeleteManyDiagnosticReportDto } from './delete-many-diagnostic-report.dto';
 export { DownloadDiagnosticReportDto } from './download-diagnostic-report.dto';

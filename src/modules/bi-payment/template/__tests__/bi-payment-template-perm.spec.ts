@@ -7,12 +7,17 @@ describe('BiPaymentTemplateController perm mapping', () => {
   const getPerm = (prop: string): string[] | undefined =>
     Reflect.getMetadata(PERMISSION_META_KEY, BiPaymentTemplateController.prototype[prop]);
 
-  it('search gắn view/upload/upload_recon', () =>
-    expect(getPerm('search')).toEqual(['bp_program_view', 'bp_program_upload', 'bp_program_upload_recon']));
-  it('details gắn upload/upload_recon', () =>
-    expect(getPerm('details')).toEqual(['bp_program_upload', 'bp_program_upload_recon']));
-  it('download gắn upload/upload_recon', () =>
-    expect(getPerm('download')).toEqual(['bp_program_upload', 'bp_program_upload_recon']));
+  it('search gắn view/upload/upload_recon/template_create', () =>
+    expect(getPerm('search')).toEqual([
+      'bp_program_view',
+      'bp_program_upload',
+      'bp_program_upload_recon',
+      'bp_template_create',
+    ]));
+  it('details gắn upload/upload_recon/template_create', () =>
+    expect(getPerm('details')).toEqual(['bp_program_upload', 'bp_program_upload_recon', 'bp_template_create']));
+  it('download gắn upload/upload_recon/template_create', () =>
+    expect(getPerm('download')).toEqual(['bp_program_upload', 'bp_program_upload_recon', 'bp_template_create']));
   it('create gắn bp_template_create', () => expect(getPerm('create')).toEqual(['bp_template_create']));
   it('duplicateMany gắn bp_template_create', () => expect(getPerm('duplicateMany')).toEqual(['bp_template_create']));
   it('delete gắn bp_template_delete', () => expect(getPerm('delete')).toEqual(['bp_template_delete']));
