@@ -12,7 +12,7 @@ dependencies: [1, 2, 3, 4]
 ## Overview
 Phase kiểm thử trọng tâm. Cập nhật specs cũ, viết matrix 8 quyền × endpoint, đặc biệt bao case security IDOR own-only recon ở MỌI read path. Chạy `/ck:test` toàn suite tới PASS + coverage. KHÔNG mock giả để pass.
 
-Scoped verification done: 20 suites / 167 tests passed in BI Payment scope, 65/69 full repo suites and 602/604 tests passed, coverage reporter unusable, and test-summary report written.
+Scoped verification done: 20 suites / 174 tests passed in BI Payment scope, 65/69 full repo suites and 602/604 tests passed, coverage reporter unusable, and test-summary report written.
 
 > Red-team: các lỗ nằm NGOÀI list-path (detail/download IDOR, stats count leak, user-* PII, cross-program user-*, SO per-program, template create coupling, comment/other-file gates) — test phải phủ hết, không chỉ list.
 
@@ -45,7 +45,8 @@ Scoped verification done: 20 suites / 167 tests passed in BI Payment scope, 65/6
 - [x] Xem-only → doc `{data:[],total:0}`, template rỗng, 0 record (fix Xem-only-contract).
 - [x] cross-program `user-created/updated/approved/rejected`: recon-only user chỉ enumerate chính mình (không PII người khác — fix F).
 - [ ] `getAccessibleProgramIds` remap: approver "docs I approved" KHÔNG rỗng oan (fix C/F5).
-- [ ] comment (2) + other-file (5) endpoint: upload user OK; non-upload 403 (fix D/F1).
+- [x] checklist list + other-file search: view-only raw `[]`; upload-capable / owner / admin sees content (fix Xem-only-contract for these paths).
+- [ ] comment (2) endpoint: upload user OK; non-upload 403 (fix D/F1).
 - [x] template create: `bp_template_create`-only user tạo được (KHÔNG 403 do view-map — fix K).
 - [x] submit vs approve: uploader submit doc mình OK; approve-only không upload; approve chỉ prepare (fix F4/F6).
 - [x] @Delete doc → 404 route.

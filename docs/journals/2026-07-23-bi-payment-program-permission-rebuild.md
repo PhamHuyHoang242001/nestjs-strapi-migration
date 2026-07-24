@@ -12,7 +12,7 @@ We rebuilt BI Payment authorization from 10 step-scoped codes into 8 business pe
 
 ## What Happened
 
-The first pass got the broad shape right, but review exposed the real failure modes: missing comment and other-file gates, hardcoded old-code arrays in service helpers, `update-status` coupling submit and approve, and template create still depending on workstep resolution. We fixed the routing and permission wiring, kept child access scoped through the parent program, and preserved the split between full upload and own-only recon access. We also kept the checklist approval path program-scoped, removed the document delete route, and split template lifecycle from permission selection so create/delete stay independent of content-view rules.
+The first pass got the broad shape right, but review exposed the real failure modes: missing comment and other-file gates, hardcoded old-code arrays in service helpers, `update-status` coupling submit and approve, template create still depending on workstep resolution, and a late Prepare-screen regression where checklist list and other-file search still behaved like upload-only routes. We fixed the routing and permission wiring, kept child access scoped through the parent program, preserved the split between full upload and own-only recon access, and aligned the final Prepare read contract with the verified behavior: coarse view/upload entry, raw `[]` for view-only, content only for upload-capable / owner / admin. We also kept the checklist approval path program-scoped, removed the document delete route, and split template lifecycle from permission selection so create/delete stay independent of content-view rules.
 
 ## Reflection
 
@@ -35,9 +35,10 @@ This was frustrating because the plan looked clean on paper and still had enough
 
 ## Verification
 
-- 20/20 BI Payment and migration suites passed, 167/167 tests.
+- 20/20 BI Payment and migration suites passed, 174/174 tests.
 - Full repo run passed 65/69 suites and 602/604 tests; 4 failures were unrelated.
 - `git diff --check` and source lint passed.
+- Repo-wide `tsc --noEmit` still had the same 16 unrelated Role property errors outside BI Payment scope.
 - Coverage reporter was unusable and returned `All files 0%`.
 - No live database migration or smoke test was run here.
 

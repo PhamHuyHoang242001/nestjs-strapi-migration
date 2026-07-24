@@ -10,18 +10,19 @@
 - Phase 2 reconciled and marked complete.
 - Phase 3 reconciled and marked complete.
 - Phase 4 reconciled and marked complete.
-- Phase 5 synced to direct test evidence: 10/16 checkboxes complete.
+- Phase 5 synced to direct test evidence: 11/17 checkboxes complete.
 - Phase 6 synced to doc/runtime-artifact state: 5/7 checkboxes complete; rollout work still open.
 - Plan table updated to reflect real phase progress.
 - Stale `release` phrasing removed from plan text; doc scope normalized to actual workstep buckets.
+- Checklist list and other-file search empty-contract fix synced into docs/reporting.
 
 ## Metrics
 
-- Scoped BI Payment tests: 20 suites, 167 tests passed.
+- Scoped BI Payment tests: 20 suites, 174 tests passed.
 - Full repo Jest: 65/69 suites passed, 602/604 tests passed.
 - Coverage: reporter output unusable, per-file coverage not verified.
 - Runtime/migration source ESLint: passed; changed test specs still have strict mock-typing lint debt.
-- Repo-wide `tsc`: unrelated Role property drift still fails outside BI Payment scope.
+- Repo-wide `tsc`: unrelated Role property drift still fails outside BI Payment scope; same 16 Role errors persist.
 - `git diff --check`: passed per available test summary.
 
 ## Blockers
@@ -31,7 +32,7 @@
 - Manual re-grant not executed.
 - Deferred cleanup migration not activated.
 - Repo-wide Role drift still blocks a clean global `tsc`.
-- Direct tests still missing for `getAccessibleProgramIds` remap and explicit non-upload denial on comment/other-file.
+- Direct tests still missing for `getAccessibleProgramIds` remap and explicit non-upload denial on comment.
 
 ## Next Actions
 

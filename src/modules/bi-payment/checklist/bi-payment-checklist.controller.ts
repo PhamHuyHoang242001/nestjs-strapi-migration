@@ -7,6 +7,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import {
   Body,
   Controller,
@@ -25,9 +26,11 @@ import { BiPaymentChecklistService } from './bi-payment-checklist.service';
 import { CreateBiPaymentChecklistDto, UpdateBiPaymentChecklistDto } from './dto';
 
 const TABLE = DATA_ACCESS_TABLE.BI_PAYMENT_PROGRAMS;
+const CHECKLIST_LIST_PERMS = ['bp_program_view', 'bp_program_upload'];
 
 // Strapi parity: /bi-payment/checklist (flat), programId via @Query.
-// CRUD gate bp_program_upload (full uploader owns prepare artifacts); approval gate bp_program_approve.
+// Read dependency opens with program view; content remains visible only to full upload.
+// Mutations stay gated by upload; approval stays gated by approve.
 @Controller('bi-payment/checklist')
 @ApiTags('bi-payment-checklist')
 @ApiBearerAuth()
@@ -39,10 +42,10 @@ export class BiPaymentChecklistController {
   // GET /bi-payment/checklist?programId=X — Strapi findChecklist.
   @ApiOperation({ summary: 'List checklist (màn chuẩn bị)' })
   @Get()
-  @RequirePermission('bp_program_upload')
-  @RequireDataAccess(TABLE, 'bp_program_upload')
+  @RequirePermission(...CHECKLIST_LIST_PERMS)
   list(@Query('programId') pid: number, @Req() req: RequestWithInfo) {
-    return this.service.list(+pid, req.info?.dataScope ?? null);
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.list(+pid, req.info?.dataScope ?? null, userId ? +userId : undefined, adminFlag(req));
   }
 
   // POST /bi-payment/checklist — Strapi createChecklist. programId trong body (ICreateChecklist).
@@ -83,4 +86,8 @@ export class BiPaymentChecklistController {
     const userId = req.info?.user?.id as number | undefined;
     return this.service.update(+id, dto, req.info?.dataScope ?? null, userId ? +userId : undefined);
   }
+}
+
+function adminFlag(req: RequestWithInfo): { isAdmin: boolean } {
+  return { isAdmin: (req.info?.user?.type as UserType | undefined) === UserType.SUPER_ADMIN };
 }

@@ -12,11 +12,11 @@ dependencies:
 # Phase 3: Controller Re-Gating
 
 ## Overview
-Đổi gate sang code mới trên: program-step, program, checklist, template, **comment**, **other-file**. Document controller + own-filter → phase 4.
+Đổi gate sang code mới trên: program-step, program, checklist, template, **comment**, **other-file**. Checklist list và other-file search giữ coarse view/upload access: view-only trả raw `[]`, write/download vẫn upload-gated. Document controller + own-filter → phase 4.
 
 Scoped controller re-gating is in place; repo-wide `tsc` drift is unrelated and already recorded in the plan note.
 
-> Red-team fix (D): comment + other-file BỊ BỎ SÓT — vẫn gate code cũ, sẽ 403 khi phase 6 xóa code. Thêm vào phase này.
+> Red-team fix (D): comment vẫn upload-gated; checklist list + other-file search là ngoại lệ coarse view/upload (view-only raw `[]`). Giữ note này để tránh quay lại hiểu nhầm “mọi endpoint đều upload-only”.
 > Red-team fix (C-template): `template.service.STEP_CODES` (`template.service.ts:36-43`) hardcode 5 code cũ, feed user-created/updated → remap.
 > Red-team fix (K): template CREATE gọi `assertWorkstep` (`template.service.ts:369`, dup :212) → dùng view-map. Sau phase 2 map = upload codes → user `bp_template_create`-only sẽ 403. Phải decouple.
 > Red-team fix (G/F2-scope): `tsc` KHÔNG bắt được code-literal sai (`require-permission.decorator.ts:4` nhận `...string[]`). Exit = **grep-gate** = 0 hit code cũ (ngoài comment), KHÔNG dựa tsc.
@@ -29,11 +29,11 @@ Scoped controller re-gating is in place; repo-wide `tsc` drift is unrelated and 
 
 **`bi-payment-program.controller.ts`:** giữ nguyên (view/create/edit/delete).
 
-**`bi-payment-checklist.controller.ts`:** CRUD (list/create/update/delete) → **`bp_program_upload`**; `approval` → **`bp_program_approve`**.
+**`bi-payment-checklist.controller.ts`:** `list` → coarse **`['bp_program_view','bp_program_upload']`**; view-only trả raw `[]`. `create/update/delete` → **`bp_program_upload`**; `approval` → **`bp_program_approve`**.
 
 **`bi-payment-comment.controller.ts`** (`:30,39`): mọi endpoint → **`bp_program_upload`** (quyết định user: comment coi như thao tác nội dung).
 
-**`bi-payment-other-file.controller.ts`** (`:31,41,51,69,79`): mọi endpoint → **`bp_program_upload`** (attachment = file op; đồng bộ checklist).
+**`bi-payment-other-file.controller.ts`** (`:31,41,51,69,79`): `search` → coarse **`['bp_program_view','bp_program_upload']`**; view-only trả raw `[]`. `user-created` / `download-multiple` / `upload` / `delete` → **`bp_program_upload`** (attachment = file op; đồng bộ checklist).
 
 **`bi-payment-template.controller.ts`:**
 - `TEMPLATE_VIEW_PERMS` (list/detail/download/user-created/user-updated) → **`['bp_program_upload','bp_program_upload_recon']`**
@@ -48,8 +48,8 @@ Scoped controller re-gating is in place; repo-wide `tsc` drift is unrelated and 
 
 ## Implementation Steps
 1. program-step: 5×edit + 1×confirm; verify handler waiting-for-approval (fix F10).
-2. checklist: CRUD→upload, approval→approve (giữ userId param).
-3. comment + other-file: đổi decorator → upload (7 endpoint).
+2. checklist: list → coarse view/upload; create/update/delete → upload; approval→approve (giữ userId param).
+3. comment: đổi decorator → upload (2 endpoint). other-file: search → coarse view/upload; user-created/download/upload/delete → upload (5 endpoint).
 4. template controller: `TEMPLATE_VIEW_PERMS` → 2 upload code.
 5. template.service:
    - `STEP_CODES` → code mới.
@@ -60,8 +60,9 @@ Scoped controller re-gating is in place; repo-wide `tsc` drift is unrelated and 
 
 ## Success Criteria
 - [x] program-step 5×edit + confirm; waiting-handler verified metadata-only.
-- [x] checklist CRUD→upload, approval→approve.
-- [x] comment (2) + other-file (5) endpoint → upload; KHÔNG còn gate code cũ.
+- [x] checklist list → coarse view/upload empty-200; create/update/delete→upload, approval→approve.
+- [x] other-file search → coarse view/upload empty-200; user-created/download/upload/delete→upload.
+- [x] comment (2) endpoint → upload; KHÔNG còn gate code cũ.
 - [x] template view→[upload,upload_recon]; create/delete giữ code; `assertWorkstep` decoupled (create-only user KHÔNG 403); `STEP_CODES` remap.
 - [x] Grep-gate: 0 hit code cũ ngoài document.service + legacy const (phase 4/6).
 - [x] Repo-wide `tsc` warning recorded; unrelated Role drift remains outside BI Payment scope.

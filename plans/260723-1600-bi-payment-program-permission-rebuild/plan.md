@@ -28,7 +28,7 @@ source: skill
 
 ## Overview
 
-Thay bộ 10 code step-scoped hiện tại của program bằng ma trận 8 quyền nghiệp-vụ. `Xem` là base gate BE (doc/template list rỗng nếu không kèm upload/approve/confirm). `Sửa` hấp thụ next_step + calculating + mọi `*-workstep` metadata. Upload full = xem+upload mọi template & doc (PREPARE/EX_PREPARE/RECON_DATA/RECON_FEEDBACK) + merge artifacts. Upload tra soát = recon template (full-view) + doc RECON_DATA **do chính mình tạo**. Approve = duyệt prepare-doc + checklist. Confirm = `pic-confirm-final-link` (chốt cuối). Bỏ bonus-view. Gỡ endpoint delete doc. Reset assignment cũ → admin gán tay.
+Thay bộ 10 code step-scoped hiện tại của program bằng ma trận 8 quyền nghiệp-vụ. `Xem` là base gate BE (doc/template list rỗng nếu không kèm upload/approve/confirm). `Sửa` hấp thụ next_step + calculating + mọi `*-workstep` metadata. Upload full = xem+upload mọi template & doc (PREPARE/EX_PREPARE/RECON_DATA/RECON_FEEDBACK) + merge artifacts. Upload tra soát = recon template (full-view) + doc RECON_DATA **do chính mình tạo**. Checklist list và other-file search dùng coarse view/upload route access: view-only trả raw `[]`, upload-capable / owner / admin thấy content. Approve = duyệt prepare-doc + checklist. Confirm = `pic-confirm-final-link` (chốt cuối). Bỏ bonus-view. Gỡ endpoint delete doc. Reset assignment cũ → admin gán tay.
 
 Nguồn: brainstorm session 2026-07-23 (8 câu hỏi đã chốt). Kế thừa StepScopeService/`applyDataScope`/SO own-all từ plan `260708-1550`.
 
@@ -55,9 +55,9 @@ Gỡ: `next_step`(43), `preparing`(44), `calculating`(45), `reconciliation_bicc`
 |-------|------|--------|----------|
 | 1 | [Permission Codes Foundation](./phase-01-permission-codes-foundation.md) | Completed | 5/5 |
 | 2 | [Step-Scope Core Rewrite](./phase-02-step-scope-core-rewrite.md) | Completed | 5/5 |
-| 3 | [Controller Re-Gating](./phase-03-controller-re-gating.md) | Completed | 6/6 |
+| 3 | [Controller Re-Gating](./phase-03-controller-re-gating.md) | Completed | 7/7 |
 | 4 | [Document Own-Filter & Merge](./phase-04-document-own-filter-merge.md) | Completed | 8/8 |
-| 5 | [Thorough Testing (ck:test)](./phase-05-thorough-testing-ck-test.md) | In Progress | 10/16 |
+| 5 | [Thorough Testing (ck:test)](./phase-05-thorough-testing-ck-test.md) | In Progress | 11/17 |
 | 6 | [Cleanup, Docs & Rollout](./phase-06-docs-rollout.md) | In Progress | 5/7 |
 
 ## Decisions (chốt — brainstorm + red-team)
@@ -68,11 +68,12 @@ Gỡ: `next_step`(43), `preparing`(44), `calculating`(45), `reconciliation_bicc`
 - next_step + 5 `*-workstep` metadata → `Sửa`. `pic-confirm-final-link` → `Confirm`. Merge artifacts → `Upload` full.
 - Upload tra soát own-only áp cho DOC RECON_DATA ở MỌI read path (list + detail + download + stats + user-*), KHÔNG áp cho template.
 - Bỏ bonus-view. Gỡ hẳn endpoint delete doc (FE xác nhận không dùng).
+- Checklist list + other-file search là ngoại lệ coarse view/upload: view-only trả raw `[]`; write/download/user-created vẫn upload-gated.
 - Template create/delete giữ code (50/51) nhưng **decouple `assertWorkstep`** (red-team K).
 
 ## Decisions (business — chốt từ red-team round)
 
-1. **comment + other-file** (bị bỏ sót) → gate `bp_program_upload`.
+1. **comment** → gate `bp_program_upload`; **checklist list + other-file search** giữ coarse view/upload empty-200 contract.
 2. **update-status**: `approve/reject` chỉ áp doc PREPARE+EX_PREPARE (bỏ recon-feedback approval — regression có chủ đích); `submit` tách cho uploader (`upload`/`upload_recon`).
 3. **Xem-only** → empty 200 (giữ view trong gate + service không throw).
 4. **@Delete doc** → gỡ hẳn (FE không dùng).
@@ -113,4 +114,4 @@ Gỡ: `next_step`(43), `preparing`(44), `calculating`(45), `reconciliation_bicc`
 | — | "Inverted mapping" (Security F3) | Critical | Partial-reject | note only (map correct) |
 
 ### Whole-Plan Consistency Sweep
-Re-đọc plan.md + 6 phase sau khi áp finding: đồng bộ (a) phase order add→delete, (b) own-filter mọi read path, (c) grep-gate thay tsc-gate ở P3/P4, (d) comment/other-file + 2 hardcoded array vào scope, (e) supersedes thay blocking edge. **0 mâu thuẫn tồn đọng.** Business decisions (comment→upload, approve prepare-only+submit split, Xem-empty-200, delete-doc removed) áp nhất quán qua matrix + phase 3/4/5.
+Re-đọc plan.md + 6 phase sau khi áp finding: đồng bộ (a) phase order add→delete, (b) own-filter mọi read path, (c) grep-gate thay tsc-gate ở P3/P4, (d) comment upload + checklist list / other-file search coarse-empty-200 + 2 hardcoded array vào scope, (e) supersedes thay blocking edge. **0 mâu thuẫn tồn đọng.** Business decisions (comment→upload, checklist/other-file list-search empty-200, approve prepare-only+submit split, Xem-empty-200, delete-doc removed) áp nhất quán qua matrix + phase 3/4/5.

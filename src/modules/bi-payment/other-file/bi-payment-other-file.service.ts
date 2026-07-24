@@ -6,8 +6,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SearchBiPaymentOtherFileDto, UploadBiPaymentOtherFileDto } from './dto';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
+import { StepScopeService } from '../common/step-scope.service';
 
 const PROGRAM_TABLE = 'bi_payment_programs';
+const UPLOAD_CODE = 'bp_program_upload';
+type AdminFlag = { isAdmin: boolean };
 
 // Other-file = file đính kèm checklist. Record-scope = subtree checklist→program→project.
 // Attachment endpoints use the full upload capability configured at the controller.
@@ -16,6 +19,7 @@ export class BiPaymentOtherFileService {
   constructor(
     @InjectRepository(BiPaymentOtherFile) private readonly repo: Repository<BiPaymentOtherFile>,
     @InjectRepository(BiPaymentChecklist) private readonly checklistRepo: Repository<BiPaymentChecklist>,
+    private readonly stepScope: StepScopeService,
   ) {}
 
   // Upload batch — validates checklist exists + parent program in caller scope, then insert.
@@ -50,7 +54,18 @@ export class BiPaymentOtherFileService {
   }
 
   // List by program scope — other_files joined to checklist (program_id) then applyDataScope.
-  async list(query: SearchBiPaymentOtherFileDto, scope: DataScope | null) {
+  async list(
+    query: SearchBiPaymentOtherFileDto,
+    scope: DataScope | null,
+    userId?: number,
+    admin: AdminFlag = { isAdmin: false },
+  ) {
+    if (
+      !admin.isAdmin &&
+      (!userId || !(await this.stepScope.hasProgramCapability(userId, query.programId, UPLOAD_CODE)))
+    ) {
+      return [];
+    }
     const qb = this.repo
       .createQueryBuilder('f')
       .innerJoin('f.bi_payment_checklist', 'cl', 'cl.deleted_at IS NULL')

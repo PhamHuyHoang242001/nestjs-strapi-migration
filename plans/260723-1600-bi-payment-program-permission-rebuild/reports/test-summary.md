@@ -12,7 +12,7 @@ Final verification for the BI Payment permission rebuild and its migration guard
 
 | Check | Result | Notes |
 | --- | --- | --- |
-| Jest BI Payment + migration specs | PASS | 20 suites, 167 tests, 0 failed. |
+| Jest BI Payment + migration specs | PASS | 20 suites, 174 tests, 0 failed. |
 | Full repository Jest | WARN | 65/69 suites and 602/604 tests passed. Four failing suites are outside BI Payment. |
 | `git diff --check` | PASS | No whitespace / patch syntax issues. |
 | ESLint on changed runtime/migration sources | PASS | Non-test TypeScript touched by the permission rebuild passed with `--max-warnings 0`. |
@@ -24,6 +24,7 @@ Final verification for the BI Payment permission rebuild and its migration guard
 ## Evidence
 
 - Active add migration verified as schema-safe and collision-safe in source.
+- Checklist list and other-file search now honor coarse view/upload access and return raw `[]` for view-only callers.
 - Deferred cleanup migration is intentionally outside the active migration glob until the later cleanup release.
 - Full-run failures: authorization owner-interceptor assertion, transform-file auth assertion, and two Role suites blocked by the known Role type drift.
 - No production rollout or live smoke was performed in this session.
@@ -32,3 +33,4 @@ Final verification for the BI Payment permission rebuild and its migration guard
 
 - Which physical join table is present in the target environment: `role_permissions` or `roles_permissions`.
 - When the later cleanup release will be promoted to active migration scope.
+- Whether the remaining comment direct-deny validation should stay in-scope here or move to a later test pass.

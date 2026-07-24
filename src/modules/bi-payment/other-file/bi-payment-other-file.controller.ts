@@ -7,6 +7,7 @@ import { DATA_ACCESS_TABLE } from '@common/enums';
 import { BearerGuard } from '@common/guards';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
+import { UserType } from '@modules/databases/user.entity';
 import {
   Body,
   Controller,
@@ -26,10 +27,11 @@ import { BiPaymentOtherFileService } from './bi-payment-other-file.service';
 import { SearchBiPaymentOtherFileDto, UploadBiPaymentOtherFileDto } from './dto';
 
 const TABLE = DATA_ACCESS_TABLE.BI_PAYMENT_PROGRAMS;
+const OTHER_FILE_LIST_PERMS = ['bp_program_view', 'bp_program_upload'];
 
 // Strapi parity: /bi-payment/orther-file (Strapi typo "orther" — giữ y để frontend ko đổi).
-// Subtree checklist→program→project. Attachment = file op → gate bp_program_upload
-// (lockstep with checklist so an uploader can both create a checklist and attach files).
+// Subtree checklist→program→project. List opens with program view but only an
+// uploader sees content. Attachment/download/mutation routes remain upload-only.
 @Controller('bi-payment/orther-file')
 @ApiTags('bi-payment-other-file')
 @ApiBearerAuth()
@@ -41,10 +43,10 @@ export class BiPaymentOtherFileController {
   // GET /bi-payment/orther-file?programId=X&type=Y — Strapi findAllOtherFile.
   @ApiOperation({ summary: 'List other-files by program' })
   @Get()
-  @RequirePermission('bp_program_upload')
-  @RequireDataAccess(TABLE, 'bp_program_upload')
+  @RequirePermission(...OTHER_FILE_LIST_PERMS)
   search(@Query() query: SearchBiPaymentOtherFileDto, @Req() req: RequestWithInfo) {
-    return this.service.list(query, req.info?.dataScope ?? null);
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.list(query, req.info?.dataScope ?? null, userId ? +userId : undefined, adminFlag(req));
   }
 
   // GET /bi-payment/orther-file/user-created — Strapi findUserCreatedOtherFile.
@@ -93,4 +95,8 @@ export class BiPaymentOtherFileController {
   delete(@Param('id') id: number, @Req() req: RequestWithInfo) {
     return this.service.delete(+id, req.info?.dataScope ?? null);
   }
+}
+
+function adminFlag(req: RequestWithInfo): { isAdmin: boolean } {
+  return { isAdmin: (req.info?.user?.type as UserType | undefined) === UserType.SUPER_ADMIN };
 }

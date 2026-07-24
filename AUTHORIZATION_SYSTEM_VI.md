@@ -83,9 +83,12 @@ Nghĩa là:
 
 | Area | Rule |
 | --- | --- |
+| Checklist list | Coarse `bp_program_view` / `bp_program_upload` route access; view-only trả raw `[]`, upload-capable / owner / admin thấy rows. |
 | Checklist CRUD | Dùng `bp_program_upload`. |
 | Checklist approval | Dùng `bp_program_approve`; body `programId` active tất cả checklist rows chưa xóa mềm của program đó. |
-| Comment / other-file | Dùng `bp_program_upload`. |
+| Comment | Dùng `bp_program_upload`. |
+| Other-file search | Coarse `bp_program_view` / `bp_program_upload` route access; view-only trả raw `[]`, upload-capable / owner / admin thấy rows. |
+| Other-file user-created / download-multiple / upload / delete | Dùng gate hiện tại: `bp_program_upload`. |
 
 ### Program confirm
 
@@ -145,7 +148,7 @@ Child records luôn đọc quyền từ parent program, rồi mới lọc record
 
 | Check | Status |
 | --- | --- |
-| Jest BI Payment + migration spec | Passed: 20 suites, 167 tests, 0 failed. |
+| Jest BI Payment + migration spec | Passed: 20 suites, 174 tests, 0 failed. |
 | Full repository Jest | 65/69 suites, 602/604 tests passed; 4 failing suites nằm ngoài BI Payment. |
 | `git diff --check` | Passed. |
 | ESLint on changed runtime/migration sources | Passed. |

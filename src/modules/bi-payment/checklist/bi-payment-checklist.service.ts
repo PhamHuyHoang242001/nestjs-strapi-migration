@@ -7,8 +7,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { CreateBiPaymentChecklistDto, UpdateBiPaymentChecklistDto } from './dto';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
+import { StepScopeService } from '../common/step-scope.service';
 
 const PROGRAM_TABLE = 'bi_payment_programs';
+const UPLOAD_CODE = 'bp_program_upload';
+type AdminFlag = { isAdmin: boolean };
 
 // Checklist content is managed by full upload; approval uses the dedicated approve capability.
 @Injectable()
@@ -16,9 +19,13 @@ export class BiPaymentChecklistService {
   constructor(
     @InjectRepository(BiPaymentChecklist) private readonly repo: Repository<BiPaymentChecklist>,
     @InjectRepository(BiPaymentProgram) private readonly programRepo: Repository<BiPaymentProgram>,
+    private readonly stepScope: StepScopeService,
   ) {}
 
-  async list(programId: number, scope: DataScope | null) {
+  async list(programId: number, scope: DataScope | null, userId?: number, admin: AdminFlag = { isAdmin: false }) {
+    if (!admin.isAdmin && (!userId || !(await this.stepScope.hasProgramCapability(userId, programId, UPLOAD_CODE)))) {
+      return [];
+    }
     await this.assertProgramInScope(programId, scope);
     const qb = this.repo
       .createQueryBuilder('c')
