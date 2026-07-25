@@ -57,6 +57,7 @@ describe('Diagnostic create parent-scope integration', () => {
       { transaction } as any,
       creatorAccessGrant,
       ownerScope,
+      null as any,
     );
   });
 

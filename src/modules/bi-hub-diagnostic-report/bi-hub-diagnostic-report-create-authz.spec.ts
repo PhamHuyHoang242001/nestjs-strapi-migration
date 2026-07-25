@@ -27,7 +27,7 @@ describe('BiHubDiagnosticReportWriteService.create() — parent-scope authz', ()
   beforeEach(() => {
     jest.clearAllMocks();
     transaction.mockResolvedValue({ id: 1 });
-    service = new BiHubDiagnosticReportWriteService(readService, dataSource, creatorAccessGrant, ownerScope);
+    service = new BiHubDiagnosticReportWriteService(readService, dataSource, creatorAccessGrant, ownerScope, null as any);
   });
 
   it('throws ForbiddenException and does NOT write when parent is out of scope', async () => {

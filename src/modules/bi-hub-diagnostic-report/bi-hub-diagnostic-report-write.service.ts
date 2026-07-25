@@ -17,6 +17,7 @@ import {
   applyPicAndUpdatedByFilters,
 } from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
+import { BiHubDiagnosticReportPicService } from './bi-hub-diagnostic-report-pic.service';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import { DATA_ACCESS_TABLE } from '@common/enums';
@@ -33,6 +34,7 @@ const DOWNLOAD_COLUMNS: ExcelColumn[] = [
   { header: 'BU Name', key: 'bu_name', width: 20 },
   { header: 'Insight', key: 'insight', width: 40 },
   { header: 'Labels', key: 'labels', width: 25 },
+  { header: 'PIC', key: 'pic', width: 30 },
   { header: 'Scope', key: 'scopes', width: 30 },
   { header: 'Sensitive Data', key: 'is_sensitive', width: 15 },
   { header: 'File URL', key: 'file_url', width: 40 },
@@ -49,6 +51,7 @@ export class BiHubDiagnosticReportWriteService {
     private readonly dataSource: DataSource,
     private readonly creatorAccessGrant: CreatorAccessGrantService,
     private readonly ownerScope: OwnerScopeResolverService,
+    private readonly picService: BiHubDiagnosticReportPicService,
   ) {}
 
   private get reportRepo() {
@@ -336,12 +339,17 @@ export class BiHubDiagnosticReportWriteService {
       if (raw.report_id && raw.updater_email) emailMap.set(Number(raw.report_id), raw.updater_email);
     }
 
+    // Batch-load PICs (person-in-charge) for all exported reports, keyed by report id.
+    // Rendered as a comma-joined email list in the PIC column, mirroring the Labels column.
+    const picMap = await this.picService.getPicsByReportIds(reports.entities.map((r) => r.id));
+
     const rows = reports.entities.map((item) => ({
       name: item.name || '',
       bicc_name: item.bicc_department?.name || '',
       bu_name: item.bu_name || '',
       insight: Array.isArray(item.insight) ? item.insight.join(', ') : item.insight || '',
       labels: item.labels?.map((l) => l.name).join(', ') || '',
+      pic: picMap.get(item.id)?.map((p) => p.email).join(', ') || '',
       scopes: item.txt_diagnostic_scope || '',
       is_sensitive: item.is_sensitive ? 'Yes' : 'No',
       file_url: item.bi_hub_diagnostic_files?.[0]?.file_url || '',
