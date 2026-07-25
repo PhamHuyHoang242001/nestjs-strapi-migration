@@ -9,6 +9,7 @@ import {
   IsArray,
   ValidateNested,
   MaxLength,
+  ArrayMaxSize,
 } from 'class-validator';
 
 // Nested DTO for diagnostic file payload
@@ -86,4 +87,15 @@ export class CreateDiagnosticReportDto {
   @IsArray()
   @IsNumber({}, { each: true })
   readonly pics?: number[];
+
+  @ApiProperty({
+    required: false,
+    type: [Number],
+    description: 'Supporter user IDs (replace-all on update, max 10)',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10, { message: 'supporters must contain no more than 10 users' })
+  @IsNumber({}, { each: true })
+  readonly supporters?: number[];
 }

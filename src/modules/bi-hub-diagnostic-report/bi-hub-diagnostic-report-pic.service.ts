@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { SearchPicUserDto, SearchPicByDepartmentDto } from './dto';
 
 const PICS_TABLE = 'bi_hub_diagnostic_report_pics';
+const SUPPORTERS_TABLE = 'bi_hub_diagnostic_report_supporters';
 const REPORT_TABLE = 'bi_hub_diagnostic_reports';
 
 // Minimal user shape returned by all PIC endpoints (id + email only).
@@ -20,16 +21,29 @@ export class BiHubDiagnosticReportPicService {
   // ── Batch-load PICs for a set of reports (avoids N+1) ──────────
   // Returns a map reportId -> [{ id, email }]. Excludes soft-deleted pics and users.
   async getPicsByReportIds(reportIds: number[]): Promise<Map<number, PicUser[]>> {
+    return this.getUserLinksByReportIds(PICS_TABLE, reportIds);
+  }
+
+  // ── Batch-load supporters for a set of reports (avoids N+1) ────
+  // Same shape/rules as PICs, read from the supporters link table.
+  async getSupportersByReportIds(reportIds: number[]): Promise<Map<number, PicUser[]>> {
+    return this.getUserLinksByReportIds(SUPPORTERS_TABLE, reportIds);
+  }
+
+  // ── Shared batch-load for a report<->user link table ───────────
+  // Returns a map reportId -> [{ id, email }]. Excludes soft-deleted links and users.
+  // `linkTable` is a trusted internal constant (never user input) — safe to interpolate.
+  private async getUserLinksByReportIds(linkTable: string, reportIds: number[]): Promise<Map<number, PicUser[]>> {
     const map = new Map<number, PicUser[]>();
     if (!reportIds.length) return map;
 
     const rows: { report_id: number; id: number; email: string }[] = await this.dataSource.query(
-      `SELECT p.bi_hub_diagnostic_report_id AS report_id, u.id, u.email
-       FROM ${PICS_TABLE} p
-       INNER JOIN users u ON u.id = p.user_id AND u.deleted_at IS NULL
-       WHERE p.bi_hub_diagnostic_report_id = ANY($1)
-         AND p.deleted_at IS NULL AND p.is_deleted = false
-       ORDER BY p.bi_hub_diagnostic_report_id, u.id`,
+      `SELECT l.bi_hub_diagnostic_report_id AS report_id, u.id, u.email
+       FROM ${linkTable} l
+       INNER JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL
+       WHERE l.bi_hub_diagnostic_report_id = ANY($1)
+         AND l.deleted_at IS NULL AND l.is_deleted = false
+       ORDER BY l.bi_hub_diagnostic_report_id, u.id`,
       [reportIds],
     );
 
@@ -74,6 +88,17 @@ export class BiHubDiagnosticReportPicService {
 
   // ── Distinct PIC users across all reports in a department ──────
   async findUsersByDepartment(query: SearchPicByDepartmentDto) {
+    return this.findUsersByDepartmentForTable(PICS_TABLE, query);
+  }
+
+  // ── Distinct supporter users across all reports in a department ─
+  async findSupporterUsersByDepartment(query: SearchPicByDepartmentDto) {
+    return this.findUsersByDepartmentForTable(SUPPORTERS_TABLE, query);
+  }
+
+  // ── Shared: distinct users linked (via `linkTable`) to any non-deleted report in a dept ─
+  // `linkTable` is a trusted internal constant (never user input) — safe to interpolate.
+  private async findUsersByDepartmentForTable(linkTable: string, query: SearchPicByDepartmentDto) {
     const deptId = +query.biccDepartmentId;
     const page = +(query.page || 1);
     const limit = Math.min(+(query.limit || 10), 100);
@@ -81,22 +106,22 @@ export class BiHubDiagnosticReportPicService {
     const [entries, countResult] = await Promise.all([
       this.dataSource.query(
         `SELECT DISTINCT u.id, u.email
-         FROM ${PICS_TABLE} p
-         INNER JOIN ${REPORT_TABLE} r ON r.id = p.bi_hub_diagnostic_report_id
+         FROM ${linkTable} l
+         INNER JOIN ${REPORT_TABLE} r ON r.id = l.bi_hub_diagnostic_report_id
            AND r.is_deleted = false AND r.deleted_at IS NULL
-         INNER JOIN users u ON u.id = p.user_id AND u.deleted_at IS NULL
-         WHERE r.bicc_department_id = $1 AND p.deleted_at IS NULL AND p.is_deleted = false
+         INNER JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL
+         WHERE r.bicc_department_id = $1 AND l.deleted_at IS NULL AND l.is_deleted = false
          ORDER BY u.id
          LIMIT $2 OFFSET $3`,
         [deptId, limit, (page - 1) * limit],
       ),
       this.dataSource.query(
         `SELECT COUNT(DISTINCT u.id) AS count
-         FROM ${PICS_TABLE} p
-         INNER JOIN ${REPORT_TABLE} r ON r.id = p.bi_hub_diagnostic_report_id
+         FROM ${linkTable} l
+         INNER JOIN ${REPORT_TABLE} r ON r.id = l.bi_hub_diagnostic_report_id
            AND r.is_deleted = false AND r.deleted_at IS NULL
-         INNER JOIN users u ON u.id = p.user_id AND u.deleted_at IS NULL
-         WHERE r.bicc_department_id = $1 AND p.deleted_at IS NULL AND p.is_deleted = false`,
+         INNER JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL
+         WHERE r.bicc_department_id = $1 AND l.deleted_at IS NULL AND l.is_deleted = false`,
         [deptId],
       ),
     ]);

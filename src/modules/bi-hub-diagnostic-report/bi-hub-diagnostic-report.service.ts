@@ -4,7 +4,12 @@ import { standardizePagination } from '@common/utils';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { SearchDiagnosticReportDto, SearchDiagnosticHistoryDto, SearchUpdatedUserDto } from './dto';
+import {
+  SearchDiagnosticReportDto,
+  SearchDiagnosticHistoryDto,
+  SearchUpdatedUserDto,
+  SearchPicByDepartmentDto,
+} from './dto';
 import { REPORT_SORT_MAP, HISTORY_SORT_MAP, formatReport, formatHistory } from './diagnostic-report-format.helper';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
@@ -89,8 +94,16 @@ export class BiHubDiagnosticReportService {
       .getMany();
     const totalItems = await qb.getCount();
 
-    const picsMap = await this.picService.getPicsByReportIds(data.map((r) => r.id));
-    const formatted = data.map((r) => ({ ...formatReport(r), pics: picsMap.get(r.id) || [] }));
+    const reportIds = data.map((r) => r.id);
+    const [picsMap, supportersMap] = await Promise.all([
+      this.picService.getPicsByReportIds(reportIds),
+      this.picService.getSupportersByReportIds(reportIds),
+    ]);
+    const formatted = data.map((r) => ({
+      ...formatReport(r),
+      pics: picsMap.get(r.id) || [],
+      supporters: supportersMap.get(r.id) || [],
+    }));
 
     return {
       data: formatted,
@@ -115,8 +128,17 @@ export class BiHubDiagnosticReportService {
 
     report.bi_hub_diagnostic_files = report.bi_hub_diagnostic_files?.filter((f) => f.lastest_version) || [];
     const { isUpdate, isDelete } = await this.resolveWriteFlags(id, auth);
-    const picsMap = await this.picService.getPicsByReportIds([id]);
-    return { ...formatReport(report), pics: picsMap.get(id) || [], isUpdate, isDelete };
+    const [picsMap, supportersMap] = await Promise.all([
+      this.picService.getPicsByReportIds([id]),
+      this.picService.getSupportersByReportIds([id]),
+    ]);
+    return {
+      ...formatReport(report),
+      pics: picsMap.get(id) || [],
+      supporters: supportersMap.get(id) || [],
+      isUpdate,
+      isDelete,
+    };
   }
 
   // ── Derive per-record write capability for the current viewer ──
@@ -187,6 +209,39 @@ export class BiHubDiagnosticReportService {
          INNER JOIN bi_hub_diagnostic_history_reports h ON h.created_by_admin_id = u.id
          WHERE h.bi_hub_diagnostic_report_id = $1 AND u.deleted_at IS NULL AND LOWER(u.email) LIKE $2`,
         [reportId, keyword],
+      ),
+    ]);
+
+    const total = +(countResult[0]?.count || 0);
+    return { data: entries, meta: standardizePagination(total, entries.length, limit, page) };
+  }
+
+  // ── Distinct updater users across all reports in a department ──
+  // "Updater" = the user recorded in each report's updated_by_admin_id, for
+  // non-deleted reports in the given BICC department.
+  async findUpdatedUsersByDepartment(query: SearchPicByDepartmentDto) {
+    const deptId = +query.biccDepartmentId;
+    const page = +(query.page || 1);
+    const limit = Math.min(+(query.limit || 10), 100);
+
+    const [entries, countResult] = await Promise.all([
+      this.dataSource.query(
+        `SELECT DISTINCT u.id, u.email
+         FROM users u
+         INNER JOIN bi_hub_diagnostic_reports r ON r.updated_by_admin_id = u.id
+           AND r.is_deleted = false AND r.deleted_at IS NULL
+         WHERE r.bicc_department_id = $1 AND u.deleted_at IS NULL
+         ORDER BY u.id
+         LIMIT $2 OFFSET $3`,
+        [deptId, limit, (page - 1) * limit],
+      ),
+      this.dataSource.query(
+        `SELECT COUNT(DISTINCT u.id) AS count
+         FROM users u
+         INNER JOIN bi_hub_diagnostic_reports r ON r.updated_by_admin_id = u.id
+           AND r.is_deleted = false AND r.deleted_at IS NULL
+         WHERE r.bicc_department_id = $1 AND u.deleted_at IS NULL`,
+        [deptId],
       ),
     ]);
 

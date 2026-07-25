@@ -3,6 +3,7 @@ import { BiHubDiagnosticFile } from '@modules/databases/bi-diagnostic-file.entit
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { BiDiagnosticLog } from '@modules/databases/bi-diagnostic-log.entity';
 import { BIHubDiagnosticReportPics } from '@modules/databases/bi-hub-diagnostic-report-pic.entity';
+import { BIHubDiagnosticReportSupporters } from '@modules/databases/bi-hub-diagnostic-report-supporter.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BiHubDiagnosticReportUserController } from './bi-hub-diagnostic-report-user.controller';
@@ -25,6 +26,7 @@ import { DataAccessModule } from '@modules/data-access/data-access.module';
       BIHubDiagnosticHistoryReport,
       BiDiagnosticLog,
       BIHubDiagnosticReportPics,
+      BIHubDiagnosticReportSupporters,
     ]),
     DataAccessModule,
   ],

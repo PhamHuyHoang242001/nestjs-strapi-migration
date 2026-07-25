@@ -33,9 +33,10 @@ describe('BiHubDiagnosticReportService.findOne write flags', () => {
       getUserImpliedVerbs: jest.fn().mockResolvedValue(overrides?.impliedVerbs ?? new Set<string>()),
       isInOwnedScope: jest.fn().mockResolvedValue(overrides?.inOwnedScope ?? false),
     };
-    // PICs are decorative metadata here; return an empty map so findOne stays focused on flags.
+    // PICs/supporters are decorative metadata here; return empty maps so findOne stays focused on flags.
     const picService = {
       getPicsByReportIds: jest.fn().mockResolvedValue(new Map()),
+      getSupportersByReportIds: jest.fn().mockResolvedValue(new Map()),
     };
 
     const service = new BiHubDiagnosticReportService(

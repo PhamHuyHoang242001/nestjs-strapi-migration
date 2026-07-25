@@ -1,6 +1,7 @@
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { BiHubDiagnosticFile } from '@modules/databases/bi-diagnostic-file.entity';
 import { BIHubDiagnosticReportPics } from '@modules/databases/bi-hub-diagnostic-report-pic.entity';
+import { BIHubDiagnosticReportSupporters } from '@modules/databases/bi-hub-diagnostic-report-supporter.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { BiHubBiccDepartment } from '@modules/databases/bi-hub-bicc-department.entity';
 import { exportExcelToResponse, ExcelColumn } from '@common/utils';
@@ -109,6 +110,10 @@ export class BiHubDiagnosticReportWriteService {
         await this.replacePics(manager, saved.id, dto.pics);
       }
 
+      if (dto.supporters !== undefined) {
+        await this.replaceSupporters(manager, saved.id, dto.supporters);
+      }
+
       await this.createHistoryRecord(manager, saved.id, undefined, undefined, userId);
 
       accessGranted = await this.creatorAccessGrant.grantCreatorAccess(manager, {
@@ -199,6 +204,11 @@ export class BiHubDiagnosticReportWriteService {
         await this.replacePics(manager, id, dto.pics);
       }
 
+      // Supporters are metadata too (not change-tracked). Replace-all when provided.
+      if (dto.supporters !== undefined) {
+        await this.replaceSupporters(manager, id, dto.supporters);
+      }
+
       if (changedKeys.length > 0) {
         await this.createHistoryRecord(manager, id, existing, changedKeys, userId);
       }
@@ -208,12 +218,27 @@ export class BiHubDiagnosticReportWriteService {
 
   // ── Replace all PICs of a report (hard delete old + insert new) ─
   private async replacePics(manager: EntityManager, reportId: number, userIds: number[]): Promise<void> {
-    await manager.delete(BIHubDiagnosticReportPics, { bi_hub_diagnostic_report_id: reportId });
+    await this.replaceUserLinks(manager, BIHubDiagnosticReportPics, reportId, userIds);
+  }
+
+  // ── Replace all supporters of a report (hard delete old + insert new) ─
+  // The 10-user cap is enforced at the DTO layer (@ArrayMaxSize) before reaching here.
+  private async replaceSupporters(manager: EntityManager, reportId: number, userIds: number[]): Promise<void> {
+    await this.replaceUserLinks(manager, BIHubDiagnosticReportSupporters, reportId, userIds);
+  }
+
+  // ── Shared replace-all for a report<->user link table ──────────
+  // Hard-deletes existing links for the report, then inserts the deduped, truthy user ids.
+  private async replaceUserLinks(
+    manager: EntityManager,
+    entity: typeof BIHubDiagnosticReportPics | typeof BIHubDiagnosticReportSupporters,
+    reportId: number,
+    userIds: number[],
+  ): Promise<void> {
+    await manager.delete(entity, { bi_hub_diagnostic_report_id: reportId });
     const unique = [...new Set(userIds.filter(Boolean))];
     if (!unique.length) return;
-    const rows = unique.map((user_id) =>
-      manager.create(BIHubDiagnosticReportPics, { user_id, bi_hub_diagnostic_report_id: reportId }),
-    );
+    const rows = unique.map((user_id) => manager.create(entity, { user_id, bi_hub_diagnostic_report_id: reportId }));
     await manager.save(rows);
   }
 

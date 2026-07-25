@@ -49,6 +49,13 @@ export class BiHubDiagnosticReportUserController {
     return this.service.findUpdatedUsers(query, req.info?.dataScope ?? null);
   }
 
+  @ApiOperation({ summary: 'List distinct updater users across all reports in a BICC department' })
+  @Get('updated-user/by-department')
+  @RequirePermission('bh_diag_report_view')
+  findUpdatedUsersByDepartment(@Query() query: SearchPicByDepartmentDto) {
+    return this.service.findUpdatedUsersByDepartment(query);
+  }
+
   @ApiOperation({ summary: 'List history of a diagnostic report' })
   @Get('history')
   @RequirePermission('bh_diag_report_view')
@@ -69,6 +76,13 @@ export class BiHubDiagnosticReportUserController {
   @RequirePermission('bh_diag_report_view')
   findPicUsersByDepartment(@Query() query: SearchPicByDepartmentDto) {
     return this.picService.findUsersByDepartment(query);
+  }
+
+  @ApiOperation({ summary: 'List distinct supporter users across all reports in a BICC department' })
+  @Get('supporter-users/by-department')
+  @RequirePermission('bh_diag_report_view')
+  findSupporterUsersByDepartment(@Query() query: SearchPicByDepartmentDto) {
+    return this.picService.findSupporterUsersByDepartment(query);
   }
 
   @ApiOperation({ summary: 'Increase view count of a report' })
