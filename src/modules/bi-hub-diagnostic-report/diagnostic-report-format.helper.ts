@@ -1,3 +1,4 @@
+import { SelectQueryBuilder } from 'typeorm';
 import { BIHubDiagnosticReport } from '@modules/databases/bi-diagnostic-report.entity';
 import { BIHubDiagnosticHistoryReport } from '@modules/databases/bi-diagnostic-history-report.entity';
 import { TransformFileAudience } from '@common/transform-file';
@@ -22,6 +23,32 @@ export const HISTORY_SORT_MAP: Record<string, string> = {
 
 // change_log key marking that the file field changed in an update
 export const FILE_CHANGE_KEY = 'file';
+
+// Apply the shared picIds / updatedByIds list filters (comma-separated id strings)
+// to a diagnostic-report query. Shared by the list (findAll) and the Excel download
+// so both filter identically. The query's root alias MUST be `report`.
+// PICs use EXISTS (not a JOIN) so a report matches once regardless of how many of its
+// PICs are in the set — keeps getMany/getCount row counts correct.
+export function applyPicAndUpdatedByFilters(
+  qb: SelectQueryBuilder<BIHubDiagnosticReport>,
+  filters: { picIds?: string; updatedByIds?: string },
+): void {
+  if (filters.picIds) {
+    const picIds = filters.picIds.split(',').map(Number).filter(Boolean);
+    if (picIds.length) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM bi_hub_diagnostic_report_pics p
+                 WHERE p.bi_hub_diagnostic_report_id = report.id
+                   AND p.user_id IN (:...picIds) AND p.deleted_at IS NULL AND p.is_deleted = false)`,
+        { picIds },
+      );
+    }
+  }
+  if (filters.updatedByIds) {
+    const updatedByIds = filters.updatedByIds.split(',').map(Number).filter(Boolean);
+    if (updatedByIds.length) qb.andWhere('report.updated_by_admin_id IN (:...updatedByIds)', { updatedByIds });
+  }
+}
 
 // Resolve a history event's is_change_link: this describes whether THIS event
 // touched the file — create with a file attached, or an update whose change set

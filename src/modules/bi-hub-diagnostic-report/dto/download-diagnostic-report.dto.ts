@@ -36,4 +36,19 @@ export class DownloadDiagnosticReportDto {
   @IsOptional()
   @IsNumberString()
   readonly isDeleted?: string;
+
+  @ApiProperty({ required: false, description: 'Comma-separated label IDs (e.g. 1,2,3) — ALL export only' })
+  @IsOptional()
+  @IsString()
+  readonly labelIds?: string;
+
+  @ApiProperty({ required: false, description: 'Comma-separated PIC user IDs (e.g. 1,2,3) — ALL export only' })
+  @IsOptional()
+  @IsString()
+  readonly picIds?: string;
+
+  @ApiProperty({ required: false, description: 'Comma-separated updater user IDs (e.g. 1,2,3) — ALL export only' })
+  @IsOptional()
+  @IsString()
+  readonly updatedByIds?: string;
 }

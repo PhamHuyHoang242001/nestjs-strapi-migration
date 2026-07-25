@@ -10,7 +10,13 @@ import {
   SearchUpdatedUserDto,
   SearchPicByDepartmentDto,
 } from './dto';
-import { REPORT_SORT_MAP, HISTORY_SORT_MAP, formatReport, formatHistory } from './diagnostic-report-format.helper';
+import {
+  REPORT_SORT_MAP,
+  HISTORY_SORT_MAP,
+  formatReport,
+  formatHistory,
+  applyPicAndUpdatedByFilters,
+} from './diagnostic-report-format.helper';
 import type { DataScope } from '@common/authorization/types/data-scope.types';
 import { applyDataScope } from '@modules/data-access/helpers/data-scope-applier';
 import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
@@ -83,6 +89,7 @@ export class BiHubDiagnosticReportService {
     if (query.reportStatus) {
       qb.andWhere('report.status = :status', { status: query.reportStatus });
     }
+    applyPicAndUpdatedByFilters(qb, { picIds: query.picIds, updatedByIds: query.updatedByIds });
 
     const sortCol = REPORT_SORT_MAP[query.sortField || 'createdAt'] || 'created_at';
     const sortDir = (query.sortValue?.toUpperCase() as 'ASC' | 'DESC') || 'DESC';

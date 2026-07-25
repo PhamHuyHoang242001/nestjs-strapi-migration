@@ -10,7 +10,12 @@ import dayjs from 'dayjs';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { CreateDiagnosticReportDto, UpdateDiagnosticReportDto, DownloadDiagnosticReportDto } from './dto';
-import { REPORT_SORT_MAP, FILE_CHANGE_KEY, resolveHistoryIsChangeLink } from './diagnostic-report-format.helper';
+import {
+  REPORT_SORT_MAP,
+  FILE_CHANGE_KEY,
+  resolveHistoryIsChangeLink,
+  applyPicAndUpdatedByFilters,
+} from './diagnostic-report-format.helper';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
 import { CreatorAccessGrantService } from '@modules/data-access/services/creator-access-grant.service';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
@@ -295,6 +300,19 @@ export class BiHubDiagnosticReportWriteService {
       applyDataScope(qb, 'report', REPORT_TABLE, scope);
       if (query.keyword?.trim())
         qb.andWhere('(report.name ILIKE :kw OR report.summary ILIKE :kw)', { kw: `%${query.keyword.trim()}%` });
+      applyPicAndUpdatedByFilters(qb, { picIds: query.picIds, updatedByIds: query.updatedByIds });
+      if (query.labelIds) {
+        const labelIds = query.labelIds.split(',').map(Number).filter(Boolean);
+        if (labelIds.length) {
+          // EXISTS (not a filter on the joined `label` alias) so the report keeps ALL
+          // its labels in the exported Labels column, not just the ones matched here.
+          qb.andWhere(
+            `EXISTS (SELECT 1 FROM diagnostic_reports_labels drl
+                     WHERE drl.diagnostic_report_id = report.id AND drl.label_id IN (:...labelIds))`,
+            { labelIds },
+          );
+        }
+      }
       const sortCol = REPORT_SORT_MAP[query.sortField || 'createdAt'] || 'created_at';
       const sortDir = ['ASC', 'DESC'].includes(query.sortValue?.toUpperCase())
         ? (query.sortValue.toUpperCase() as 'ASC' | 'DESC')

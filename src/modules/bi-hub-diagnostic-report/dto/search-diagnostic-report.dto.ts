@@ -43,4 +43,14 @@ export class SearchDiagnosticReportDto {
   @IsOptional()
   @IsString()
   readonly reportStatus?: string;
+
+  @ApiProperty({ required: false, description: 'Comma-separated PIC user IDs (e.g. 1,2,3)' })
+  @IsOptional()
+  @IsString()
+  readonly picIds?: string;
+
+  @ApiProperty({ required: false, description: 'Comma-separated updater user IDs (e.g. 1,2,3)' })
+  @IsOptional()
+  @IsString()
+  readonly updatedByIds?: string;
 }
