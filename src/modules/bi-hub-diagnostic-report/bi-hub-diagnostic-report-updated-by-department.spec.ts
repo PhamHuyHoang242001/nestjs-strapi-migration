@@ -39,4 +39,35 @@ describe('BiHubDiagnosticReportService.findUpdatedUsersByDepartment', () => {
     // limit clamped to 100; offset = (page-1)*limit = 100
     expect(query.mock.calls[0][1]).toEqual([3, 100, 100]);
   });
+
+  it('without keyword: no email clause, params are [deptId, limit, offset]', async () => {
+    const query = jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{ count: '0' }]);
+    const svc = buildService(query);
+
+    await svc.findUpdatedUsersByDepartment({ biccDepartmentId: '3', page: '1', limit: '10' } as any);
+
+    const listSql = query.mock.calls[0][0] as string;
+    expect(listSql).not.toContain('LOWER(u.email) LIKE');
+    expect(listSql).toContain('LIMIT $2 OFFSET $3');
+    expect(query.mock.calls[0][1]).toEqual([3, 10, 0]);
+    // Count query carries only the department id.
+    expect(query.mock.calls[1][1]).toEqual([3]);
+  });
+
+  it('with keyword: adds email LIKE clause and shifts LIMIT/OFFSET positions', async () => {
+    const query = jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{ count: '0' }]);
+    const svc = buildService(query);
+
+    await svc.findUpdatedUsersByDepartment({ biccDepartmentId: '3', keyword: 'Foo', page: '2', limit: '5' } as any);
+
+    const listSql = query.mock.calls[0][0] as string;
+    // Keyword is $2 (right after deptId), LIMIT/OFFSET shift to $3/$4.
+    expect(listSql).toContain('AND LOWER(u.email) LIKE $2');
+    expect(listSql).toContain('LIMIT $3 OFFSET $4');
+    // Keyword is lowercased and wrapped for a contains match; offset = (page-1)*limit = 5.
+    expect(query.mock.calls[0][1]).toEqual([3, '%foo%', 5, 5]);
+    // Count query filters by the same keyword clause.
+    expect(query.mock.calls[1][0]).toContain('AND LOWER(u.email) LIKE $2');
+    expect(query.mock.calls[1][1]).toEqual([3, '%foo%']);
+  });
 });

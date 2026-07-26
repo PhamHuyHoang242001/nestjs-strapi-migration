@@ -102,6 +102,17 @@ export class BiHubDiagnosticReportPicService {
     const deptId = +query.biccDepartmentId;
     const page = +(query.page || 1);
     const limit = Math.min(+(query.limit || 10), 100);
+    const keyword = (query.keyword || '').trim();
+
+    // Optional email keyword filter. Keyword is always $2 (right after deptId $1),
+    // so the same clause works for both the entries and count queries; LIMIT/OFFSET
+    // positions shift accordingly and are read back from the params array length.
+    const kwClause = keyword ? ' AND LOWER(u.email) LIKE $2' : '';
+    const kwParam = keyword ? [`%${keyword.toLowerCase()}%`] : [];
+
+    const entriesParams = [deptId, ...kwParam, limit, (page - 1) * limit];
+    const limitPos = entriesParams.length - 1;
+    const offsetPos = entriesParams.length;
 
     const [entries, countResult] = await Promise.all([
       this.dataSource.query(
@@ -110,10 +121,10 @@ export class BiHubDiagnosticReportPicService {
          INNER JOIN ${REPORT_TABLE} r ON r.id = l.bi_hub_diagnostic_report_id
            AND r.is_deleted = false AND r.deleted_at IS NULL
          INNER JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL
-         WHERE r.bicc_department_id = $1 AND l.deleted_at IS NULL AND l.is_deleted = false
+         WHERE r.bicc_department_id = $1 AND l.deleted_at IS NULL AND l.is_deleted = false${kwClause}
          ORDER BY u.id
-         LIMIT $2 OFFSET $3`,
-        [deptId, limit, (page - 1) * limit],
+         LIMIT $${limitPos} OFFSET $${offsetPos}`,
+        entriesParams,
       ),
       this.dataSource.query(
         `SELECT COUNT(DISTINCT u.id) AS count
@@ -121,8 +132,8 @@ export class BiHubDiagnosticReportPicService {
          INNER JOIN ${REPORT_TABLE} r ON r.id = l.bi_hub_diagnostic_report_id
            AND r.is_deleted = false AND r.deleted_at IS NULL
          INNER JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL
-         WHERE r.bicc_department_id = $1 AND l.deleted_at IS NULL AND l.is_deleted = false`,
-        [deptId],
+         WHERE r.bicc_department_id = $1 AND l.deleted_at IS NULL AND l.is_deleted = false${kwClause}`,
+        [deptId, ...kwParam],
       ),
     ]);
 
