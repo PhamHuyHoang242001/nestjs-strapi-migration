@@ -79,6 +79,21 @@ describe('PermissionQueryService', () => {
     expect(result).toHaveLength(2);
   });
 
+  it('surfaces a record whose edit grant comes ONLY via role (no direct user grant)', async () => {
+    // Edit-authority is "edit on the report in general": a role_data_access grant counts
+    // just like a user_data_access grant. Here record 7 is editable purely through the role.
+    userRoleRepo.getRawMany.mockResolvedValueOnce([{ role_id: 1 }]); // user's active roles
+    roleDataAccessRepo.getRawMany
+      .mockResolvedValueOnce([{ data_id: 7 }]) // allow_via_role → record 7
+      .mockResolvedValueOnce([]); // deny_via_role
+    userDataAccessRepo.getRawMany
+      .mockResolvedValueOnce([]) // allow_via_user → none
+      .mockResolvedValueOnce([]); // deny_via_user
+
+    const result = await service.getAccessibleRecords(10, 'bi_hub_reports', 'bh_diag_report_edit');
+    expect(result).toEqual([7]);
+  });
+
   it('joins the target table and filters out soft-deleted records', async () => {
     userRoleRepo.getRawMany.mockResolvedValueOnce([{ role_id: 1 }]);
 
@@ -91,6 +106,18 @@ describe('PermissionQueryService', () => {
     // Soft-delete filters applied on the joined target record
     expect(roleDataAccessRepo.andWhere).toHaveBeenCalledWith('rec.is_deleted IS NOT TRUE');
     expect(roleDataAccessRepo.andWhere).toHaveBeenCalledWith('rec.deleted_at IS NULL');
+  });
+
+  it('excludes junction rows deleted via the is_deleted flag path (both aliases)', async () => {
+    userRoleRepo.getRawMany.mockResolvedValueOnce([{ role_id: 1 }]);
+
+    await service.getAccessibleRecords(10, 'bi_hub_reports', 'bh_diag_report_view');
+
+    // Junction soft-delete must check both deleted_at (softDelete) and is_deleted (flag).
+    expect(roleDataAccessRepo.andWhere).toHaveBeenCalledWith('dar.deleted_at IS NULL');
+    expect(roleDataAccessRepo.andWhere).toHaveBeenCalledWith('dar.is_deleted IS NOT TRUE');
+    expect(userDataAccessRepo.andWhere).toHaveBeenCalledWith('dau.deleted_at IS NULL');
+    expect(userDataAccessRepo.andWhere).toHaveBeenCalledWith('dau.is_deleted IS NOT TRUE');
   });
 
   it('rejects a table name that is not a plain SQL identifier', async () => {

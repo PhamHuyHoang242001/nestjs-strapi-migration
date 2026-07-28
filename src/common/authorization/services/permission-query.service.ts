@@ -187,6 +187,9 @@ export class PermissionQueryService {
       // Join the target record so a soft-deleted record yields no users.
       .innerJoin(tableName, 'rec', 'rec.id = da.data_id')
       .andWhere(`${alias}.deleted_at IS NULL`)
+      // Junction soft-delete has two paths (deleted_at via softDelete, is_deleted via
+      // manual update); check both or a junction row deleted via the flag path leaks.
+      .andWhere(`${alias}.is_deleted IS NOT TRUE`)
       .andWhere('m.table_name = :tableName', { tableName })
       .andWhere('da.scope_type = :scopeType', { scopeType })
       .andWhere('da.deleted_at IS NULL')
@@ -260,6 +263,9 @@ export class PermissionQueryService {
       .select('da.data_id', 'data_id')
       .where(ownerCondition, ownerParams)
       .andWhere(`${alias}.deleted_at IS NULL`)
+      // Junction soft-delete has two paths (deleted_at via softDelete, is_deleted via
+      // manual update); check both or a junction row deleted via the flag path leaks.
+      .andWhere(`${alias}.is_deleted IS NOT TRUE`)
       .andWhere('m.table_name = :tableName', { tableName })
       .andWhere('da.scope_type = :scopeType', { scopeType })
       .andWhere('da.deleted_at IS NULL')

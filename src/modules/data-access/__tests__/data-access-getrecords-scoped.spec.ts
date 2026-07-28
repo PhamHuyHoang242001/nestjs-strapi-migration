@@ -29,6 +29,11 @@ function createService(queryResults: any[]) {
   const mockModuleRepo = {} as unknown as Repository<any>;
   const mockRoleDataAccessRepo = {} as unknown as Repository<any>;
   const mockUserDataAccessRepo = {} as unknown as Repository<any>;
+  // Non-super-admin profile: the inline caller block resolves isSuperAdmin from the
+  // users row (source of truth), so a plain { id } caller must find a non-super row.
+  const mockUsersRepo = {
+    findOne: jest.fn().mockResolvedValue({ id: 1, type: 'staff' }),
+  } as unknown as Repository<any>;
 
   const service = new DataAccessService(
     mockDataAccessRepo,
@@ -40,6 +45,8 @@ function createService(queryResults: any[]) {
     mockModuleRepo,
     mockRoleDataAccessRepo,
     mockUserDataAccessRepo,
+    { canManageRecord: jest.fn().mockResolvedValue(true), filterManageableRecords: jest.fn().mockResolvedValue([]), getEditAccessibleRecordIds: jest.fn().mockResolvedValue([]) } as any,
+    mockUsersRepo,
   );
 
   return { service, queryMock };
@@ -80,10 +87,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ id: 1, display_name: 'Dept A', created_at: '2026-01-01' }],
       ]);
 
-      const result = await service.getRecords('bi_hub_bicc_departments', {}, defaultPagination, {
-        userId: 10,
-        client: 'user',
-      });
+      const result = await service.getRecords('bi_hub_bicc_departments', {}, defaultPagination, { id: 10 }, 'user');
 
       expect(result.data).toHaveLength(1);
       // Query should contain junction join
@@ -98,7 +102,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ id: 10, display_name: 'Q2 Report', created_at: '2026-01-01' }],
       ]);
 
-      const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, { userId: 10, client: 'user' });
+      const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, { id: 10 }, 'user');
 
       expect(result.data).toHaveLength(1);
       const countSQL = queryMock.mock.calls[1][0] as string;
@@ -113,10 +117,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ id: 20, display_name: 'Doc X', created_at: '2026-01-01' }],
       ]);
 
-      const result = await service.getRecords('ma_tool_documents', {}, defaultPagination, {
-        userId: 10,
-        client: 'user',
-      });
+      const result = await service.getRecords('ma_tool_documents', {}, defaultPagination, { id: 10 }, 'user');
 
       expect(result.data).toHaveLength(1);
       const countSQL = queryMock.mock.calls[1][0] as string;
@@ -128,7 +129,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
     it('passes roleIds as query parameter', async () => {
       const { service, queryMock } = createService([[{ role_id: 3 }, { role_id: 7 }], [{ total: 0 }], []]);
 
-      await service.getRecords('bi_hub_reports', {}, defaultPagination, { userId: 10, client: 'user' });
+      await service.getRecords('bi_hub_reports', {}, defaultPagination, { id: 10 }, 'user');
 
       // Count query params should include role_ids array
       const countParams = queryMock.mock.calls[1][1] as any[];
@@ -145,10 +146,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
           [{ id: 10, code: 'RPT-10' }],
         ]);
 
-        const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, {
-          userId: 10,
-          client: 'user',
-        });
+        const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, { id: 10 }, 'user');
 
         expect(result.data[0]).toMatchObject({
           id: 10,
@@ -167,7 +165,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [], // no roles
       ]);
 
-      const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, { userId: 99, client: 'user' });
+      const result = await service.getRecords('bi_hub_reports', {}, defaultPagination, { id: 99 }, 'user');
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.totalItems).toBe(0);
@@ -180,10 +178,7 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
         [{ role_id: 3 }], // user has roles
       ]);
 
-      const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, {
-        userId: 10,
-        client: 'user',
-      });
+      const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, { id: 10 }, 'user');
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.totalItems).toBe(0);
