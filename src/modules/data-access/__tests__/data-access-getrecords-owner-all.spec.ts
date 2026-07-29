@@ -6,6 +6,7 @@ import { PermissionCacheService } from '@common/authorization';
 import { RecordPathService } from '../services/record-path.service';
 import { DataSource, Repository } from 'typeorm';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
+import { UserType } from '@modules/databases/user.entity';
 
 // ── Mock factory (mirrors data-access-getrecords-scoped.spec.ts) ──────────────
 function createService(queryResults: any[]) {
@@ -30,6 +31,14 @@ function createService(queryResults: any[]) {
     {} as unknown as Repository<any>,
     {} as unknown as Repository<any>,
     {} as unknown as Repository<any>,
+    { canManageRecord: jest.fn().mockResolvedValue(true), filterManageableRecords: jest.fn().mockResolvedValue([]), getEditAccessibleRecordIds: jest.fn().mockResolvedValue([]) } as any,
+    // Inline caller block resolves isSuperAdmin from the users row: id 1 = super_admin,
+    // everyone else non-super.
+    {
+      findOne: jest.fn(({ where }: { where: { id: number } }) =>
+        Promise.resolve({ id: where.id, type: where.id === 1 ? UserType.SUPER_ADMIN : 'staff' }),
+      ),
+    } as unknown as Repository<any>,
   );
 
   return { service, queryMock };
@@ -52,7 +61,7 @@ describe('DataAccessService.getRecords() — whole-table SO (own-all)', () => {
       ],
     ]);
 
-    const result = await service.getRecords(TABLE, {}, defaultPagination, { userId: 10, client: 'user' });
+    const result = await service.getRecords(TABLE, {}, defaultPagination, { id: 10 }, 'user');
 
     expect(result.data).toHaveLength(2);
     expect(result.data[0]).not.toHaveProperty('record_path');
@@ -76,7 +85,7 @@ describe('DataAccessService.getRecords() — whole-table SO (own-all)', () => {
       [], // sentinel probe → not an owner
     ]);
 
-    const result = await service.getRecords(TABLE, {}, defaultPagination, { userId: 10, client: 'user' });
+    const result = await service.getRecords(TABLE, {}, defaultPagination, { id: 10 }, 'user');
 
     expect(result.data).toHaveLength(0);
     expect(result.meta.totalItems).toBe(0);
@@ -87,10 +96,34 @@ describe('DataAccessService.getRecords() — whole-table SO (own-all)', () => {
   it('returns EMPTY for a user with no roles (before any ownership probe)', async () => {
     const { service, queryMock } = createService([[]]); // no roles
 
-    const result = await service.getRecords(TABLE, {}, defaultPagination, { userId: 99, client: 'user' });
+    const result = await service.getRecords(TABLE, {}, defaultPagination, { id: 99 }, 'user');
 
     expect(result.data).toHaveLength(0);
     expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('super_admin lists ALL rows on an own-all table without the role/sentinel probe', async () => {
+    // Admin-sees-all short-circuits in getRecords before scope branching: no role lookup,
+    // no sentinel ownership probe — straight to the unscoped count + data queries.
+    const { service, queryMock } = createService([
+      [{ total: 2 }], // [0] count (unscoped)
+      [
+        { id: 1, display_name: 'RPT-A', created_at: '2026-01-01' },
+        { id: 2, display_name: 'RPT-B', created_at: '2026-01-02' },
+      ],
+    ]);
+
+    const result = await service.getRecords(TABLE, {}, defaultPagination, { id: 1 }, 'user');
+
+    expect(result.data).toHaveLength(2);
+    expect(result.meta.totalItems).toBe(2);
+    // Only count + data ran — the role lookup and sentinel probe were skipped.
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    const countSQL = queryMock.mock.calls[0][0] as string;
+    expect(countSQL).not.toContain('resource_owners');
+    const dataSQL = queryMock.mock.calls[1][0] as string;
+    expect(dataSQL).toContain('rpt_code as display_name');
+    expect(dataSQL).not.toContain('resource_owners');
   });
 
   it('returns records for a rule-target table with full owner-config cascade (bi_payment_projects)', async () => {
@@ -102,10 +135,7 @@ describe('DataAccessService.getRecords() — whole-table SO (own-all)', () => {
       [{ id: 42, display_name: 'Project Alpha', created_at: '2026-01-01' }], // data
     ]);
 
-    const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, {
-      userId: 10,
-      client: 'user',
-    });
+    const result = await service.getRecords('bi_payment_projects', {}, defaultPagination, { id: 10 }, 'user');
 
     expect(result.data).toHaveLength(1);
     // role lookup + count + data = 3 queries (not the old 1 — project is now owned).

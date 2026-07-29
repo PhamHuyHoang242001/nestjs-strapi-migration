@@ -7,7 +7,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EntityManager, In, IsNull } from 'typeorm';
 
 /** Actions to grant the record creator (intersected with module's actual permissions) */
-const CREATOR_ACTIONS = ['read', 'update', 'delete'];
+export const CREATOR_ACTIONS = ['read', 'update', 'delete'];
 
 @Injectable()
 export class CreatorAccessGrantService {

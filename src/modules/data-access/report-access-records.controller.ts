@@ -26,10 +26,6 @@ export class ReportAccessRecordsController {
     @PaginationDecorator() pagination: PaginationParams,
     @Req() req: RequestWithInfo,
   ) {
-    const user = req.info?.user;
-    return this.dataAccessService.getRecords(tableName, query, pagination, {
-      userId: user?.id as number | undefined,
-      client: req.info?.client,
-    });
+    return this.dataAccessService.getRecords(tableName, query, pagination, req.info?.user, req.info?.client);
   }
 }

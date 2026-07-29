@@ -88,6 +88,24 @@ export const RULE_TARGET_TABLES = new Set<string>([
 export const OWNER_ALL_TABLES = new Set<string>(['ma_tool_cstb_rpt_properties']);
 
 /**
+ * Tables where record-level "grant authority" is derived from an existing edit grant.
+ * For a table in this set, the create/mutate/list/browser rule APIs additionally gate
+ * on `canManageRecord` (editOnRecord ∧ rule-verb, plus super_admin/SO bypass) instead of
+ * the plain global verb gate. Tables NOT in this set keep the prior behavior.
+ *
+ * MUST be a subset of RULE_TARGET_TABLES: a table can only carry a data_access rule if it
+ * is a rule target, and the manage gate operates on rules. Descriptive (bi_hub_reports) is
+ * intentionally left out until it grows a create-flow + creator column (see plan §Deferred).
+ * Inline like OWNER_ALL_TABLES — no load-time guard needed.
+ */
+export const MANAGE_ENABLED_MODULES = new Set<string>(['bi_hub_diagnostic_reports']);
+
+/** True when `tableName` opts into the derive-from-edit grant-authority gate. */
+export function isManageEnabledTable(tableName: string | undefined | null): boolean {
+  return !!tableName && MANAGE_ENABLED_MODULES.has(tableName);
+}
+
+/**
  * Sentinel resource_id marking a whole-table ("own-all") SO assignment.
  * Relies on real rows never having id = 0 (Postgres serial/identity starts at 1),
  * so the sentinel never collides with a genuine record in id-join/EXISTS predicates.

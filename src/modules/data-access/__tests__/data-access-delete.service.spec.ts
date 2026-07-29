@@ -72,6 +72,7 @@ function createService(
     mockModuleRepo,
     mockRoleDataAccessRepo,
     mockUserDataAccessRepo,
+    { canManageRecord: jest.fn().mockResolvedValue(true), filterManageableRecords: jest.fn().mockResolvedValue([]), getEditAccessibleRecordIds: jest.fn().mockResolvedValue([]) } as any,
   );
 
   return {

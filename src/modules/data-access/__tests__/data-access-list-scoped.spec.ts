@@ -10,7 +10,7 @@ import { EXTRA_FIELDS_MAP } from '../constants/hierarchy-config';
 
 // ── Mock factory ────────────────────────────────────────────────────────────
 
-function createService(queryResults: any[]) {
+function createService(queryResults: any[], opts: { superAdmin?: boolean } = {}) {
   let callIndex = 0;
   const queryMock = jest.fn((..._args: any[]) => {
     const result = queryResults[callIndex] ?? [];
@@ -30,6 +30,11 @@ function createService(queryResults: any[]) {
   const mockModuleRepo = {} as unknown as Repository<any>;
   const mockRoleDataAccessRepo = {} as unknown as Repository<any>;
   const mockUserDataAccessRepo = {} as unknown as Repository<any>;
+  // Profile drives the inline isSuperAdmin resolution (users row = source of truth).
+  // Default non-super; opts.superAdmin flips it so the unscoped (sees-all) path is exercised.
+  const mockUsersRepo = {
+    findOne: jest.fn().mockResolvedValue({ id: 1, type: opts.superAdmin ? 'super_admin' : 'staff' }),
+  } as unknown as Repository<any>;
 
   const service = new DataAccessService(
     mockDataAccessRepo,
@@ -41,6 +46,8 @@ function createService(queryResults: any[]) {
     mockModuleRepo,
     mockRoleDataAccessRepo,
     mockUserDataAccessRepo,
+    { canManageRecord: jest.fn().mockResolvedValue(true), filterManageableRecords: jest.fn().mockResolvedValue([]), getEditAccessibleRecordIds: jest.fn().mockResolvedValue([]) } as any,
+    mockUsersRepo,
   );
 
   return { service, queryMock };
@@ -121,7 +128,7 @@ describe('DataAccessService.list() — owner scoping', () => {
         [{ id: 42, display_name: 'Q2 Report' }],
       ]);
 
-      await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      await service.list({}, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       // Count query (2nd call after roleIds) should contain accessible CTE
       const countSQL = queryMock.mock.calls[1][0] as string;
@@ -161,7 +168,7 @@ describe('DataAccessService.list() — owner scoping', () => {
         [{ id: 42, display_name: 'Q2 Report' }],
       ]);
 
-      await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      await service.list({}, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       const groupsSQL = queryMock.mock.calls[2][0] as string;
       expect(groupsSQL).toContain('accessible');
@@ -199,7 +206,7 @@ describe('DataAccessService.list() — owner scoping', () => {
         [{ id: 42, display_name: 'Q2 Report' }],
       ]);
 
-      const result = await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      const result = await service.list({}, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].data_id).toBe(42);
@@ -209,7 +216,7 @@ describe('DataAccessService.list() — owner scoping', () => {
     it('roleIds passed as parameter to CTE', async () => {
       const { service, queryMock } = createService([[{ role_id: 3 }, { role_id: 7 }], [{ total: 0 }], []]);
 
-      await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      await service.list({}, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       // Count query params should include roleIds
       const countParams = queryMock.mock.calls[1][1] as any[];
@@ -235,7 +242,7 @@ describe('DataAccessService.list() — owner scoping', () => {
         [{ id: 42, display_name: 'Q2 Report', code: 'RPT-01', status: 'active' }], // record info
       ]);
 
-      const result = await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      const result = await service.list({}, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       expect(result.data[0]).toHaveProperty('record_extra', { code: 'RPT-01', status: 'active' });
     });
@@ -247,10 +254,31 @@ describe('DataAccessService.list() — owner scoping', () => {
         [], // no roles
       ]);
 
-      const result = await service.list({}, defaultSort, defaultPagination, { userId: 99, client: 'user' });
+      const result = await service.list({}, defaultSort, defaultPagination, { id: 99 }, 'user');
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.totalItems).toBe(0);
+    });
+  });
+
+  describe('super_admin (sees all — admin-sees-all rule)', () => {
+    it('takes the unscoped path: no accessible CTE, target-EXISTS guard applied', async () => {
+      // super_admin → isUnscoped true → scoped block skipped entirely (no roleIds query).
+      const { service, queryMock } = createService(
+        [
+          [{ total: 0 }], // count (first query — no roleIds lookup)
+          [], // groups
+        ],
+        { superAdmin: true },
+      );
+
+      await service.list({}, defaultSort, defaultPagination, { id: 1 }, 'user');
+
+      const countSQL = queryMock.mock.calls[0][0] as string;
+      expect(countSQL).not.toContain('accessible');
+      // Unscoped path still excludes soft-deleted target records.
+      expect(countSQL).toContain('EXISTS');
+      expect(countSQL).toContain('NOT IN');
     });
   });
 
@@ -269,7 +297,7 @@ describe('DataAccessService.list() — owner scoping', () => {
     it('accessible CTE combined with name_matches CTE', async () => {
       const { service, queryMock } = createService([[{ role_id: 3 }], [{ total: 0 }], []]);
 
-      await service.list({ keyword: 'Revenue' }, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      await service.list({ keyword: 'Revenue' }, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       const countSQL = queryMock.mock.calls[1][0] as string;
       // Should have both CTEs
@@ -307,7 +335,7 @@ describe('DataAccessService.list() — owner scoping', () => {
         [], // groups
       ]);
 
-      await service.list({}, defaultSort, defaultPagination, { userId: 10, client: 'user' });
+      await service.list({}, defaultSort, defaultPagination, { id: 10 }, 'user');
 
       const countSQL = queryMock.mock.calls[1][0] as string;
       expect(countSQL).toContain('accessible');

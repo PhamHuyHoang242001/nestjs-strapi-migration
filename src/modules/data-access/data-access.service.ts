@@ -1,13 +1,15 @@
 import { SortParams } from '@common/decorators/sort.decorator';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { PermissionCacheService } from '@common/authorization';
-import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE, SCOPE_TYPE } from '@common/enums';
+import { CHANGE_ACTION_TYPE, CHANGE_ENTITY_TYPE, SCOPE_TYPE, USER_CLIENT, USER_STATUS } from '@common/enums';
 import { NOT_FOUND } from '@constant/error-messages';
 import { DataAccess, RoleDataAccess, UserDataAccess } from '@modules/databases/data-access.entity';
+import { Users, UserType } from '@modules/databases/user.entity';
 import { Module as ModuleEntity } from '@modules/databases/module.entity';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Permission } from '@modules/databases/permission.entity';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import {
   ALLOWED_TABLES,
   RULE_TARGET_TABLES,
@@ -17,10 +19,15 @@ import {
   ROOT_OWNER_CONFIG,
   getExtraFields,
   getNameColumn,
+  isManageEnabledTable,
+  MANAGE_ENABLED_MODULES,
 } from './constants/hierarchy-config';
+import { CallerContext, ManageAuthorityService } from './helpers/manage-authority.helper';
 import { buildOwnerJoinChain, buildAccessibleCTE } from './helpers/owner-scope-helpers';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
+import { HandoverDataAccessDto } from './dto/handover-data-access.dto';
 import { SearchDataAccessDto } from './dto/search-data-access.dto';
+import { CREATOR_ACTIONS } from './services/creator-access-grant.service';
 import { SearchRecordsDto } from './dto/search-records.dto';
 import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 import { HierarchyValidationService } from './hierarchy-validation.service';
@@ -49,7 +56,99 @@ export class DataAccessService {
     private readonly roleDataAccessRepo: Repository<RoleDataAccess>,
     @InjectRepository(UserDataAccess)
     private readonly userDataAccessRepo: Repository<UserDataAccess>,
+    private readonly manageAuthority: ManageAuthorityService,
+    // Optional only so the existing `new DataAccessService(...)` unit-test call sites stay
+    // valid; Nest always injects it in production (no @Optional() → provider is required).
+    @InjectRepository(Users)
+    private readonly usersRepo?: Repository<Users>,
   ) {}
+
+  /**
+   * True when the user row (source of truth) has type super_admin. Reads the row straight from
+   * the DB rather than the token-resolved object, so a stale/forged `type` on the request can
+   * never escalate. No DB hit for a missing/untrusted id (returns false). `userId` must already
+   * be the namespace-safe id (user client only) — see the caller-building blocks below.
+   */
+  private async checkSuperAdmin(userId?: number): Promise<boolean> {
+    if (userId === undefined) return false;
+    const profile = await this.usersRepo!.findOne({ where: { id: userId } });
+    if (!profile) throw new NotFoundException(NOT_FOUND);
+    return profile.type === UserType.SUPER_ADMIN;
+  }
+
+  // ── Manage-authority gate (derive grant-authority from edit + rule-verb) ─────
+
+  /** Verb a record editor must additionally hold to create/update grants on a record. */
+  private static readonly CREATE_VERB = 'perm_data_access_create';
+  /** Verb a record editor must additionally hold to delete/unlink grants on a record. */
+  private static readonly DELETE_VERB = 'perm_data_access_delete';
+
+  /**
+   * Gate a rule write against the record-manager rule for EVERY rule-target table.
+   * A caller may only create/update/delete a rule on records they actually manage:
+   *   super_admin OR own-all(table) OR editOnRecord(∧ verb) OR SO-owner(subtree).
+   * `verbCode` follows the endpoint's action (create/update → CREATE_VERB,
+   * delete/removeLink → DELETE_VERB) so a delete-only editor is not gated on the
+   * create verb.
+   *
+   * No-op only when: caller is absent (internal/unscoped call) OR the table is not a
+   * rule target. EVERY target dataId must be manageable (all-or-nothing) or the whole
+   * write is rejected 403. Reads ownership straight from the DB (bypassCache) so an
+   * editor just granted access is not blocked by a stale cache entry.
+   */
+  private async enforceManageGate(
+    caller: CallerContext | undefined,
+    tableName: string | undefined,
+    dataIds: number[],
+    verbCode: string,
+  ): Promise<void> {
+    if (!caller) return;
+    if (!tableName || !RULE_TARGET_TABLES.has(tableName)) return;
+    if (caller.isSuperAdmin) return;
+
+    // Whole-table SO: the sentinel resource_owners row never matches a real record in the
+    // owner join (so isInOwnedScope can't see it), so resolve own-all explicitly here —
+    // mirrors the records-browser scope (getScopedRecords): a sentinel owner manages every
+    // row, a non-owner none. Terminal on purpose — own-all tables have no per-record editor
+    // model today. If such a table ever grows an edit ('update') permission, fall through to
+    // filterManageableRecords instead of throwing so record editors are not falsely blocked.
+    if (OWNER_ALL_TABLES.has(tableName)) {
+      const roleRows: { role_id: number }[] = await this.connection.query(
+        'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
+        [caller.userId],
+      );
+      const roleIds = roleRows.map((r) => r.role_id);
+      if (await this.hasOwnerAllAssignment(tableName, roleIds)) return;
+      throw new ForbiddenException('not_record_manager');
+    }
+
+    // Resolve the editable/owned set once (batched), then require EVERY target record to be
+    // manageable (all-or-nothing). bypassCache so a just-granted editor is not blocked.
+    const manageable = new Set(
+      await this.manageAuthority.filterManageableRecords(caller, tableName, dataIds, verbCode, {
+        bypassCache: true,
+      }),
+    );
+    if (dataIds.some((id) => !manageable.has(id))) {
+      throw new ForbiddenException('not_record_manager');
+    }
+  }
+
+  /**
+   * SQL membership branches for the caller's edit-accessible records on manage-enabled
+   * tables, gated on `verbCode`. Each branch is `(m.table_name = '<t>' AND da.data_id IN (<ids>))`.
+   * Table names come from the static MANAGE_ENABLED_MODULES set and ids are integers, so the
+   * fragment carries no bind params — the caller's existing $N offsets stay valid.
+   */
+  private async buildManageEditBranches(caller: CallerContext, verbCode: string): Promise<string[]> {
+    const branches: string[] = [];
+    for (const tableName of MANAGE_ENABLED_MODULES) {
+      const ids = await this.manageAuthority.getEditAccessibleRecordIds(caller, tableName, verbCode);
+      const safe = ids.filter((id) => Number.isInteger(id));
+      if (safe.length) branches.push(`(m.table_name = '${tableName}' AND da.data_id IN (${safe.join(',')}))`);
+    }
+    return branches;
+  }
 
   // ── Junction helpers ────────────────────────────────────────────────────────
 
@@ -81,8 +180,24 @@ export class DataAccessService {
    * Each group = 1 record with its rules array + record name from target table.
    * Pagination applies at group level.
    */
-  async list(dto: SearchDataAccessDto, sortParams: SortParams, pagination: PaginationParams, userInfo?: ScopeUserInfo) {
-    const isUnscoped = !userInfo;
+  async list(
+    dto: SearchDataAccessDto,
+    sortParams: SortParams,
+    pagination: PaginationParams,
+    user?: { id?: unknown },
+    client?: string,
+  ) {
+    // Resolve the caller once. Both user & client absent = internal caller (no HTTP context).
+    // userId is namespace-safe: trusted only for the user client (see checkSuperAdmin).
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
+
+    // "Unscoped" = sees every record, no owner filter — covers internal callers AND
+    // super_admin (the admin-sees-all rule). A normal user is scoped below to the records
+    // they own (via roles) OR may edit (manage-enabled tables, per the manage rule).
+    const isUnscoped = !caller || caller.isSuperAdmin;
 
     // Scoped path: resolve owner scope via accessible CTE
     let ownerCtePrefix = '';
@@ -90,28 +205,42 @@ export class DataAccessService {
     let ownerParams: any[] = [];
 
     if (!isUnscoped) {
+      const emptyResult = {
+        data: [],
+        meta: {
+          totalItems: 0,
+          itemCount: 0,
+          itemsPerPage: pagination.limit,
+          currentPage: pagination.page,
+          totalPages: 1,
+        },
+      };
+
       const roleRows: { role_id: number }[] = await this.connection.query(
         'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
-        [userInfo.userId],
+        [caller.userId],
       );
       const roleIds = roleRows.map((r) => r.role_id);
-      if (!roleIds.length) {
-        return {
-          data: [],
-          meta: {
-            totalItems: 0,
-            itemCount: 0,
-            itemsPerPage: pagination.limit,
-            currentPage: pagination.page,
-            totalPages: 1,
-          },
-        };
-      }
 
-      ownerParams = [roleIds];
-      const { cteSql } = buildAccessibleCTE('$1');
-      ownerCtePrefix = `accessible AS (\n${cteSql}\n)`;
-      ownerWhereClause = ` AND (m.table_name, da.data_id) IN (SELECT table_name, data_id FROM accessible)`;
+      // Additive edit-scope (manage-enabled tables): a record editor holds a
+      // record-scoped user grant, not a role grant, so their records never appear via
+      // the role-driven owner CTE. Surface them as an extra membership branch, gated on
+      // the view-verb. Inline integer ids (never params) keep the caller's $N offsets valid.
+      const editBranches = await this.buildManageEditBranches(caller, 'perm_data_access_view');
+
+      const membership: string[] = [];
+      if (roleIds.length) {
+        ownerParams = [roleIds];
+        const { cteSql } = buildAccessibleCTE('$1');
+        ownerCtePrefix = `accessible AS (\n${cteSql}\n)`;
+        membership.push(`(m.table_name, da.data_id) IN (SELECT table_name, data_id FROM accessible)`);
+      }
+      membership.push(...editBranches);
+
+      // No roles AND no edit-accessible records → nothing is visible to this caller.
+      if (!membership.length) return emptyResult;
+
+      ownerWhereClause = ` AND (${membership.join(' OR ')})`;
     }
 
     const { ctePrefix, whereClause, params } = this.buildGroupFilterClause(dto, ownerParams.length);
@@ -518,7 +647,11 @@ export class DataAccessService {
     return mod;
   }
 
-  async create(dto: CreateDataAccessDto, performedBy = 'system') {
+  async create(dto: CreateDataAccessDto, performedBy = 'system', user?: { id?: unknown }, client?: string) {
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
     if (!dto.role_ids?.length && !dto.user_permissions?.length) {
       throw new BadRequestException('data_access_must_have_role_or_user');
     }
@@ -532,6 +665,11 @@ export class DataAccessService {
     }
 
     const mod = await this.resolveModule(dto.module_id);
+
+    // Manage-authority gate (before any mutation): the caller must be able to manage every
+    // target record (all-or-nothing) on any rule-target table.
+    await this.enforceManageGate(caller, mod.table_name, dto.data_ids, DataAccessService.CREATE_VERB);
+
     const userIds = dto.user_permissions?.map((userPermission) => userPermission.user_id) || [];
 
     // Hierarchy validation — only for allow rules
@@ -616,7 +754,11 @@ export class DataAccessService {
    * Update a data access rule by id.
    * Updates scope/dates and replaces junction links.
    */
-  async update(id: number, dto: UpdateDataAccessDto, performedBy = 'system') {
+  async update(id: number, dto: UpdateDataAccessDto, performedBy = 'system', user?: { id?: unknown }, client?: string) {
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
     // Validate no duplicate user_id in user_permissions
     if (dto.user_permissions?.length) {
       const userIdSet = new Set(dto.user_permissions.map((up) => up.user_id));
@@ -639,6 +781,9 @@ export class DataAccessService {
     if (!old) throw new NotFoundException(NOT_FOUND);
 
     const tableName = old.module?.table_name;
+
+    // Manage-authority gate: caller must manage the record this rule targets.
+    await this.enforceManageGate(caller, tableName, [old.data_id], DataAccessService.CREATE_VERB);
 
     // Capture old values for history
     const oldValue = {
@@ -742,7 +887,11 @@ export class DataAccessService {
     return { id };
   }
 
-  async delete(id: number, performedBy = 'system') {
+  async delete(id: number, performedBy = 'system', user?: { id?: unknown }, client?: string) {
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
     const record = await this.dataAccessRepository.findOne({
       where: { id },
       relations: ['module', 'role_data_access', 'role_data_access.role', 'user_data_access', 'user_data_access.user'],
@@ -750,6 +899,9 @@ export class DataAccessService {
     if (!record) throw new NotFoundException(NOT_FOUND);
 
     const tableName = record.module?.table_name;
+
+    // Manage-authority gate: caller must manage the record this rule targets.
+    await this.enforceManageGate(caller, tableName, [record.data_id], DataAccessService.DELETE_VERB);
 
     await this.connection.transaction(async (manager) => {
       // Soft-delete junction records
@@ -795,7 +947,19 @@ export class DataAccessService {
    * Soft-deletes the junction row.
    * If no subjects remain after removal, soft-deletes the entire rule.
    */
-  async removeLink(ruleId: number, subjectType: 'role' | 'user', subjectId: number, performedBy = 'system') {
+  async removeLink(
+    ruleId: number,
+    subjectType: 'role' | 'user',
+    subjectId: number,
+    performedBy = 'system',
+    user?: { id?: unknown },
+    client?: string,
+  ) {
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
+
     const record = await this.dataAccessRepository.findOne({
       where: { id: ruleId },
       relations: [
@@ -810,6 +974,9 @@ export class DataAccessService {
     if (!record) throw new NotFoundException(NOT_FOUND);
 
     const tableName = record.module?.table_name;
+
+    // Manage-authority gate: caller must manage the record this rule targets.
+    await this.enforceManageGate(caller, tableName, [record.data_id], DataAccessService.DELETE_VERB);
 
     // Soft-delete the specific junction row
     if (subjectType === 'role') {
@@ -875,6 +1042,136 @@ export class DataAccessService {
     return { rule_id: ruleId, removed: { subject_type: subjectType, subject_id: subjectId } };
   }
 
+  // ── Handover (transfer edit grant A → B) ─────────────────────────────────────
+
+  /**
+   * Hand a record's edit (RUD) grant from user A to user B atomically. Because manage
+   * authority is derived from the edit grant, transferring edit transfers grant-authority.
+   * Third-party rules on the same record (incl. rules A previously created for others) are
+   * left intact — only A's own record-scoped RUD grant moves. All records move in a single
+   * transaction (all-or-nothing).
+   *
+   * Auth: caller must be able to manage EVERY target record (canManageRecord folds
+   * super_admin/SO + editOnRecord∧create-verb). Only enabled for MANAGE_ENABLED_MODULES.
+   */
+  async handover(dto: HandoverDataAccessDto, performedBy = 'system', user?: { id?: unknown }, client?: string) {
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
+    const { module_id, data_ids, from_user_id, to_user_id } = dto;
+
+    if (from_user_id === to_user_id) throw new BadRequestException('cannot_handover_to_self');
+
+    const mod = await this.resolveModule(module_id);
+    if (!isManageEnabledTable(mod.table_name)) throw new BadRequestException('handover_not_enabled_for_table');
+
+    // Recipient must be a live, active user.
+    const toRows: { id: number }[] = await this.connection.query(
+      'SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL AND is_deleted IS NOT TRUE AND status = $2 LIMIT 1',
+      [to_user_id, USER_STATUS.ACTIVE],
+    );
+    if (!toRows.length) throw new BadRequestException('target_user_invalid');
+
+    // Authorize the caller against every record before mutating anything.
+    if (caller) {
+      for (const dataId of data_ids) {
+        const ok = await this.manageAuthority.canManageRecord(
+          caller,
+          mod.table_name,
+          dataId,
+          DataAccessService.CREATE_VERB,
+          { bypassCache: true },
+        );
+        if (!ok) throw new ForbiddenException('not_record_manager');
+      }
+    }
+
+    await this.connection.transaction(async (manager) => {
+      for (const dataId of data_ids) {
+        await this.grantEditToUser(manager, mod, dataId, to_user_id);
+        await this.stripUserEditGrant(manager, mod.id, dataId, from_user_id);
+      }
+    });
+
+    // Both users' record access changed; table-wide cache entries also go stale.
+    this.permissionCache.invalidateUser(from_user_id).catch(() => {});
+    this.permissionCache.invalidateUser(to_user_id).catch(() => {});
+    this.permissionCache.invalidateByTable(mod.table_name).catch(() => {});
+
+    this.historyLogger
+      .log({
+        entity_type: CHANGE_ENTITY_TYPE.DATA_ACCESS,
+        action_type: CHANGE_ACTION_TYPE.UPDATE,
+        entity_id: data_ids.join(','),
+        entity_name: mod.table_name,
+        performed_by: performedBy,
+        old_value: { from_user_id, data_ids, table_name: mod.table_name },
+        new_value: { to_user_id, data_ids, table_name: mod.table_name },
+      })
+      .catch(() => {});
+
+    return { module_id, data_ids, from_user_id, to_user_id };
+  }
+
+  /**
+   * Grant `userId` the record-scoped RUD edit set on (mod, dataId) — a fresh creator-shaped
+   * grant (dedicated DataAccess + one UserDataAccess per RUD permission). Must run inside a
+   * transaction manager. No-op when the module has no RUD permissions.
+   */
+  private async grantEditToUser(
+    manager: EntityManager,
+    mod: ModuleEntity,
+    dataId: number,
+    userId: number,
+  ): Promise<void> {
+    const permissions = await manager.find(Permission, {
+      where: { module_id: mod.id, action: In(CREATOR_ACTIONS), is_active: true, deleted_at: IsNull() },
+    });
+    if (!permissions.length) return;
+
+    const saved = await manager.save(
+      manager.create(DataAccess, { data_id: dataId, module_id: mod.id, scope_type: SCOPE_TYPE.ALLOW }),
+    );
+    await manager.insert(
+      UserDataAccess,
+      permissions.map((p) => ({ user_id: userId, data_access_id: saved.id, permission_id: p.id })),
+    );
+  }
+
+  /**
+   * Soft-delete `userId`'s record-scoped RUD grants on (moduleId, dataId), leaving every other
+   * subject's rules untouched. A rule left with no active junction is soft-deleted too
+   * (mirrors removeLink). Must run inside a transaction manager.
+   */
+  private async stripUserEditGrant(
+    manager: EntityManager,
+    moduleId: number,
+    dataId: number,
+    userId: number,
+  ): Promise<void> {
+    const rules = await manager.find(DataAccess, {
+      where: { data_id: dataId, module_id: moduleId, scope_type: SCOPE_TYPE.ALLOW, deleted_at: IsNull() },
+      relations: ['user_data_access', 'user_data_access.permission', 'role_data_access'],
+    });
+
+    for (const rule of rules) {
+      const toRemove = (rule.user_data_access || []).filter(
+        (u) => u.user_id === userId && !u.deleted_at && CREATOR_ACTIONS.includes(u.permission?.action),
+      );
+      if (!toRemove.length) continue;
+
+      const removedIds = new Set(toRemove.map((u) => u.id));
+      await manager.softDelete(UserDataAccess, { id: In([...removedIds]) });
+
+      const remainingUsers = (rule.user_data_access || []).filter((u) => !u.deleted_at && !removedIds.has(u.id)).length;
+      const remainingRoles = (rule.role_data_access || []).filter((r) => !r.deleted_at).length;
+      if (remainingUsers === 0 && remainingRoles === 0) {
+        await manager.softDelete(DataAccess, { id: rule.id });
+      }
+    }
+  }
+
   async getByUser(userId: number) {
     return this.dataAccessRepository
       .createQueryBuilder('da')
@@ -905,22 +1202,137 @@ export class DataAccessService {
 
   // ── Records Browser ─────────────────────────────────────────────────────────
 
-  async getRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams, userInfo?: ScopeUserInfo) {
+  async getRecords(
+    tableName: string,
+    dto: SearchRecordsDto,
+    pagination: PaginationParams,
+    user?: { id?: unknown },
+    client?: string,
+  ) {
     // Records browser allows browsing any ALLOWED_TABLES member (leaf tables inherit
     // scope but are still browsable); only rule creation is gated by RULE_TARGET_TABLES.
     if (!ALLOWED_TABLES.has(tableName)) {
       throw new BadRequestException('table_not_allowed');
     }
 
-    const isUnscoped = !userInfo;
+    const rawId = Number(user?.id);
+    const userId = client === (USER_CLIENT.USER as string) && Number.isInteger(rawId) && rawId > 0 ? rawId : undefined;
+    const caller: CallerContext | undefined =
+      user || client ? { userId, client, isSuperAdmin: await this.checkSuperAdmin(userId) } : undefined;
 
-    // Scoped path: resolve owner scope
-    if (!isUnscoped) {
-      return this.getScopedRecords(tableName, dto, pagination, userInfo);
+    // Unscoped (no user context — internal callers): return all records.
+    if (!caller) return this.getUnscopedRecords(tableName, dto, pagination);
+
+    // super_admin sees every row on any table (admin-sees-all rule, consistent with the
+    // grouped list path). Resolved before scope branching so it applies to owner-scoped and
+    // own-all tables too, not just manage-enabled ones.
+    if (caller.isSuperAdmin) return this.getUnscopedRecords(tableName, dto, pagination);
+
+    // Manage-enabled tables (excluding own-all) scope by editOnRecord ∧ create-verb
+    // (plus SO owned). Other tables keep the prior owner-scope path.
+    if (isManageEnabledTable(tableName) && !OWNER_ALL_TABLES.has(tableName)) {
+      return this.getManageScopedRecords(tableName, dto, pagination, caller);
     }
 
-    // Unscoped (no user context — internal callers): return all records
-    return this.getUnscopedRecords(tableName, dto, pagination);
+    return this.getScopedRecords(tableName, dto, pagination, caller);
+  }
+
+  /**
+   * Records-browser scope for a manage-enabled table: the union of
+   *   • edit-accessible rows (explicit record-scoped grant ∧ create-verb), and
+   *   • SO-owned rows (the caller's roles own the row's subtree via the owner chain).
+   * super_admin is handled upstream in getRecords (admin-sees-all); callers here are always
+   * non-admin.
+   *
+   * The two access paths are unioned and paginated entirely in SQL. Edit grants are explicit
+   * (bounded) so they stay an id allow-list; owner scope is a correlated EXISTS over the owner
+   * join, NOT a materialized id list — an owner of a large subtree could own tens of thousands
+   * of rows, so LIMIT/OFFSET must push into Postgres rather than loading every owned id into
+   * memory first. Empty grant set and no owner scope → empty page (no query).
+   */
+  private async getManageScopedRecords(
+    tableName: string,
+    dto: SearchRecordsDto,
+    pagination: PaginationParams,
+    caller: CallerContext,
+  ) {
+    const emptyResult = {
+      data: [],
+      meta: {
+        totalItems: 0,
+        itemCount: 0,
+        itemsPerPage: pagination.limit,
+        currentPage: pagination.page,
+        totalPages: 1,
+      },
+    };
+    if (caller.userId === undefined) return emptyResult;
+
+    // Explicit edit grants (bounded) and the caller's active roles (for owner scope), in parallel.
+    const [editIdsRaw, roleRows] = await Promise.all([
+      this.manageAuthority.getEditAccessibleRecordIds(caller, tableName, 'perm_data_access_create'),
+      this.connection.query<{ role_id: number }[]>(
+        'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
+        [caller.userId],
+      ),
+    ]);
+    const editIds = editIdsRaw.filter((id) => Number.isInteger(id));
+    const roleIds = roleRows.map((r) => r.role_id);
+    const canOwnerScope = roleIds.length > 0 && !!buildOwnerJoinChain(tableName, '$1');
+
+    // Neither access path can match → nothing to browse (skip the queries entirely).
+    if (!editIds.length && !canOwnerScope) return emptyResult;
+
+    const nameCol = getNameColumn(tableName);
+    const params: any[] = [];
+    const branches: string[] = [];
+
+    if (editIds.length) {
+      params.push(editIds);
+      branches.push(`m.id = ANY($${params.length})`);
+    }
+    const ownerChain = canOwnerScope ? buildOwnerJoinChain(tableName, `$${params.length + 1}`) : null;
+    if (ownerChain) {
+      params.push(roleIds);
+      // Correlated EXISTS keeps owner scope in-DB: the owner join filters to the caller's roles
+      // and correlates back to the outer row, so pagination stays on the outer query.
+      branches.push(`EXISTS (SELECT 1 FROM "${tableName}" t0 ${ownerChain.joinSQL} AND t0.id = m.id)`);
+    }
+
+    let whereClause = `WHERE m.deleted_at IS NULL AND m.is_deleted IS NOT TRUE AND (${branches.join(' OR ')})`;
+
+    if (dto.keyword) {
+      params.push(`%${dto.keyword}%`);
+      whereClause += ` AND (CAST(m.id AS TEXT) ILIKE $${params.length} OR CAST(m.${nameCol} AS TEXT) ILIKE $${params.length})`;
+    }
+    if (dto.date_from) {
+      params.push(dto.date_from);
+      whereClause += ` AND m.created_at >= $${params.length}`;
+    }
+    if (dto.date_to) {
+      params.push(dto.date_to);
+      whereClause += ` AND m.created_at <= $${params.length}`;
+    }
+
+    const countQuery = `SELECT COUNT(*)::int as total FROM "${tableName}" m ${whereClause}`;
+    const countResult = await this.connection.query<{ total: number }[]>(countQuery, params);
+    const total: number = countResult[0]?.total || 0;
+
+    params.push(pagination.limit, pagination.skip || 0);
+    const dataQuery = `SELECT m.id, m.${nameCol} as display_name, m.created_at FROM "${tableName}" m ${whereClause} ORDER BY m.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    const rows = await this.connection.query<Record<string, unknown>[]>(dataQuery, params);
+    const data = await this.enrichRecordBrowserRows(tableName, rows);
+
+    return {
+      data,
+      meta: {
+        totalItems: total,
+        itemCount: data.length,
+        itemsPerPage: pagination.limit,
+        currentPage: pagination.page,
+        totalPages: Math.ceil(total / pagination.limit) || 1,
+      },
+    };
   }
 
   /**
@@ -930,11 +1342,23 @@ export class DataAccessService {
    * explicit-only table. Record-level access is enforced elsewhere (assignment
    * mutation stays permission-gated); this is a picker, not a data endpoint.
    */
-  private async getUnscopedRecords(tableName: string, dto: SearchRecordsDto, pagination: PaginationParams) {
+  private async getUnscopedRecords(
+    tableName: string,
+    dto: SearchRecordsDto,
+    pagination: PaginationParams,
+    restrictIds?: number[],
+  ) {
     const nameCol = getNameColumn(tableName);
     const params: any[] = [];
     // Dual-column deleted check: is_deleted flagged OR deleted_at set.
     let whereClause = 'WHERE deleted_at IS NULL AND is_deleted IS NOT TRUE';
+
+    // Optional id allow-list: restricts the picker to a precomputed candidate set
+    // (manage-scoped browser). Empty array short-circuits upstream, so length > 0 here.
+    if (restrictIds) {
+      params.push(restrictIds);
+      whereClause += ` AND id = ANY($${params.length})`;
+    }
 
     if (dto.keyword) {
       params.push(`%${dto.keyword}%`);
