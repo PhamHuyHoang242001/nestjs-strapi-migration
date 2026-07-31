@@ -6,6 +6,7 @@ import { Permission } from '@modules/databases/permission.entity';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
+import { isManageEnabledTable } from '../constants/hierarchy-config';
 
 /**
  * Namespace-safe caller identity for the manage-authority gate.
@@ -73,6 +74,11 @@ export class ManageAuthorityService {
     // SO of the record owns it outright — deny-immune, verb-independent.
     if (await this.ownerScope.isInOwnedScope(userId, tableName, recordId)) return true;
 
+    // Derive-from-edit grant authority is opt-in per table. On non-manage tables an edit
+    // grant must NOT confer rule authority — manage there is super_admin/SO only (above).
+    // Keeps this write gate consistent with the read/browse path (getRecords → isManageEnabledTable).
+    if (!isManageEnabledTable(tableName)) return false;
+
     const editCode = await this.resolveEditCode(tableName);
     if (!editCode) {
       this.logger.warn(`canManageRecord: no edit permission (action='${EDIT_ACTION}') for table "${tableName}"`);
@@ -112,7 +118,10 @@ export class ManageAuthorityService {
       ? await this.queryService.hasPermission(userId, verbCode)
       : await this.permissionCache.hasPermission(userId, verbCode);
 
-    const editCode = await this.resolveEditCode(tableName);
+    // Derive-from-edit grant authority is opt-in per table (see canManageRecord). On
+    // non-manage tables the editable set is empty — only SO-owned ids below qualify —
+    // so an edit grant alone never confers rule authority.
+    const editCode = isManageEnabledTable(tableName) ? await this.resolveEditCode(tableName) : null;
     const editable =
       hasVerb && editCode
         ? new Set(
