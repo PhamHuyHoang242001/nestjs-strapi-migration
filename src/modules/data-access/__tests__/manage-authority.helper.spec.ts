@@ -8,7 +8,6 @@ import { isManageEnabledTable, MANAGE_ENABLED_MODULES } from '../constants/hiera
 import { ManageAuthorityService } from '../helpers/manage-authority.helper';
 
 const TABLE = 'bi_hub_diagnostic_reports';
-const NON_MANAGE_TABLE = 'bi_hub_reports'; // rule target but NOT in MANAGE_ENABLED_MODULES (descriptive)
 const EDIT_CODE = 'bh_diag_report_edit';
 const VERB = 'perm_data_access_create';
 
@@ -122,19 +121,6 @@ describe('ManageAuthorityService.canManageRecord', () => {
     expect(queryService.getAccessibleRecords).toHaveBeenCalledWith(5, TABLE, EDIT_CODE);
     expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
   });
-
-  it('non-manage table: edit-on-record ∧ verb → false (edit grant confers no rule authority)', async () => {
-    // Descriptive report is a rule target but NOT manage-enabled. A caller who can edit the
-    // record and holds the verb must still be denied — the edit set must not be consulted.
-    const { service, permissionCache } = createService({ accessibleCache: [1, 2], hasPermCache: true });
-    await expect(service.canManageRecord(user(5), NON_MANAGE_TABLE, 1, VERB)).resolves.toBe(false);
-    expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
-  });
-
-  it('non-manage table: SO of the record → still true (owner scope unaffected)', async () => {
-    const { service } = createService({ isInOwnedScope: true, hasPermCache: false });
-    await expect(service.canManageRecord(user(5), NON_MANAGE_TABLE, 1, VERB)).resolves.toBe(true);
-  });
 });
 
 describe('ManageAuthorityService.filterManageableRecords', () => {
@@ -158,23 +144,5 @@ describe('ManageAuthorityService.filterManageableRecords', () => {
   it('includes SO-owned ids even without verb', async () => {
     const { service } = createService({ accessibleCache: [], hasPermCache: false, isInOwnedScope: true });
     await expect(service.filterManageableRecords({ isSuperAdmin: false, userId: 5, client: 'user' }, TABLE, [7], VERB)).resolves.toEqual([7]);
-  });
-
-  it('non-manage table: edit-on-record ids are NOT manageable (edit set skipped)', async () => {
-    // Descriptive report: caller edits [1,2,3] and holds the verb, but none are SO-owned →
-    // none are manageable. Prevents a cross-scope editor from granting rules on records they
-    // merely edit.
-    const { service, permissionCache } = createService({ accessibleCache: [1, 2, 3], hasPermCache: true });
-    await expect(
-      service.filterManageableRecords({ isSuperAdmin: false, userId: 5, client: 'user' }, NON_MANAGE_TABLE, [1, 2, 3], VERB),
-    ).resolves.toEqual([]);
-    expect(permissionCache.getAccessibleRecords).not.toHaveBeenCalled();
-  });
-
-  it('non-manage table: SO-owned ids still manageable', async () => {
-    const { service } = createService({ accessibleCache: [], hasPermCache: true, isInOwnedScope: true });
-    await expect(
-      service.filterManageableRecords({ isSuperAdmin: false, userId: 5, client: 'user' }, NON_MANAGE_TABLE, [7], VERB),
-    ).resolves.toEqual([7]);
   });
 });

@@ -78,54 +78,29 @@ export class DataAccessService {
 
   // ── Manage-authority gate (derive grant-authority from edit + rule-verb) ─────
 
-  /** Verb a record editor must additionally hold to create/update grants on a record. */
-  private static readonly CREATE_VERB = 'perm_data_access_create';
-  /** Verb a record editor must additionally hold to delete/unlink grants on a record. */
-  private static readonly DELETE_VERB = 'perm_data_access_delete';
+  /** Verb that a record editor must additionally hold to manage grants on that record. */
+  private static readonly MANAGE_VERB = 'perm_data_access_create';
 
   /**
-   * Gate a rule write against the record-manager rule for EVERY rule-target table.
-   * A caller may only create/update/delete a rule on records they actually manage:
-   *   super_admin OR own-all(table) OR editOnRecord(∧ verb) OR SO-owner(subtree).
-   * `verbCode` follows the endpoint's action (create/update → CREATE_VERB,
-   * delete/removeLink → DELETE_VERB) so a delete-only editor is not gated on the
-   * create verb.
-   *
-   * No-op only when: caller is absent (internal/unscoped call) OR the table is not a
-   * rule target. EVERY target dataId must be manageable (all-or-nothing) or the whole
-   * write is rejected 403. Reads ownership straight from the DB (bypassCache) so an
-   * editor just granted access is not blocked by a stale cache entry.
+   * Gate a write against the derive-from-edit rule for manage-enabled tables.
+   * No-op when: caller is absent (internal/unscoped call) OR the table is outside
+   * MANAGE_ENABLED_MODULES (keeps prior global-verb-only behavior). For an enabled
+   * table, EVERY target dataId must be manageable (all-or-nothing) or the whole write
+   * is rejected 403. Reads ownership straight from the DB (bypassCache) so an editor
+   * just granted access is not blocked by a stale 120s cache entry.
    */
   private async enforceManageGate(
     caller: CallerContext | undefined,
     tableName: string | undefined,
     dataIds: number[],
-    verbCode: string,
   ): Promise<void> {
     if (!caller) return;
-    if (!tableName || !RULE_TARGET_TABLES.has(tableName)) return;
-    if (caller.isSuperAdmin) return;
-
-    // Whole-table SO: the sentinel resource_owners row never matches a real record in the
-    // owner join (so isInOwnedScope can't see it), so resolve own-all explicitly here —
-    // mirrors the records-browser scope (getScopedRecords): a sentinel owner manages every
-    // row, a non-owner none. Terminal on purpose — own-all tables have no per-record editor
-    // model today. If such a table ever grows an edit ('update') permission, fall through to
-    // filterManageableRecords instead of throwing so record editors are not falsely blocked.
-    if (OWNER_ALL_TABLES.has(tableName)) {
-      const roleRows: { role_id: number }[] = await this.connection.query(
-        'SELECT role_id FROM user_roles WHERE user_id = $1 AND deleted_at IS NULL',
-        [caller.userId],
-      );
-      const roleIds = roleRows.map((r) => r.role_id);
-      if (await this.hasOwnerAllAssignment(tableName, roleIds)) return;
-      throw new ForbiddenException('not_record_manager');
-    }
-
-    // Resolve the editable/owned set once (batched), then require EVERY target record to be
-    // manageable (all-or-nothing). bypassCache so a just-granted editor is not blocked.
+    if (!isManageEnabledTable(tableName)) return;
+    // Resolve the verb + editable set once (batched), then require EVERY target record to be
+    // manageable (all-or-nothing). Write path reads ownership straight from the DB (bypassCache)
+    // so an editor just granted access is not blocked by the 120s cache.
     const manageable = new Set(
-      await this.manageAuthority.filterManageableRecords(caller, tableName, dataIds, verbCode, {
+      await this.manageAuthority.filterManageableRecords(caller, tableName, dataIds, DataAccessService.MANAGE_VERB, {
         bypassCache: true,
       }),
     );
@@ -666,9 +641,9 @@ export class DataAccessService {
 
     const mod = await this.resolveModule(dto.module_id);
 
-    // Manage-authority gate (before any mutation): the caller must be able to manage every
-    // target record (all-or-nothing) on any rule-target table.
-    await this.enforceManageGate(caller, mod.table_name, dto.data_ids, DataAccessService.CREATE_VERB);
+    // Manage-authority gate (before any mutation): for manage-enabled tables the caller
+    // must be able to manage every target record (all-or-nothing).
+    await this.enforceManageGate(caller, mod.table_name, dto.data_ids);
 
     const userIds = dto.user_permissions?.map((userPermission) => userPermission.user_id) || [];
 
@@ -783,7 +758,7 @@ export class DataAccessService {
     const tableName = old.module?.table_name;
 
     // Manage-authority gate: caller must manage the record this rule targets.
-    await this.enforceManageGate(caller, tableName, [old.data_id], DataAccessService.CREATE_VERB);
+    await this.enforceManageGate(caller, tableName, [old.data_id]);
 
     // Capture old values for history
     const oldValue = {
@@ -901,7 +876,7 @@ export class DataAccessService {
     const tableName = record.module?.table_name;
 
     // Manage-authority gate: caller must manage the record this rule targets.
-    await this.enforceManageGate(caller, tableName, [record.data_id], DataAccessService.DELETE_VERB);
+    await this.enforceManageGate(caller, tableName, [record.data_id]);
 
     await this.connection.transaction(async (manager) => {
       // Soft-delete junction records
@@ -976,7 +951,7 @@ export class DataAccessService {
     const tableName = record.module?.table_name;
 
     // Manage-authority gate: caller must manage the record this rule targets.
-    await this.enforceManageGate(caller, tableName, [record.data_id], DataAccessService.DELETE_VERB);
+    await this.enforceManageGate(caller, tableName, [record.data_id]);
 
     // Soft-delete the specific junction row
     if (subjectType === 'role') {
@@ -1080,7 +1055,7 @@ export class DataAccessService {
           caller,
           mod.table_name,
           dataId,
-          DataAccessService.CREATE_VERB,
+          DataAccessService.MANAGE_VERB,
           { bypassCache: true },
         );
         if (!ok) throw new ForbiddenException('not_record_manager');

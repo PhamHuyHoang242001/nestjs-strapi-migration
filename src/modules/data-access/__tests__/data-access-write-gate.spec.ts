@@ -118,14 +118,10 @@ describe('DataAccessService write-gate (manage-enabled table)', () => {
     // (no rule created because we threw before entering the transaction).
   });
 
-  it('create: rule-target table outside MANAGE_ENABLED_MODULES is now gated too (hole closed)', async () => {
-    // bi_payment_programs is a rule target but not manage-enabled; the record-manager gate
-    // must still run so a verb-only caller cannot grant access to records they do not manage.
+  it('create: table OUTSIDE MANAGE_ENABLED_MODULES → no record-scope gate', async () => {
     const { service, filterManageableRecords } = makeService({ tableName: OTHER_TABLE, manageable: () => false });
-    await expect(service.create(baseDto([1, 2]), 'u', { id: 5 }, 'user')).rejects.toThrow('not_record_manager');
-    expect(filterManageableRecords).toHaveBeenCalledWith(CALLER, OTHER_TABLE, [1, 2], 'perm_data_access_create', {
-      bypassCache: true,
-    });
+    await expect(service.create(baseDto([1, 2]), 'u', { id: 5 }, 'user')).resolves.toBeDefined();
+    expect(filterManageableRecords).not.toHaveBeenCalled();
   });
 
   it('create: no caller (internal/unscoped) → no gate', async () => {
