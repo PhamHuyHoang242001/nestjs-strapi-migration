@@ -24,18 +24,24 @@ export class LoggerMiddleware implements NestMiddleware {
     const domain = parts.length > 1 ? (parts[1] || 'localhost').split(':')[0] : 'localhost';
 
     const deviceHeader = req.headers.device;
-    const parsedDevice =
-      typeof deviceHeader === 'string' && deviceHeader
-        ? JSON.parse(deviceHeader)
-        : typeof deviceHeader === 'object'
-          ? deviceHeader
-          : {};
+    let parsedDevice: Record<string, unknown> = {};
+    if (deviceHeader && typeof deviceHeader === 'object') {
+      parsedDevice = deviceHeader as unknown as Record<string, unknown>;
+    } else if (typeof deviceHeader === 'string' && deviceHeader) {
+      try {
+        parsedDevice = JSON.parse(deviceHeader) as Record<string, unknown>;
+      } catch {
+        // Non-JSON device header (e.g. a plain device id/string sent by clients):
+        // keep it as an identifier instead of throwing, which would 500 the request.
+        parsedDevice = { id: deviceHeader };
+      }
+    }
     req.headers.device = Object.assign({ browser: '' }, parsedDevice, {
       ip,
       userAgent: `${(req.headers['sec-ch-ua'] || '').toString().replace(/"/g, '')}${CHARACTER_SEPARATE_SUB_INFO}${
         req.headers['user-agent']
       }`,
-    });
+    }) as unknown as string;
 
     req.headers.hostname = hostname;
     req.headers.domain = domain;
