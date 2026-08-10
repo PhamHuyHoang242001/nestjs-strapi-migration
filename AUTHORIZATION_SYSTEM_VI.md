@@ -36,7 +36,7 @@ Nghĩa là:
 
 ## BI Payment permission matrix
 
-### 8 code đang dùng
+### 9 code đang dùng
 
 | ID | Code | Ý nghĩa | Ghi chú |
 | --- | --- | --- | --- |
@@ -48,6 +48,7 @@ Nghĩa là:
 | 52 | `bp_program_upload_recon` | Upload tra soát | Chỉ `RECON_DATA` docs do chính mình upload; template recon vẫn full-view. |
 | 53 | `bp_program_approve` | Approve | Duyệt/từ chối document `PREPARE`/`EX_PREPARE` đã submit + checklist approval. |
 | 54 | `bp_program_confirm` | Confirm | Chỉ `pic-confirm-final-link`. |
+| 55 | `bp_program_content_view` | Xem toàn bộ tài liệu & template | Read-only full content: full-view (`own:false`) mọi workstep cho template + document của program. Không mở upload/lifecycle. Resolve như SO-owner nhưng gate bằng data_access grant. |
 
 ### Template verbs còn tách riêng
 
@@ -63,7 +64,7 @@ Nghĩa là:
 | Endpoint / rule | Behavior |
 | --- | --- |
 | `list`, `stats` | Nếu user chỉ có view/base gate nhưng không có content capability, service trả `200` với `data: []`, `total: 0` thay vì `403`. |
-| `details`, `download` | Vẫn cần content capability; view-only không đủ. |
+| `details`, `download` | Vẫn cần content capability (`bp_program_upload` / `bp_program_upload_recon` / `bp_program_content_view`); `bp_program_view` view-only không đủ. |
 | `upload` | `bp_program_upload` cover toàn bộ workstep; `bp_program_upload_recon` chỉ cover `RECON_DATA` và chỉ own-doc (`uploaded_by_id = self`). |
 | `update-status` | Chỉ chạy khi `BiPaymentProgressStatus.INPROGRESS`. `approval/rejected` chỉ áp cho `PREPARE` + `EX_PREPARE` và require `bp_program_approve`. |
 | `user-created` / `user-updated` / `user-approved` / `user-rejected` | Trả distinct users theo cột `uploaded_by_id`, `updated_by_id`, `approved_by_id`, `rejected_by_id`. |
@@ -74,7 +75,7 @@ Nghĩa là:
 | Endpoint / rule | Behavior |
 | --- | --- |
 | `search` | Step×program scope. `bp_program_view` alone không mở content nếu service không có workstep capability. |
-| `details`, `download` | Cần content capability (`bp_program_upload` hoặc `bp_program_upload_recon`). |
+| `details`, `download` | Cần content capability (`bp_program_upload`, `bp_program_upload_recon`, `bp_program_content_view`, hoặc `bp_template_create` cho luồng duplicate). |
 | `create`, `duplicate-many` | Dùng `bp_template_create`. Không phụ thuộc content-view. |
 | `delete`, `delete-many` | Dùng `bp_template_delete`. Không phụ thuộc content-view. |
 | `user-created`, `user-updated` | Distinct users, không trả template rows. |
@@ -120,6 +121,7 @@ Child records luôn đọc quyền từ parent program, rồi mới lọc record
 | File | Facts đã verify |
 | --- | --- |
 | `src/migration/1784797200000-add-bi-payment-program-permissions.ts` | Timestamp 13 digits, lookup physical table động (`permissions` / `permission`), chặn schema ambiguity, fail closed khi collision id/module, down cleanup FK-safe. |
+| `src/migration/1784883600000-add-bi-payment-program-content-view-permission.ts` | Thêm code `bp_program_content_view` (id 55, module 13). Cùng pattern hardened; timestamp sort sau migration add gốc. |
 
 ### Deferred cleanup migration
 

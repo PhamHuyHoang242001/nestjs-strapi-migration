@@ -284,8 +284,8 @@ const PERM_MGMT_SERVICE_TOKEN: PermissionSeedItem[] = [
   },
 ];
 
-// ── BI Payment (module_id=12,13,15) — 8-code program matrix ─────────
-// 14 codes total: project 4 + program 8 + template lifecycle 2.
+// ── BI Payment (module_id=12,13,15) — program permission matrix ─────
+// 15 codes total: project 4 + program 9 + template lifecycle 2.
 const BI_PAYMENT_PROJECT: PermissionSeedItem[] = [
   { id: 35, code: 'bp_project_view', name: 'Xem', method: 'GET', action: 'read', is_active: true, module_id: 12 },
   {
@@ -366,6 +366,15 @@ const BI_PAYMENT_PROGRAM: PermissionSeedItem[] = [
     is_active: true,
     module_id: 13,
   },
+  {
+    id: 55,
+    code: 'bp_program_content_view',
+    name: 'Xem toàn bộ tài liệu & template',
+    method: 'GET',
+    action: 'content_view',
+    is_active: true,
+    module_id: 13,
+  },
 ];
 
 const BI_PAYMENT_TEMPLATE: PermissionSeedItem[] = [
@@ -418,7 +427,7 @@ export class PermissionSeeder implements Seeder {
       ...PERM_MGMT_DATA_ACCESS,
       ...PERM_MGMT_HISTORY,
       ...PERM_MGMT_SERVICE_TOKEN,
-      // BI Payment — project 4 + program 8 + template lifecycle 2
+      // BI Payment — project 4 + program 9 + template lifecycle 2
       ...BI_PAYMENT_PROJECT,
       ...BI_PAYMENT_PROGRAM,
       ...BI_PAYMENT_TEMPLATE,

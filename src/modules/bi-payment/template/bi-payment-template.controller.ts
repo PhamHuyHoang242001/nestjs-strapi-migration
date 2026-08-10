@@ -33,11 +33,23 @@ import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.deco
 // cần duplicate (data-scope ở service). Cross-program endpoints (user-created/
 // updated) KHÔNG nhận code này — tạo template ở 1 program không lý do để liệt
 // kê user mọi program.
-const TEMPLATE_LIST_PERMS = ['bp_program_view', 'bp_program_upload', 'bp_program_upload_recon'];
+// bp_program_content_view: read-only full-content grant — thấy toàn bộ template
+// của program (mọi step), không cần upload. Data-scope vẫn resolve ở service.
+const TEMPLATE_LIST_PERMS = [
+  'bp_program_view',
+  'bp_program_upload',
+  'bp_program_upload_recon',
+  'bp_program_content_view',
+];
 const TEMPLATE_SEARCH_PERMS = [...TEMPLATE_LIST_PERMS, 'bp_template_create'];
 // Content perms cho details/download: ai có upload/upload_recon (content-view)
-// HOẶC create-code (luồng duplicate cần xem template nguồn).
-const TEMPLATE_CONTENT_PERMS = ['bp_program_upload', 'bp_program_upload_recon', 'bp_template_create'];
+// HOẶC content_view (read-only full) HOẶC create-code (luồng duplicate cần xem template nguồn).
+const TEMPLATE_CONTENT_PERMS = [
+  'bp_program_upload',
+  'bp_program_upload_recon',
+  'bp_program_content_view',
+  'bp_template_create',
+];
 
 @Controller('bi-payment/template')
 @ApiTags('bi-payment-template')

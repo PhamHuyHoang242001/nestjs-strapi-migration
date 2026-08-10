@@ -12,7 +12,14 @@ import { BiPaymentDocumentService } from './bi-payment-document.service';
 import { SearchBiPaymentDocumentDto, UploadBiPaymentDocumentDto } from './dto';
 import { SortCamel, SortCamelParams } from '../common/decorators/sort-camel.decorator';
 
-const DOCUMENT_READ_PERMS = ['bp_program_view', 'bp_program_upload', 'bp_program_upload_recon'];
+// bp_program_content_view: read-only full-content grant — mở list/stats/details/
+// download cho toàn bộ document của program (mọi step), không cần upload.
+const DOCUMENT_READ_PERMS = [
+  'bp_program_view',
+  'bp_program_upload',
+  'bp_program_upload_recon',
+  'bp_program_content_view',
+];
 const DOCUMENT_UPLOAD_PERMS = ['bp_program_upload', 'bp_program_upload_recon'];
 const DOCUMENT_STATUS_PERMS = ['bp_program_upload', 'bp_program_upload_recon', 'bp_program_approve'];
 

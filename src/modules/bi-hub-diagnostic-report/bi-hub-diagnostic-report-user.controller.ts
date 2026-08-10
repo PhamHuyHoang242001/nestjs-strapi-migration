@@ -9,6 +9,7 @@ import { RequestWithInfo } from '@common/types/request-with-info';
 import { UserType } from '@modules/databases/user.entity';
 import { Body, Controller, Get, HttpCode, Post, Param, Query, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { BiHubDiagnosticReportService } from './bi-hub-diagnostic-report.service';
 import { BiHubDiagnosticReportPicService } from './bi-hub-diagnostic-report-pic.service';
 import {
@@ -88,6 +89,8 @@ export class BiHubDiagnosticReportUserController {
   @ApiOperation({ summary: 'Increase view count of a report' })
   @Post('view')
   @HttpCode(200)
+  // Rate limit: tối đa 5 request / phút (override throttler global permissive).
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @RequirePermission('bh_diag_report_view')
   @RequireDataAccess(DATA_ACCESS_TABLE.BI_HUB_DIAGNOSTIC_REPORTS, 'bh_diag_report_view')
   increaseView(@Body() body: IncreaseViewDto, @Req() req: RequestWithInfo) {

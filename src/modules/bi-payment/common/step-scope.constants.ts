@@ -20,6 +20,12 @@ export const WORKSTEP_VIEW_CODES: Readonly<Record<MaToolWorkstepType, readonly s
   [MaToolWorkstepType.RECON_FEEDBACK]: ['bp_program_upload'],
 });
 
+// Read-only "see everything" code: holding it at a program grants full-view of
+// every workstep's templates and documents, without any upload/lifecycle verb.
+// Resolved like the SO-owner short-circuit (all worksteps, own:false), but gated
+// by an explicit per-program data_access grant instead of ownership.
+export const PROGRAM_CONTENT_VIEW_CODE = 'bp_program_content_view';
+
 // Codes whose access to a workstep is restricted to documents the holder created
 // (uploaded_by_id = self). A workstep is own-only for a user when the ONLY view
 // code they hold for it is in this set. The resolver widens to full-view the

@@ -2,7 +2,12 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
 import { MaToolWorkstepType } from '@common/enums/ma-tool.enums';
-import { ALL_WORKSTEP_TYPES, OWN_ONLY_CODES, WORKSTEP_VIEW_CODES } from './step-scope.constants';
+import {
+  ALL_WORKSTEP_TYPES,
+  OWN_ONLY_CODES,
+  PROGRAM_CONTENT_VIEW_CODE,
+  WORKSTEP_VIEW_CODES,
+} from './step-scope.constants';
 
 // Table whose data_access rules scope program visibility.
 const PROGRAM_TABLE = 'bi_payment_programs';
@@ -90,6 +95,14 @@ export class StepScopeService {
       return scopes;
     }
 
+    // Read-only full-content grant: same all-worksteps full-view as an SO owner,
+    // but earned via an explicit per-program data_access grant of the code.
+    const contentViewIds = await this.permCache.getAccessibleRecords(userId, PROGRAM_TABLE, PROGRAM_CONTENT_VIEW_CODE);
+    if (contentViewIds.includes(programId)) {
+      for (const ws of ALL_WORKSTEP_TYPES) scopes.set(ws, { own: false });
+      return scopes;
+    }
+
     for (const ws of Object.keys(WORKSTEP_VIEW_CODES) as MaToolWorkstepType[]) {
       let hasFull = false;
       let hasOwn = false;
@@ -124,6 +137,14 @@ export class StepScopeService {
   async resolveGlobalWorkstepScopes(userId: number): Promise<Map<MaToolWorkstepType, WorkstepScope>> {
     const perms = await this.permCache.getPermissions(userId);
     const scopes = new Map<MaToolWorkstepType, WorkstepScope>();
+
+    // Holding the read-only full-content code anywhere surfaces every workstep
+    // full-view for cross-program enumerations (mirrors the upload full path).
+    if (perms.has(PROGRAM_CONTENT_VIEW_CODE)) {
+      for (const ws of ALL_WORKSTEP_TYPES) scopes.set(ws, { own: false });
+      return scopes;
+    }
+
     for (const ws of Object.keys(WORKSTEP_VIEW_CODES) as MaToolWorkstepType[]) {
       let hasFull = false;
       let hasOwn = false;

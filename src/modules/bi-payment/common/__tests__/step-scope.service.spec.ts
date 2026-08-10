@@ -4,7 +4,7 @@ import { RedisAdapter } from '@common/infrastructure/redis.adapter';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
 import { MaToolWorkstepType } from '@common/enums/ma-tool.enums';
-import { ALL_WORKSTEP_TYPES, WORKSTEP_VIEW_CODES } from '../step-scope.constants';
+import { ALL_WORKSTEP_TYPES, PROGRAM_CONTENT_VIEW_CODE, WORKSTEP_VIEW_CODES } from '../step-scope.constants';
 import { StepScopeService } from '../step-scope.service';
 
 jest.mock('@common/infrastructure/redis.adapter');
@@ -145,15 +145,20 @@ describe('StepScopeService', () => {
   });
 
   // Cache key per-code: getAccessibleRecords called with each distinct code.
+  // Grant only the workstep view codes (not the full-content short-circuit code)
+  // so the per-code loop runs and every distinct code is queried.
   it('queries getAccessibleRecords once per distinct code', async () => {
     dsQuery.mockResolvedValueOnce([{ resource_type: 'bicc_department', resource_id: 1, role_id: 7 }]);
     dsQuery.mockResolvedValueOnce([]);
-    queryService.getAccessibleRecords.mockResolvedValue([PROGRAM_ID]);
+    queryService.getAccessibleRecords.mockImplementation((_uid, _table, code) =>
+      Promise.resolve(distinctCodes.includes(code) ? [PROGRAM_ID] : []),
+    );
 
     await service.resolveAllowedWorksteps(USER_ID, PROGRAM_ID);
 
     const codesCalled = queryService.getAccessibleRecords.mock.calls.map((c) => c[2]);
-    expect(new Set(codesCalled)).toEqual(new Set(distinctCodes));
+    // Full-content code is probed up-front, then the distinct workstep codes.
+    expect(new Set(codesCalled)).toEqual(new Set([PROGRAM_CONTENT_VIEW_CODE, ...distinctCodes]));
   });
 
   // ── 8-permission model: resolveWorkstepScopes (own-aware) ──────────────────
@@ -181,6 +186,28 @@ describe('StepScopeService', () => {
       const scopes = await service.resolveWorkstepScopes(USER_ID, PROGRAM_ID);
 
       for (const ws of ALL_WORKSTEP_TYPES) expect(scopes.get(ws)).toEqual({ own: false });
+    });
+
+    it('bp_program_content_view → every workstep, own:false (read-only full)', async () => {
+      jest.spyOn(ownerScope, 'isInOwnedScope').mockResolvedValue(false);
+      grantCodes(PROGRAM_CONTENT_VIEW_CODE);
+
+      const scopes = await service.resolveWorkstepScopes(USER_ID, PROGRAM_ID);
+
+      expect(scopes.size).toBe(ALL_WORKSTEP_TYPES.length);
+      for (const ws of ALL_WORKSTEP_TYPES) expect(scopes.get(ws)).toEqual({ own: false });
+    });
+
+    it('bp_program_content_view at another program only → no view at this program', async () => {
+      jest.spyOn(ownerScope, 'isInOwnedScope').mockResolvedValue(false);
+      // content_view granted, but resolves to a different program id → no records here.
+      queryService.getAccessibleRecords.mockImplementation((_uid, _table, code) =>
+        Promise.resolve(code === PROGRAM_CONTENT_VIEW_CODE ? [PROGRAM_ID + 1] : []),
+      );
+
+      const scopes = await service.resolveWorkstepScopes(USER_ID, PROGRAM_ID);
+
+      expect(scopes.size).toBe(0);
     });
 
     it('bp_program_upload_recon → only RECON_DATA, own:true', async () => {
@@ -275,6 +302,15 @@ describe('StepScopeService', () => {
 
       const scopes = await service.resolveGlobalWorkstepScopes(USER_ID);
 
+      for (const ws of ALL_WORKSTEP_TYPES) expect(scopes.get(ws)).toEqual({ own: false });
+    });
+
+    it('content_view globally → all worksteps own:false (read-only full)', async () => {
+      queryService.getUserPermissions.mockResolvedValue([PROGRAM_CONTENT_VIEW_CODE]);
+
+      const scopes = await service.resolveGlobalWorkstepScopes(USER_ID);
+
+      expect(scopes.size).toBe(ALL_WORKSTEP_TYPES.length);
       for (const ws of ALL_WORKSTEP_TYPES) expect(scopes.get(ws)).toEqual({ own: false });
     });
   });
