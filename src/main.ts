@@ -1,7 +1,7 @@
 import { TransformInterceptor } from '@common/interceptors';
 import { initConfigSystem, validation_Errors_Translate } from '@common/utils';
 import { CONFIG } from '@configuration/config.provider';
-import { BASE_URL, NODE_ENV, PORT, REDIS_HOST, REDIS_PORT, SWAGGER_BASE_URL } from '@configuration/env.config';
+import { BASE_URL, CORS_ORIGINS, NODE_ENV, PORT, REDIS_HOST, REDIS_PORT, SWAGGER_BASE_URL } from '@configuration/env.config';
 import { customOptions, swaggerConfig } from '@configuration/swagger.config';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -18,7 +18,16 @@ import { NODE_ENVIRONMENT } from './constant';
 
 function initializeApp(app: INestApplication): void {
   app.enableCors({
-    origin: '*',
+    // Reflect the request origin when it is in the allowlist. Required because a `*` wildcard
+    // is invalid together with `credentials: true`, which browsers reject for credentialed calls.
+    origin: (origin, callback) => {
+      // Allow non-browser clients (no Origin header) and any allowlisted browser origin.
+      if (!origin || CORS_ORIGINS.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'device'],
     methods: 'GET,PUT,POST,DELETE,UPDATE,OPTIONS,PATCH',

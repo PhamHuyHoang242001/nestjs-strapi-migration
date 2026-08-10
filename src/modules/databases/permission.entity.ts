@@ -4,7 +4,7 @@ import { Module } from './module.entity';
 import { UserDataAccess } from './data-access.entity';
 import { RolePermission } from './role.entity';
 
-@Entity('permissions')
+@Entity('permission')
 export class Permission extends BaseSoftDeleteEntity {
   @Column()
   name: string;

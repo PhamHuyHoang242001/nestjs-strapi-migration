@@ -53,6 +53,28 @@ export class BiPaymentProjectController {
     return this.service.search(query, sortParams, pagination, req.info?.dataScope ?? null);
   }
 
+  // Static GET routes MUST precede the ':id' param route below, or Nest matches
+  // /user-created and /user-updated against ':id' (id="user-created" → NaN).
+  // GET /bi-payment/project/user-created — Strapi userCreatedProject.
+  @ApiOperation({ summary: 'Projects created by current user' })
+  @Get('user-created')
+  @RequirePermission('bp_project_view')
+  @RequireDataAccess(DATA_ACCESS_TABLE.BI_PAYMENT_PROJECTS, 'bp_project_view')
+  userCreated(@Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.listUserCreated(userId ? +userId : 0, req.info?.dataScope ?? null);
+  }
+
+  // GET /bi-payment/project/user-updated — Strapi userUpdatedProject.
+  @ApiOperation({ summary: 'Projects updated by current user' })
+  @Get('user-updated')
+  @RequirePermission('bp_project_view')
+  @RequireDataAccess(DATA_ACCESS_TABLE.BI_PAYMENT_PROJECTS, 'bp_project_view')
+  userUpdated(@Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number | undefined;
+    return this.service.listUserUpdated(userId ? +userId : 0, req.info?.dataScope ?? null);
+  }
+
   // GET /bi-payment/project/:id — Strapi findProjectById.
   @ApiOperation({ summary: 'Get BI Payment project details' })
   @Get(':id')
@@ -104,23 +126,4 @@ export class BiPaymentProjectController {
     return this.service.delete(+id);
   }
 
-  // GET /bi-payment/project/user-created — Strapi userCreatedProject.
-  @ApiOperation({ summary: 'Projects created by current user' })
-  @Get('user-created')
-  @RequirePermission('bp_project_view')
-  @RequireDataAccess(DATA_ACCESS_TABLE.BI_PAYMENT_PROJECTS, 'bp_project_view')
-  userCreated(@Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.listUserCreated(userId ? +userId : 0, req.info?.dataScope ?? null);
-  }
-
-  // GET /bi-payment/project/user-updated — Strapi userUpdatedProject.
-  @ApiOperation({ summary: 'Projects updated by current user' })
-  @Get('user-updated')
-  @RequirePermission('bp_project_view')
-  @RequireDataAccess(DATA_ACCESS_TABLE.BI_PAYMENT_PROJECTS, 'bp_project_view')
-  userUpdated(@Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number | undefined;
-    return this.service.listUserUpdated(userId ? +userId : 0, req.info?.dataScope ?? null);
-  }
 }

@@ -16,12 +16,12 @@ export class PermissionRepository extends BaseRepository<Permission> {
     const query = this.createQueryBuilder('permission');
     if (search) query.where('permission.name ILIKE :name', { name: `%${search}%` });
     if (sortParams.sort_field) query.orderBy(`permission.${sortParams.sort_field}`, sortParams.sort_order);
-    query.leftJoinAndSelect('permission.screen', 'screen');
+    query.leftJoinAndSelect('permission.module', 'module');
     return query;
   }
 
   async findDetailRelation(id: number): Promise<Permission | undefined> {
-    const rs = await this.findOne({ where: { id }, relations: ['screen'] });
+    const rs = await this.findOne({ where: { id }, relations: ['module'] });
     if (!rs) throw new NotFoundException(NOT_FOUND);
     return rs;
   }

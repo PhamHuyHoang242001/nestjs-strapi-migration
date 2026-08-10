@@ -467,13 +467,19 @@ export class BiPaymentTemplateService {
     const total = totalRow ? Number(totalRow.count) : 0;
 
     // Page query: DISTINCT userCol + email, ordered + paged.
-    const qb = this.repo.createQueryBuilder('t').select(`DISTINCT ${userCol}`, 'id').addSelect('u.email', 'email');
+    // .distinct(true) emits `SELECT DISTINCT` correctly; putting DISTINCT inside .select()
+    // yields `SELECT u.email, DISTINCT t.col` (DISTINCT mid-list) which is invalid SQL.
+    const qb = this.repo.createQueryBuilder('t').distinct(true).select(userCol, 'id').addSelect('u.email', 'email');
     applyScope(qb);
     if (!admin.isAdmin) this.applyCrossProgramScope(qb, uploadPrograms, reconPrograms);
     if (kw) qb.andWhere('LOWER(u.email) ILIKE :kw', { kw });
-    qb.orderBy('u.id', 'DESC')
-      .skip((pagination.page - 1) * pagination.limit)
-      .take(pagination.limit);
+    // Raw DISTINCT select paginates with offset/limit; skip/take triggers TypeORM's
+    // distinct-alias subquery wrapper which collides with the explicit DISTINCT (SQL syntax error).
+    // Order by the selected user column (= u.id via the join): SELECT DISTINCT requires every
+    // ORDER BY expression to appear in the select list.
+    qb.orderBy(userCol, 'DESC')
+      .offset((pagination.page - 1) * pagination.limit)
+      .limit(pagination.limit);
     const rows = await qb.getRawMany<{ id: number; email: string }>();
     const data = rows.map((r) => ({ id: Number(r.id), email: r.email }));
     return { data, meta: { total, page: pagination.page, limit: pagination.limit } };

@@ -22,7 +22,8 @@ export class PermissionQueryService {
     const rolePerms = await this.userRoleRepo
       .createQueryBuilder('ur')
       .innerJoin('ur.role', 'r')
-      .innerJoin('r.permissions', 'p')
+      .innerJoin('r.role_permissions', 'rp')
+      .innerJoin('rp.permission', 'p')
       .select('p.code', 'code')
       .where('ur.user_id = :userId', { userId })
       .andWhere('ur.deleted_at IS NULL')

@@ -16,8 +16,8 @@ export class UserAddressRepository extends BaseRepository<UserAddress> {
       .innerJoin('user_address.user', 'user', 'user.id = :user_id', { user_id })
       .where('user_address.is_save = :isSave', { isSave: true })
       .select('user_address.id as id')
-      .addSelect('user_address.first_name as first_name')
-      .addSelect('user_address.last_name as last_name')
+      .addSelect('user_address.address_line_2 as address_line_2')
+      .addSelect('user_address.province as province')
 
       .addSelect('user_address.created_at as created_at');
 

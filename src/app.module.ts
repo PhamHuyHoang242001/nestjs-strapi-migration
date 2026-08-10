@@ -10,7 +10,7 @@ import ormConfig from './configuration/orm.config';
 import { PermissionModule } from '@modules/permission/permission.module';
 import { MulterModule } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
-import { addTransactionalDataSource } from 'typeorm-transactional';
+import { addTransactionalDataSource, getDataSourceByName } from 'typeorm-transactional';
 import { MAX_SIZE_EXCEL, THROTTLE_MESSAGE } from './constant';
 import { RoleModule } from './modules/role/role.module';
 import { TokenModule } from './modules/token/token.module';
@@ -56,6 +56,14 @@ import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-o
       dataSourceFactory(options) {
         if (!options) {
           throw new Error('Invalid options passed');
+        }
+
+        // TypeOrm retries the factory on connection failure; addTransactionalDataSource is not
+        // idempotent and throws "already added" on the second call, masking the real error.
+        // Reuse the already-registered default DataSource when present.
+        const existing = getDataSourceByName('default');
+        if (existing) {
+          return Promise.resolve(existing);
         }
 
         return Promise.resolve(addTransactionalDataSource(new DataSource(options)));

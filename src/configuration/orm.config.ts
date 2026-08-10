@@ -1,6 +1,6 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as path from 'path';
-import { DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME } from './env.config';
+import { DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME, DB_SYNCHRONIZE } from './env.config';
 
 // process.cwd() is always the project root regardless of where the compiled file lives.
 // __dirname-based paths are unreliable because NestJS CLI outputs to dist/src/ (not dist/).
@@ -32,7 +32,9 @@ const ormConfig: TypeOrmModuleOptions = {
   username: DB_USERNAME,
   password: DB_PASSWORD,
   database: DB_NAME,
-  synchronize: !['production', 'prod'].includes(process.env.NODE_ENV ?? ''),
+  // Schema is managed via migrations. Auto-sync is opt-in (DB_SYNCHRONIZE=true) and off by default
+  // because syncing against a populated schema drops/recreates FKs and can fail on every boot.
+  synchronize: DB_SYNCHRONIZE,
   logging: false,
   entities: globs.entities,
   migrations: globs.migrations,

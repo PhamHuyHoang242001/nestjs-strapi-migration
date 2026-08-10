@@ -12,6 +12,9 @@ export const DB_PORT: number = Number(process.env.DB_PORT ?? '5432');
 export const DB_USERNAME: string = process.env.DB_USERNAME ?? 'db_user';
 export const DB_PASSWORD: string = process.env.DB_PASSWORD ?? '';
 export const DB_NAME: string = process.env.DB_NAME ?? 'db_name';
+// Whether TypeORM should auto-sync entity schema on boot. Must stay off against a populated
+// schema: sync drops/recreates constraints and can fail or mutate data on every startup.
+export const DB_SYNCHRONIZE: boolean = (process.env.DB_SYNCHRONIZE ?? 'false').toLowerCase() === 'true';
 
 // Redis
 export const REDIS_HOST: string = process.env.REDIS_HOST ?? '127.0.0.1';
@@ -31,6 +34,13 @@ export const FRONTEND_BASE_URL: string = process.env.FRONTEND_BASE_URL ?? 'http:
 // rebuild absolute return URLs. Behind an ingress the pod sees the internal host,
 // plain http, and a stripped path prefix, so request runtime values cannot be trusted.
 export const PUBLIC_BASE_URL: string = process.env.PUBLIC_BASE_URL ?? FRONTEND_BASE_URL;
+
+// Allowed browser origins for CORS. Comma-separated list in env; reflected back per-request
+// so credentialed requests work (the `*` wildcard is invalid when credentials are enabled).
+export const CORS_ORIGINS: string[] = (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:3001')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
 
 // Logger
 export const LOGGER_LEVEL: string = process.env.LOGGER_LEVEL ?? 'debug';

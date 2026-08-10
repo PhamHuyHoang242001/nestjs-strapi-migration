@@ -22,10 +22,14 @@ export class BearerGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<RequestWithInfo>();
 
-    // DEV MODE: skip auth and inject default admin user
+    // DEV MODE: skip auth and inject default admin user.
+    // type 'super_admin' lets the injected identity clear PermissionGuard so the FE can
+    // exercise permission-gated endpoints without a token in local development. Only active
+    // when NODE_ENV=development and no Authorization header is present; real tokens are still
+    // fully authenticated and permission-checked.
     if (process.env.NODE_ENV === 'development' && !req.headers.authorization) {
       if (!req.info) req.info = {};
-      req.info.user = { id: 1, username: 'admin01', client: 'admin' } as any;
+      req.info.user = { id: 1, username: 'admin01', client: 'admin', type: 'super_admin' } as any;
       req.info.client = 'admin';
       req.info.ip = '';
       req.info.domain = 'localhost';
@@ -56,7 +60,9 @@ export class BearerGuard implements CanActivate {
           })) as unknown as Record<string, unknown>;
         }
         req.info.user = account;
-        req.info.client = account?.client as string | undefined;
+        // client comes from the login token, not the account row (users/admins tables have
+        // no `client` column). Without this, IsAdminGuard/IsUserGuard reject every real token.
+        req.info.client = client;
         break;
       }
       default:

@@ -19,7 +19,8 @@ export class AllExceptionsFilter extends BaseExceptionFilter {
     const { body } = request;
     const { query, method, url } = request;
     const response = ctx.getResponse<Response>();
-    const ignoreRoute = ['/api/v1/auth/login'];
+    // Login is served under both base paths; redact the body (password) on either.
+    const ignoreRoute = ['/api/custom-auth/login', '/api/v1/auth/login'];
 
     const requestInfo: Record<string, unknown> = {
       method,

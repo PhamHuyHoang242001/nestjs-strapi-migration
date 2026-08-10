@@ -14,7 +14,7 @@ import { AccessToken } from './interfaces';
 import { UserRegisterDto } from './dto/register.dto';
 import { USER_CLIENT } from '@common/enums';
 
-@Controller('v1/auth')
+@Controller(['custom-auth', 'v1/auth'])
 @ApiTags('Auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

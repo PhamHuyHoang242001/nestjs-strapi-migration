@@ -16,9 +16,9 @@ import { UserRole } from './user-role.entity';
 import { User } from './user.entity';
 import { Permission } from './permission.entity';
 
-export const ROLE_PERMISSION = 'role_permissions';
+export const ROLE_PERMISSION = 'roles_permissions';
 
-@Entity('roles')
+@Entity('role')
 export class Role extends BaseSoftDeleteEntity {
   @Column()
   name: string;
@@ -52,7 +52,7 @@ export class Role extends BaseSoftDeleteEntity {
   updated_by?: User;
 }
 
-@Entity('role_permissions')
+@Entity('roles_permissions')
 @Unique(['role_id', 'permission_id'])
 export class RolePermission extends BaseSoftDeleteEntity {
   @Column()
