@@ -189,34 +189,39 @@ export class RoleService {
     const role = await this.roleRepository.findDetailRelationWithModule(id);
     // Group permissions by module for easier frontend consumption
     const permissions_by_module: Record<string, Permission[]> = {};
-    if (role.permissions) {
-      for (const perm of role.permissions) {
-        const moduleKey = perm.module ? perm.module.name : 'uncategorized';
-        if (!permissions_by_module[moduleKey]) permissions_by_module[moduleKey] = [];
-        permissions_by_module[moduleKey].push(perm);
-      }
+    const permissions = (role.role_permissions ?? []).map((rp) => rp.permission).filter(Boolean);
+    for (const perm of permissions) {
+      const moduleKey = perm.module ? perm.module.name : 'uncategorized';
+      if (!permissions_by_module[moduleKey]) permissions_by_module[moduleKey] = [];
+      permissions_by_module[moduleKey].push(perm);
     }
     const owner_assignments = await this.getOwnerAssignments(id);
     return { ...role, permissions_by_module, owner_assignments };
   }
 
   async clone(id: number, dto: CloneRoleDto, user_id: number) {
-    // Find source role with permissions
-    const sourceRole = await this.roleRepository.findOne({ where: { id }, relations: ['permissions'] });
+    // Find source role with its permission mappings
+    const sourceRole = await this.roleRepository.findOne({
+      where: { id },
+      relations: ['role_permissions', 'role_permissions.permission'],
+    });
     if (!sourceRole) throw new NotFoundException(NOT_FOUND);
 
     // Validate name uniqueness
     const existing = await this.roleRepository.findOneByCondition({ name: dto.name });
     if (existing) throw new BadRequestException(MODEL_ROLE_NAME_EXISTS);
 
-    // Save new role with same permissions + new name/code
-    const newRole = await this.roleRepository.save({
-      name: dto.name,
-      code: dto.code ?? null,
-      description: sourceRole.description,
-      permissions: sourceRole.permissions,
-      user_id,
-    });
+    // Create the new role, then copy the source role's permission mappings.
+    const sourcePermIds = (sourceRole.role_permissions ?? []).map((rp) => rp.permission_id);
+    const newRole = await this.roleRepository.save({ name: dto.name, user_id });
+    if (sourcePermIds.length > 0) {
+      await this.connection
+        .createQueryBuilder()
+        .insert()
+        .into('roles_permissions')
+        .values(sourcePermIds.map((pid) => ({ role_id: newRole.id, permission_id: pid })))
+        .execute();
+    }
     this.historyLogger
       .log({
         entity_type: CHANGE_ENTITY_TYPE.ROLE,
@@ -227,9 +232,7 @@ export class RoleService {
         old_value: { source_role_id: id, source_role_name: sourceRole.name },
         new_value: {
           name: dto.name,
-          code: dto.code ?? null,
-          description: sourceRole.description,
-          permissions: sourceRole.permissions.map((p) => p.code),
+          permissions: (sourceRole.role_permissions ?? []).map((rp) => rp.permission.code),
         },
       })
       .catch(() => {});
@@ -363,7 +366,10 @@ export class RoleService {
     } = payload;
 
     // Capture old record with permissions before update for change history
-    const oldRecord = await this.roleRepository.findOne({ where: { id }, relations: ['permissions'] });
+    const oldRecord = await this.roleRepository.findOne({
+      where: { id },
+      relations: ['role_permissions', 'role_permissions.permission'],
+    });
 
     // permission_ids (new field) takes priority over permission (legacy CreateRoleDto field)
     const finalPermIds = permission_ids ?? (permission ? permission : undefined);
@@ -455,10 +461,8 @@ export class RoleService {
         old_value: oldRecord
           ? {
               name: oldRecord.name,
-              code: oldRecord.code,
-              description: oldRecord.description,
               status: oldRecord.status,
-              permissions: (oldRecord.permissions || []).map((p) => p.code),
+              permissions: (oldRecord.role_permissions || []).map((rp) => rp.permission.code),
             }
           : null,
         new_value: logNewValue,
@@ -508,7 +512,7 @@ export class RoleService {
         entity_id: String(id),
         entity_name: roleToDelete.name,
         performed_by: 'system',
-        old_value: { name: roleToDelete.name, code: roleToDelete.code, description: roleToDelete.description },
+        old_value: { name: roleToDelete.name },
         new_value: null,
       })
       .catch(() => {});

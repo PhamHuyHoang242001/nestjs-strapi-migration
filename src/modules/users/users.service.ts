@@ -79,7 +79,8 @@ export class UsersService {
       .createQueryBuilder('u')
       .leftJoinAndSelect('u.user_roles', 'ur')
       .leftJoinAndSelect('ur.role', 'r')
-      .leftJoinAndSelect('r.permissions', 'rp')
+      .leftJoinAndSelect('r.role_permissions', 'rrp')
+      .leftJoinAndSelect('rrp.permission', 'rp')
       .leftJoinAndSelect('u.user_data_access', 'uda')
       .leftJoinAndSelect('uda.permission', 'udap')
       .leftJoinAndSelect(
@@ -100,9 +101,9 @@ export class UsersService {
       throw new NotFoundException(ERROR_CODE.A009);
     }
 
-    // 1) Role-derived permissions (Role.permissions ManyToMany)
+    // 1) Role-derived permissions (via the role_permissions join)
     const rolePermissions: Permission[] = (result.user_roles ?? [])
-      .flatMap((ur) => ur.role?.permissions ?? [])
+      .flatMap((ur) => (ur.role?.role_permissions ?? []).map((rp) => rp.permission))
       .filter(Boolean);
 
     // 2) User-level data_access exceptions (scope=allow, within active window)

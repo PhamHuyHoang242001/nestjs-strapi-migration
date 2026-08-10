@@ -7,7 +7,7 @@ import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 export class UserRole extends BaseSoftDeleteEntity {
   @Column()
   public user_id: number;
-  @ManyToOne('Users', 'user_roles')
+  @ManyToOne('User', 'user_roles')
   @JoinColumn({ name: 'user_id' })
   public user?: Users;
 

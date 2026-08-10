@@ -21,13 +21,16 @@ export class RoleRepository extends BaseRepository<Role> {
   }
 
   async findDetailRelation(id: number): Promise<Role | undefined> {
-    const rs = await this.findOne({ where: { id }, relations: ['permissions'] });
+    const rs = await this.findOne({ where: { id }, relations: ['role_permissions', 'role_permissions.permission'] });
     if (!rs) throw new NotFoundException(NOT_FOUND);
     return rs;
   }
 
   async findDetailRelationWithModule(id: number): Promise<Role | undefined> {
-    const rs = await this.findOne({ where: { id }, relations: ['permissions', 'permissions.module'] });
+    const rs = await this.findOne({
+      where: { id },
+      relations: ['role_permissions', 'role_permissions.permission', 'role_permissions.permission.module'],
+    });
     if (!rs) throw new NotFoundException(NOT_FOUND);
     return rs;
   }

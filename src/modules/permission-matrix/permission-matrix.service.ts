@@ -41,11 +41,11 @@ export class PermissionMatrixService {
   async getMatrixForRole(roleId: number) {
     const role = await this.roleRepository.findOne({
       where: { id: roleId },
-      relations: ['permissions'],
+      relations: ['role_permissions', 'role_permissions.permission'],
     });
     if (!role) throw new NotFoundException(NOT_FOUND);
 
-    const rolePermissionIds = new Set((role.permissions ?? []).map((p) => p.id));
+    const rolePermissionIds = new Set((role.role_permissions ?? []).map((rp) => rp.permission.id));
 
     // All active permissions with their module relation
     const allPermissions = await this.permissionRepository.find({
@@ -89,7 +89,7 @@ export class PermissionMatrixService {
     }
 
     return {
-      role: { id: role.id, name: role.name, code: role.code },
+      role: { id: role.id, name: role.name },
       modules,
       actions: Array.from(actionsSet),
     };
@@ -144,7 +144,7 @@ export class PermissionMatrixService {
   async getSummary() {
     const roles = await this.roleRepository.find({
       where: { status: STATUS.ACTIVE },
-      relations: ['permissions'],
+      relations: ['role_permissions'],
     });
 
     const totalPermissions = await this.permissionRepository.count({ where: { is_active: true } });
@@ -153,8 +153,7 @@ export class PermissionMatrixService {
     const roleSummaries = roles.map((r) => ({
       id: r.id,
       name: r.name,
-      code: r.code,
-      permission_count: (r.permissions ?? []).length,
+      permission_count: (r.role_permissions ?? []).length,
       total_permissions: totalPermissions,
     }));
 
