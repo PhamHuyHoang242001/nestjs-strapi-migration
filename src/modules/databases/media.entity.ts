@@ -26,4 +26,9 @@ export class Media extends BaseSoftDeleteEntity {
 
   @Column({ nullable: true })
   public upload_type?: string;
+
+  // Strapi file ID (provider_uid) returned by the Strapi v5 upload API response.
+  // Stored to enable lifecycle callbacks (delete from Strapi when NestJS soft-deletes this row).
+  @Column({ nullable: true })
+  public provider_uid?: string;
 }

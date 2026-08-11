@@ -1,0 +1,377 @@
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
+import { SkillPackageUploadService } from '../skill-package-upload.service';
+import { SkillVersionState } from '@modules/databases/skill-version.entity';
+import { SkillPackageStatus } from '@modules/databases/skill-package.entity';
+
+// We mock extractSkillMdFromZip so zip-parsing is not exercised in these unit tests.
+jest.mock('../skill-zip.util', () => ({
+  extractSkillMdFromZip: jest.fn().mockReturnValue('# mock skill.md'),
+}));
+
+const USER_ID = 100;
+const PACKAGE_ID = 1;
+const VERSION_ID = 5;
+
+function makeDs(txResult?: unknown) {
+  const ds: any = {
+    transaction: jest.fn(async (cb: (manager: any) => unknown) => {
+      const manager: any = {
+        create: jest.fn((Entity: any, data: any) => ({ ...data })),
+        save: jest.fn(async (Entity: any, obj: any) => ({ ...obj, id: Math.floor(Math.random() * 1000) + 1 })),
+        findOne: jest.fn(),
+        query: jest.fn().mockResolvedValue([{ max: '1' }]),
+      };
+      return txResult !== undefined ? txResult : cb(manager);
+    }),
+  };
+  return ds;
+}
+
+describe('SkillPackageUploadService', () => {
+  let service: SkillPackageUploadService;
+  let packageRepo: any;
+  let versionRepo: any;
+  let dataSource: any;
+  let fileFetch: any;
+  let permissionQuery: any;
+
+  const fakeZipFile = {
+    buffer: Buffer.from('zip'),
+    mimeType: 'application/zip',
+    size: 1024,
+    filename: 'hash.zip',
+    originalName: 'hash.zip',
+    path: 'http://strapi/uploads/skill.zip',
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    packageRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(async (x: any) => ({ ...x, id: PACKAGE_ID })),
+    };
+    versionRepo = {
+      findOne: jest.fn(),
+      save: jest.fn(async (x: any) => ({ ...x, id: VERSION_ID })),
+    };
+    dataSource = makeDs();
+    fileFetch = {
+      downloadZip: jest.fn().mockResolvedValue(fakeZipFile),
+      assertStrapiUrl: jest.fn(),
+    };
+    permissionQuery = { getUserPermissions: jest.fn() };
+
+    service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+  });
+
+  // ---- createNew — zip file row + inline avatar_url ----
+  describe('createNew — persists a zip file row + inline avatar_url', () => {
+    const dto = {
+      file: { fileUrl: '/uploads/skill.zip', name: 'skill.zip' },
+      avatar_url: '/uploads/avatar.png',
+      name: 'My Skill',
+      short_description: 'desc',
+      category: 'util',
+      tags: [],
+    };
+
+    function captureDs(saved: any[]) {
+      return {
+        transaction: jest.fn(async (cb: any) => {
+          const manager = {
+            create: jest.fn((_Entity: any, data: any) => ({ ...data })),
+            save: jest.fn(async (_Entity: any, obj: any) => {
+              const row = { ...obj, id: 1 };
+              saved.push({ entity: _Entity?.name, row });
+              return row;
+            }),
+          };
+          return cb(manager);
+        }),
+      } as any;
+    }
+
+    it('writes a zip file row (server-measured metadata) + stores avatar_url inline; no zip_url column; no Media', async () => {
+      const saved: any[] = [];
+      dataSource = captureDs(saved);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      await service.createNew(dto as any, USER_ID);
+
+      const versionRow = saved.map((s) => s.row).find((r) => r.version_no === 1);
+      // Avatar is inline on the version; zip moved to skill_version_files (no zip_url column).
+      expect(versionRow.avatar_url).toBe('/uploads/avatar.png');
+      expect(versionRow.zip_url).toBeUndefined();
+      expect(versionRow.skill_md_content).toBe('# mock skill.md');
+
+      const files = saved.filter((s) => s.entity === 'SkillVersionFile').map((s) => s.row);
+      // Only the zip is a file row — the avatar is NOT modelled as a file row.
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        file_kind: 'zip',
+        file_url: '/uploads/skill.zip',
+        name: 'skill.zip', // client-provided file.name preferred (diagnostic-parity)
+        size: 1024, // size/mime stay server-measured (authoritative)
+        mime_type: 'application/zip',
+      });
+
+      // No Media entity is ever saved.
+      expect(saved.some((s) => s.entity === 'Media')).toBe(false);
+      // The zip is downloaded (via file.fileUrl) to extract skill.md; avatar origin is validated.
+      expect(fileFetch.downloadZip).toHaveBeenCalledWith('/uploads/skill.zip');
+      expect(fileFetch.assertStrapiUrl).toHaveBeenCalledWith('/uploads/avatar.png');
+    });
+
+    it('falls back to the server-parsed filename when file.name is omitted; still writes the zip row', async () => {
+      const saved: any[] = [];
+      dataSource = captureDs(saved);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      // No file.name provided → name falls back to the download's parsed filename ('hash.zip').
+      await service.createNew(
+        { ...dto, avatar_url: undefined, file: { fileUrl: '/uploads/skill.zip' } } as any,
+        USER_ID,
+      );
+
+      const versionRow = saved.map((s) => s.row).find((r) => r.version_no === 1);
+      expect(versionRow.avatar_url).toBeNull();
+
+      const files = saved.filter((s) => s.entity === 'SkillVersionFile').map((s) => s.row);
+      expect(files).toHaveLength(1);
+      expect(files[0].file_kind).toBe('zip');
+      expect(files[0].name).toBe('hash.zip'); // server-parsed fallback
+      expect(fileFetch.assertStrapiUrl).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- approve — single tx atomicity ----
+  describe('approve — single tx sets active_version_id and version.state', () => {
+    it('approve sets state=approved and package.active_version_id=vid in same tx', async () => {
+      const version = { id: VERSION_ID, skill_package_id: PACKAGE_ID, state: SkillVersionState.PENDING };
+      const pkg = { id: PACKAGE_ID, active_version_id: null, status: SkillPackageStatus.ACTIVE };
+
+      let savedVersion: any;
+      let savedPkg: any;
+
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockImplementation(async (_Entity: any, { where }: any) => {
+            if (where.id === VERSION_ID) return { ...version };
+            if (where.id === PACKAGE_ID) return { ...pkg };
+            return null;
+          }),
+          save: jest.fn(async (_Entity: any, obj: any) => {
+            if (obj.state !== undefined) savedVersion = obj;
+            if (obj.active_version_id !== undefined) savedPkg = obj;
+            return { ...obj };
+          }),
+        };
+        return cb(manager);
+      });
+
+      await service.approve(VERSION_ID, USER_ID);
+
+      // Version must be approved.
+      expect(savedVersion?.state).toBe(SkillVersionState.APPROVED);
+      expect(savedVersion?.reviewed_by).toBe(USER_ID);
+      // Package must point to the approved version.
+      expect(savedPkg?.active_version_id).toBe(VERSION_ID);
+    });
+
+    it('approve of non-pending version → ForbiddenException', async () => {
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue({ id: VERSION_ID, state: SkillVersionState.APPROVED }),
+          save: jest.fn(),
+        };
+        return cb(manager);
+      });
+
+      await expect(service.approve(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('approve with missing version → NotFoundException', async () => {
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockResolvedValue(null),
+          save: jest.fn(),
+        };
+        return cb(manager);
+      });
+
+      await expect(service.approve(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // ---- reject — reason required ----
+  describe('reject — reason is required', () => {
+    it('reject with reason → state=rejected + reject_reason saved', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue({
+        id: VERSION_ID,
+        state: SkillVersionState.PENDING,
+        skill_package_id: PACKAGE_ID,
+      });
+      versionRepo.save = jest.fn(async (v: any) => v);
+
+      await service.reject(VERSION_ID, { reason: 'needs revision' }, USER_ID);
+
+      const saved = versionRepo.save.mock.calls[0][0];
+      expect(saved.state).toBe(SkillVersionState.REJECTED);
+      expect(saved.reject_reason).toBe('needs revision');
+      expect(saved.reviewed_by).toBe(USER_ID);
+    });
+
+    it('reject of non-pending version → ForbiddenException', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue({
+        id: VERSION_ID,
+        state: SkillVersionState.APPROVED,
+      });
+
+      await expect(service.reject(VERSION_ID, { reason: 'x' }, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('version not found → NotFoundException', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(null);
+
+      await expect(service.reject(VERSION_ID, { reason: 'x' }, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // ---- createVersion — success path + pending guard ----
+  describe('createVersion — success path + pending guard', () => {
+    const dto = {
+      file: { fileUrl: 'http://strapi/uploads/skill.zip', name: 'skill.zip' },
+      name: 'v2',
+      short_description: 'desc',
+      category: 'util',
+      tags: [],
+    };
+
+    it('assigns version_no=max+1 and persists the version (inline avatar_url) + zip file row in one tx', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false });
+
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          // First query = SELECT ... FOR UPDATE (result ignored); MAX(version_no) → 3.
+          query: jest.fn().mockResolvedValue([{ max: '3' }]),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          save: jest.fn(async (_E: any, obj: any) => {
+            const row = { ...obj, id: 99 };
+            saved.push({ entity: _E?.name, row });
+            return row;
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      const dtoV2 = { ...dto, avatar_url: '/uploads/av.png', changelog_note: 'bump' };
+      const result = await service.createVersion(PACKAGE_ID, dtoV2 as any, USER_ID);
+
+      // version_no = max(3) + 1.
+      expect(result.version.version_no).toBe(4);
+
+      const versionRow = saved.find((s) => s.entity === 'SkillVersion')?.row;
+      expect(versionRow).toMatchObject({
+        skill_package_id: PACKAGE_ID,
+        version_no: 4,
+        submitted_by: USER_ID,
+        changelog_note: 'bump',
+        skill_md_content: '# mock skill.md',
+        avatar_url: '/uploads/av.png', // avatar stored inline on the version
+      });
+      // No zip_url column — the zip is a file row.
+      expect(versionRow.zip_url).toBeUndefined();
+
+      const files = saved.filter((s) => s.entity === 'SkillVersionFile').map((s) => s.row);
+      // Only the zip is a file row.
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        skill_version_id: 99,
+        file_kind: 'zip',
+        file_url: 'http://strapi/uploads/skill.zip',
+        name: 'skill.zip', // client-provided file.name preferred
+        size: 1024,
+        mime_type: 'application/zip',
+      });
+      // Zip is downloaded (via file.fileUrl) to validate/extract skill.md; avatar origin is validated.
+      expect(fileFetch.downloadZip).toHaveBeenCalledWith('http://strapi/uploads/skill.zip');
+      expect(fileFetch.assertStrapiUrl).toHaveBeenCalledWith('/uploads/av.png');
+    });
+
+    it('catches PG 23505 unique-violation → ConflictException (409)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false });
+
+      // Simulate PG unique-violation error from the partial-unique pending index.
+      const pgError = new QueryFailedError('INSERT', [], new Error('dup key'));
+      (pgError as any).code = '23505';
+      dataSource.transaction = jest.fn().mockRejectedValue(pgError);
+
+      await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('other DB errors are re-thrown unchanged', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false });
+
+      const pgError = new QueryFailedError('INSERT', [], new Error('connection lost'));
+      (pgError as any).code = '57014'; // some other error
+      dataSource.transaction = jest.fn().mockRejectedValue(pgError);
+
+      await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(QueryFailedError);
+    });
+
+    it('package not found → NotFoundException', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue(null);
+
+      await expect(service.createVersion(999, dto as any, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // ---- toggleStatus ----
+  describe('toggleStatus — active/inactive visibility toggle', () => {
+    it('updates the package status and returns {id, status}', async () => {
+      const pkg: any = { id: PACKAGE_ID, status: SkillPackageStatus.ACTIVE, is_deleted: false };
+      packageRepo.findOne = jest.fn().mockResolvedValue(pkg);
+      packageRepo.save = jest.fn(async (p: any) => p);
+
+      const result = await service.toggleStatus(PACKAGE_ID, { status: SkillPackageStatus.INACTIVE } as any);
+
+      expect(packageRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: PACKAGE_ID, status: SkillPackageStatus.INACTIVE }),
+      );
+      expect(result).toEqual({ id: PACKAGE_ID, status: SkillPackageStatus.INACTIVE });
+    });
+
+    it('package not found → NotFoundException', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue(null);
+
+      await expect(
+        service.toggleStatus(999, { status: SkillPackageStatus.INACTIVE } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // ---- getMyPermissions ----
+  describe('getMyPermissions', () => {
+    it('returns canUpload=true when skill_upload held', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      const result = await service.getMyPermissions(USER_ID);
+      expect(result).toEqual({ canUpload: true, canApprove: false });
+    });
+
+    it('returns canApprove=true when skill_approve held', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      const result = await service.getMyPermissions(USER_ID);
+      expect(result).toEqual({ canUpload: false, canApprove: true });
+    });
+
+    it('returns both false when no skill codes held', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['some_other_code']);
+      const result = await service.getMyPermissions(USER_ID);
+      expect(result).toEqual({ canUpload: false, canApprove: false });
+    });
+  });
+});

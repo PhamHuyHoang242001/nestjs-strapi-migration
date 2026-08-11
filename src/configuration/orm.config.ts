@@ -12,7 +12,12 @@ const projectRoot = process.cwd();
 const isJestRuntime = !!process.env.JEST_WORKER_ID;
 const srcGlobs = {
   entities: [path.join(projectRoot, 'src', '**', '*.entity.ts')],
-  migrations: [path.join(projectRoot, 'src', 'migration', '**', '*.ts')],
+  // Non-recursive: real migrations live flat in src/migration/. A recursive glob
+  // would also load src/migration/__tests__/*.spec.ts, and TypeORM's directory
+  // loader requires every matched file at DataSource.initialize() — importing a
+  // spec registers its it() blocks after the runner started ("Cannot add a test
+  // after tests have started running"), crashing every e2e that boots AppModule.
+  migrations: [path.join(projectRoot, 'src', 'migration', '*.ts')],
   subscribers: [path.join(projectRoot, 'src', 'subscriber', '**', '*.ts')],
 };
 const distGlobs = {

@@ -20,6 +20,10 @@ export const DB_SYNCHRONIZE: boolean = (process.env.DB_SYNCHRONIZE ?? 'false').t
 export const REDIS_HOST: string = process.env.REDIS_HOST ?? '127.0.0.1';
 export const REDIS_PORT: number = Number(process.env.REDIS_PORT ?? '6379');
 
+// Auth
+// User access-token lifetime in minutes. Defaults to 1 day (1440). Overridable per environment.
+export const ACCESS_TOKEN_EXPIRE_MINUTES: number = Number(process.env.ACCESS_TOKEN_EXPIRE_MINUTES ?? '1440');
+
 // Service
 export const ENCRYPT_KEY: string = process.env.ENCRYPT_KEY ?? '12345';
 // Secret used to sign service tokens (name-compatible with the Strapi backend).
@@ -186,6 +190,12 @@ export const OIDC_SCOPE: string = process.env.OIDC_SCOPE ?? 'openid profile emai
 export const OIDC_AUTHORIZATION_ENDPOINT: string = process.env.OIDC_AUTHORIZATION_ENDPOINT ?? '';
 export const OIDC_TOKEN_ENDPOINT: string = process.env.OIDC_TOKEN_ENDPOINT ?? '';
 export const OIDC_USERINFO_ENDPOINT: string = process.env.OIDC_USERINFO_ENDPOINT ?? '';
+
+// Strapi v5 upload integration — skill package file storage.
+// STRAPI_UPLOAD_URL: base URL of the Strapi v5 instance (e.g. http://localhost:1337).
+// STRAPI_UPLOAD_TOKEN: Bearer token for Strapi upload API authentication (optional if public).
+export const STRAPI_UPLOAD_URL: string = process.env.STRAPI_UPLOAD_URL ?? 'http://localhost:1337';
+export const STRAPI_UPLOAD_TOKEN: string = process.env.STRAPI_UPLOAD_TOKEN ?? '';
 
 // MA Tool Report Config
 export const MA_REPORT_WHOLE_BANK_CODE: string = process.env.MA_REPORT_WHOLE_BANK_CODE ?? '';

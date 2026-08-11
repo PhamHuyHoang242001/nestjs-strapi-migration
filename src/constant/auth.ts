@@ -1,12 +1,12 @@
 import { USER_CLIENT } from '@common/enums';
+import { ACCESS_TOKEN_EXPIRE_MINUTES } from '@configuration/env.config';
 /**
  * tokentype
  */
 
 export const TOKEN_TIME = {
-  // [`${USER_CLIENT.USER}_TIME`]: 5,
-  // [`${USER_CLIENT.USER}_REFRESH`]: 10, // 24 * 60 minutes = 1 day
-  [`${USER_CLIENT.USER}_TIME`]: 30, // 30 minutes
+  // User access-token lifetime is env-driven (ACCESS_TOKEN_EXPIRE_MINUTES), default 1 day.
+  [`${USER_CLIENT.USER}_TIME`]: ACCESS_TOKEN_EXPIRE_MINUTES, // minutes (default 1440 = 1 day)
   [`${USER_CLIENT.USER}_REFRESH`]: 24 * 60, // 24 * 60 minutes = 1 day
 
   [`${USER_CLIENT.TECHNICIAN}_TIME`]: 61 * 24 * 60,

@@ -62,7 +62,7 @@ describe('GroupRoleSync (e2e, real DB)', () => {
   const repo = (name: string): Repository<ObjectLiteral> => ds.getRepository<ObjectLiteral>(name);
 
   async function seedUser(overrides: Record<string, unknown>): Promise<any> {
-    const r = repo('Users');
+    const r = repo('User');
     const u = await r.save(r.create({ type: UserType.USER, ...overrides }));
     seededUserIds.push((u as any).id);
     return u;
@@ -151,7 +151,7 @@ describe('GroupRoleSync (e2e, real DB)', () => {
   afterAll(async () => {
     await cleanupRoles();
     await clearMappings();
-    if (seededUserIds.length) await repo('Users').delete(seededUserIds);
+    if (seededUserIds.length) await repo('User').delete(seededUserIds);
     if (testPermissionId) await repo('Permission').delete(testPermissionId);
     await app.close();
   });
