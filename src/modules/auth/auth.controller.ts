@@ -27,7 +27,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   @ApiBasicAuth()
-  @UseGuards(BasicGuard, IsUserGuard, IsMaintenanceGuard)
+  @UseGuards(BasicGuard)
   async login(@Body() body: UserLoginDto, @HeaderScope() header: Record<string, unknown>): Promise<AccessToken> {
     return this.authService.login(body as unknown as UserLoginDto, USER_CLIENT.USER, header as never);
   }
