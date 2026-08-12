@@ -1,0 +1,198 @@
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
+import { PromptVersion, PromptVersionState } from '@modules/databases/prompt-version.entity';
+import { CreatePromptPackageDto } from './dto/create-prompt-package.dto';
+import { CreatePromptVersionDto } from './dto/create-prompt-version.dto';
+import { RejectPromptVersionDto } from './dto/reject-prompt-version.dto';
+import { ToggleStatusDto } from './dto/toggle-status.dto';
+import { PromptAvatarUrlService } from './prompt-avatar-url.util';
+import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
+
+// PG unique-violation error code; caught to produce 409 on duplicate-pending.
+const PG_UNIQUE_VIOLATION = '23505';
+
+@Injectable()
+export class PromptLibraryUploadService {
+  constructor(
+    @InjectRepository(PromptPackage)
+    private readonly packageRepo: Repository<PromptPackage>,
+    @InjectRepository(PromptVersion)
+    private readonly versionRepo: Repository<PromptVersion>,
+    private readonly dataSource: DataSource,
+    private readonly avatarUrl: PromptAvatarUrlService,
+    private readonly permissionQuery: PermissionQueryService,
+  ) {}
+
+  // Upload a new prompt package (creates package row + v1 pending version) in one tx.
+  // The prompt text is sent inline (no ZIP, no fetch). Self-approve is allowed by design —
+  // governance is an organisational concern, not enforced here.
+  async createNew(dto: CreatePromptPackageDto, userId: number) {
+    // Avatar is stored as-sent (not downloaded); still enforce the Strapi-origin SSRF guard.
+    if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
+
+    return this.dataSource.transaction(async (manager) => {
+      const savedPkg = await manager.save(
+        PromptPackage,
+        manager.create(PromptPackage, {
+          status: PromptPackageStatus.ACTIVE,
+          active_version_id: null,
+          created_by: userId,
+        }),
+      );
+
+      // version_no=1 assigned at submit time.
+      const savedVersion = await manager.save(
+        PromptVersion,
+        manager.create(PromptVersion, {
+          prompt_package_id: savedPkg.id,
+          version_no: 1,
+          state: PromptVersionState.PENDING,
+          name: dto.name,
+          short_description: dto.short_description,
+          category: dto.category,
+          tags: dto.tags ?? [],
+          avatar_url: dto.avatar_url ?? null,
+          prompt_content: dto.prompt_content,
+          changelog_note: null,
+          submitted_by: userId,
+        }),
+      );
+
+      return { package: { id: savedPkg.id }, version: { id: savedVersion.id, version_no: 1 } };
+    });
+  }
+
+  // Upload a new version of an existing package.
+  // Catches PG 23505 (partial-unique pending index) and surfaces as 409.
+  async createVersion(packageId: number, dto: CreatePromptVersionDto, userId: number) {
+    const pkg = await this.packageRepo.findOne({ where: { id: packageId, is_deleted: false } });
+    if (!pkg) throw new NotFoundException('Prompt package not found');
+
+    // Ownership guard: PermissionGuard already guarantees prompt_upload; this adds only the
+    // ownership delta: an approver may bump any package, an uploader only their own.
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('prompt_approve');
+    if (!canApprove && pkg.created_by !== userId) {
+      throw new ForbiddenException('You can only update prompt packages you created');
+    }
+
+    if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        // Assign version_no as max(existing) + 1. The SELECT FOR UPDATE on package
+        // row plus the unique index (package_id, version_no) together prevent races.
+        // If two concurrent submits collide on the partial-unique pending index,
+        // PG raises 23505 which we catch below and surface as 409.
+        await manager.query('SELECT id FROM prompt_packages WHERE id = $1 FOR UPDATE', [packageId]);
+
+        const maxRow = await manager.query<{ max: string | null }[]>(
+          'SELECT MAX(version_no) AS max FROM prompt_versions WHERE prompt_package_id = $1 AND deleted_at IS NULL',
+          [packageId],
+        );
+        const nextVersionNo = Number(maxRow[0]?.max ?? 0) + 1;
+
+        const version = manager.create(PromptVersion, {
+          prompt_package_id: packageId,
+          version_no: nextVersionNo,
+          state: PromptVersionState.PENDING,
+          name: dto.name,
+          short_description: dto.short_description,
+          category: dto.category,
+          tags: dto.tags ?? [],
+          avatar_url: dto.avatar_url ?? null,
+          prompt_content: dto.prompt_content,
+          changelog_note: dto.changelog_note ?? null,
+          submitted_by: userId,
+        });
+        const saved = await manager.save(PromptVersion, version);
+
+        return { version: { id: saved.id, version_no: nextVersionNo } };
+      });
+    } catch (err) {
+      // Catch PG unique-violation on partial-unique pending index → 409.
+      // The constraint uidx_prompt_versions_one_pending_per_package is
+      // partial: (prompt_package_id) WHERE state='pending' AND is_deleted=false.
+      if (err instanceof QueryFailedError && (err as any).code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException(
+          'A pending version already exists for this package. Approve or reject it before submitting a new one.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  // Approve a pending version in a single transaction (atomicity requirement).
+  // Sets version.state=approved and package.active_version_id = version.id atomically.
+  async approve(versionId: number, userId: number) {
+    return this.dataSource.transaction(async (manager) => {
+      // pessimistic_write lock: a concurrent second approve blocks here, then
+      // reads state=approved and 403s — preventing double-approve overwriting
+      // reviewed_by/at under the "only pending can be approved" invariant.
+      const version = await manager.findOne(PromptVersion, {
+        where: { id: versionId, is_deleted: false },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!version) throw new NotFoundException('Prompt version not found');
+      if (version.state !== PromptVersionState.PENDING) {
+        throw new ForbiddenException('Only pending versions can be approved');
+      }
+
+      version.state = PromptVersionState.APPROVED;
+      version.reviewed_by = userId;
+      version.reviewed_at = new Date();
+      await manager.save(PromptVersion, version);
+
+      // Promote this version to the active version; ensure package is active.
+      const pkg = await manager.findOne(PromptPackage, {
+        where: { id: version.prompt_package_id },
+      });
+      if (!pkg) throw new NotFoundException('Prompt package not found');
+
+      pkg.active_version_id = versionId;
+      pkg.status = PromptPackageStatus.ACTIVE;
+      await manager.save(PromptPackage, pkg);
+
+      return { version_id: versionId, package_id: version.prompt_package_id };
+    });
+  }
+
+  // Reject requires a non-empty reason; the DTO's @IsNotEmpty handles the 400 case.
+  async reject(versionId: number, dto: RejectPromptVersionDto, userId: number) {
+    const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
+    if (!version) throw new NotFoundException('Prompt version not found');
+    if (version.state !== PromptVersionState.PENDING) {
+      throw new ForbiddenException('Only pending versions can be rejected');
+    }
+
+    version.state = PromptVersionState.REJECTED;
+    version.reviewed_by = userId;
+    version.reviewed_at = new Date();
+    version.reject_reason = dto.reason;
+    await this.versionRepo.save(version);
+
+    return { version_id: versionId };
+  }
+
+  // Toggle package active/inactive status. Only approvers can call this endpoint.
+  async toggleStatus(packageId: number, dto: ToggleStatusDto) {
+    const pkg = await this.packageRepo.findOne({ where: { id: packageId, is_deleted: false } });
+    if (!pkg) throw new NotFoundException('Prompt package not found');
+
+    pkg.status = dto.status;
+    await this.packageRepo.save(pkg);
+
+    return { id: packageId, status: dto.status };
+  }
+
+  // Return which prompt codes the caller holds (BearerGuard-only endpoint).
+  async getMyPermissions(userId: number) {
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    return {
+      canUpload: codes.includes('prompt_upload'),
+      canApprove: codes.includes('prompt_approve'),
+    };
+  }
+}

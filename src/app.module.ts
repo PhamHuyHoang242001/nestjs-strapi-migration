@@ -44,6 +44,7 @@ import { ServiceTokenModule } from '@modules/service-token/service-token.module'
 import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.module';
 import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-output.module';
 import { SkillPackageModule } from '@modules/skill-package/skill-package.module';
+import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -111,6 +112,7 @@ import { SkillPackageModule } from '@modules/skill-package/skill-package.module'
     SbvRptCvtOutputModule,
     ServiceTokenModule,
     SkillPackageModule,
+    PromptLibraryModule,
   ],
   controllers: [AppController],
   providers: [
