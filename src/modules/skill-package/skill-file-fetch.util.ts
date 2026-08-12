@@ -46,6 +46,12 @@ export class SkillFileFetchService {
     return filePath;
   }
 
+  // Public wrapper around the private path resolver so download handlers can locate the on-disk
+  // zip for streaming while reusing the exact traversal guard that downloadZip() relies on.
+  resolveZipPath(url: string): string {
+    return this.resolveLocalPath(url);
+  }
+
   // Read the zip bytes from the local shared upload directory, enforcing the size cap.
   // Mirrors the transform-file controller's local-file read so Strapi's static-route guard
   // (preventAccessFile) is never involved.

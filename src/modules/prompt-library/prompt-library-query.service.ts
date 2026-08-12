@@ -49,10 +49,9 @@ export class PromptLibraryQueryService {
   private async resolveEmails(ids: Array<number | null | undefined>): Promise<Map<number, string>> {
     const unique = Array.from(new Set(ids.filter((x): x is number => typeof x === 'number')));
     if (!unique.length) return new Map();
-    const rows = (await this.versionRepo.manager.query(
-      'SELECT id, email FROM users WHERE id = ANY($1)',
-      [unique],
-    )) as Array<{ id: number; email: string }>;
+    const rows = (await this.versionRepo.manager.query('SELECT id, email FROM users WHERE id = ANY($1)', [
+      unique,
+    ])) as Array<{ id: number; email: string }>;
     return new Map(rows.map((r) => [Number(r.id), r.email]));
   }
 
@@ -371,5 +370,36 @@ export class PromptLibraryQueryService {
         submitted_at: version.created_at,
       },
     };
+  }
+
+  // Resolve the active prompt version + author email for Markdown export. Enforces the same
+  // visibility rule as detail(): an inactive package is exportable only by its owner or an
+  // approver. Throws 404 when the package is missing/deleted or has no active version.
+  async resolveActiveForExport(
+    packageId: number,
+    userId: number,
+  ): Promise<{ version: PromptVersion; authorEmail: string | null }> {
+    const pkg = await this.packageRepo.findOne({
+      where: { id: packageId, is_deleted: false },
+      relations: ['active_version'],
+    });
+    if (!pkg) throw new NotFoundException('Prompt package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('prompt_approve');
+    const isOwner = pkg.created_by === userId;
+    if (pkg.status === PromptPackageStatus.INACTIVE && !isOwner && !canApprove) {
+      throw new NotFoundException('Prompt package not found or inactive');
+    }
+
+    // The relations load auto-filters deleted_at but NOT the paired is_deleted boolean; treat a
+    // soft-deleted active version as absent so withdrawn content is never exportable.
+    if (!pkg.active_version_id || !pkg.active_version || pkg.active_version.is_deleted) {
+      throw new NotFoundException('Prompt package has no active version');
+    }
+
+    const emailMap = await this.resolveEmails([pkg.active_version.submitted_by]);
+    const authorEmail = emailMap.get(pkg.active_version.submitted_by) ?? null;
+    return { version: pkg.active_version, authorEmail };
   }
 }

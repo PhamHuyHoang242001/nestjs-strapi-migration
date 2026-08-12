@@ -14,13 +14,17 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { buildDownloadFilename } from '@common/utils';
+import { Response } from 'express';
 import { PromptLibraryQueryService } from './prompt-library-query.service';
 import { PromptLibraryUploadService } from './prompt-library-upload.service';
+import { buildPromptMarkdown } from './prompt-markdown.util';
 import {
   CreatePromptPackageDto,
   CreatePromptVersionDto,
@@ -66,6 +70,24 @@ export class PromptLibraryController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.queryService.detail(id, userId);
+  }
+
+  // GET /v1/prompt/items/:id/download — export the active version as a professional .md file.
+  // Auth = controller-level BearerGuard; any authenticated user may export an active package
+  // (inactive packages are exportable only by owner/approver — enforced in resolveActiveForExport).
+  @ApiOperation({ summary: 'Download the active prompt version as a Markdown file' })
+  @Get('items/:id/download')
+  async downloadMarkdown(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo, @Res() res: Response) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+
+    const { version, authorEmail } = await this.queryService.resolveActiveForExport(id, userId);
+    const md = buildPromptMarkdown(version, authorEmail);
+    // Filename is already a safe slug ([a-z0-9-] + -v<n> + ext) — quote directly, no percent-encode.
+    const filename = buildDownloadFilename(version.name, version.version_no, 'md', 'prompt');
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(md);
   }
 
   // GET /v1/prompt/my-items — caller's own packages, bucketed by the latest version's state

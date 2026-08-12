@@ -8,7 +8,7 @@ import { MyItemsQueryDto } from './dto/my-items-query.dto';
 import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { formatVersion, toVersionFile, SkillFileResponse } from './skill-response.helper';
-import { SkillVersionFile } from '@modules/databases/skill-version-file.entity';
+import { SkillVersionFile, SkillVersionFileKind } from '@modules/databases/skill-version-file.entity';
 
 // Shape of a raw skill_versions row returned by manager.query() for representative resolution.
 // Only the columns the my-items summary reads are typed; skill_md_content / reject_reason are
@@ -51,10 +51,9 @@ export class SkillPackageQueryService {
   private async resolveEmails(ids: Array<number | null | undefined>): Promise<Map<number, string>> {
     const unique = Array.from(new Set(ids.filter((x): x is number => typeof x === 'number')));
     if (!unique.length) return new Map();
-    const rows = (await this.versionRepo.manager.query(
-      'SELECT id, email FROM users WHERE id = ANY($1)',
-      [unique],
-    )) as Array<{ id: number; email: string }>;
+    const rows = (await this.versionRepo.manager.query('SELECT id, email FROM users WHERE id = ANY($1)', [
+      unique,
+    ])) as Array<{ id: number; email: string }>;
     return new Map(rows.map((r) => [Number(r.id), r.email]));
   }
 
@@ -415,5 +414,41 @@ export class SkillPackageQueryService {
         submitted_at: version.created_at,
       },
     };
+  }
+
+  // Resolve the downloadable zip descriptor for a package's ACTIVE version. Enforces the same
+  // visibility rule as detail(): an inactive package is downloadable only by its owner or an
+  // approver. Throws 404 when the package is missing/deleted, has no active version, or that
+  // version carries no (non-deleted) zip file row.
+  async resolveActiveZip(
+    packageId: number,
+    userId: number,
+  ): Promise<{ fileUrl: string; name: string; versionNo: number }> {
+    const pkg = await this.packageRepo.findOne({
+      where: { id: packageId, is_deleted: false },
+      relations: ['active_version', 'active_version.files'],
+    });
+    if (!pkg) throw new NotFoundException('Skill package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    const isOwner = pkg.created_by === userId;
+    if (pkg.status === SkillPackageStatus.INACTIVE && !isOwner && !canApprove) {
+      throw new NotFoundException('Skill package not found or inactive');
+    }
+
+    const active = pkg.active_version;
+    // The relations load auto-filters deleted_at but NOT the paired is_deleted boolean; treat a
+    // soft-deleted active version as absent so withdrawn content is never downloadable.
+    if (!pkg.active_version_id || !active || active.is_deleted) {
+      throw new NotFoundException('Skill package has no active version');
+    }
+
+    // The relations load applies TypeORM's deleted_at auto-filter but not the paired is_deleted
+    // boolean; exclude those rows in-memory (same pattern as detail()).
+    const zip = (active.files ?? []).find((f) => !f.is_deleted && f.file_kind === SkillVersionFileKind.ZIP);
+    if (!zip) throw new NotFoundException('Active skill version has no downloadable file');
+
+    return { fileUrl: zip.file_url, name: active.name, versionNo: active.version_no };
   }
 }

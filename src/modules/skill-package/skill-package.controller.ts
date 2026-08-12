@@ -7,6 +7,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -14,13 +15,18 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { buildDownloadFilename } from '@common/utils';
+import { Response } from 'express';
+import * as fs from 'fs';
 import { SkillPackageQueryService } from './skill-package-query.service';
 import { SkillPackageUploadService } from './skill-package-upload.service';
+import { SkillFileFetchService } from './skill-file-fetch.util';
 import {
   CreateSkillPackageDto,
   CreateSkillVersionDto,
@@ -50,6 +56,7 @@ export class SkillPackageController {
   constructor(
     private readonly queryService: SkillPackageQueryService,
     private readonly uploadService: SkillPackageUploadService,
+    private readonly fileFetchService: SkillFileFetchService,
   ) {}
 
   // GET /v1/skill/items — list active packages with active version joined.
@@ -67,6 +74,46 @@ export class SkillPackageController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.queryService.detail(id, userId);
+  }
+
+  // GET /v1/skill/items/:id/download — stream the active version's zip as an attachment.
+  // Auth = controller-level BearerGuard; any authenticated user may download an active package
+  // (inactive packages are downloadable only by owner/approver — enforced in resolveActiveZip).
+  @ApiOperation({ summary: "Download the active skill version's zip archive" })
+  @Get('items/:id/download')
+  async downloadZip(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo, @Res() res: Response) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+
+    const { fileUrl, name, versionNo } = await this.queryService.resolveActiveZip(id, userId);
+    // resolveZipPath applies the same path-traversal guard as the upload fetch; never resolve
+    // the stored file_url against the filesystem without it.
+    const filePath = this.fileFetchService.resolveZipPath(fileUrl);
+    // Must be a regular file (not a directory / special file) that exists — the DB row can
+    // outlive the on-disk file since Strapi shares and sweeps this upload volume.
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      throw new NotFoundException('File not found');
+    }
+    if (!stat.isFile()) throw new NotFoundException('File not found');
+
+    // Filename is already a safe slug ([a-z0-9-] + -v<n> + ext) — quote it directly; do NOT
+    // percent-encode inside the quotes (browsers would save the literal %xx sequences).
+    const filename = buildDownloadFilename(name, versionNo, 'zip', 'skill');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Stream from disk (not the 20MB in-memory buffer) — mirrors transform-file.controller.
+    // Handle a mid-stream read error (TOCTOU deletion / permission race): once headers are sent
+    // an unhandled stream 'error' would hang the socket, so destroy the response explicitly.
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', () => {
+      if (res.headersSent) res.destroy();
+      else res.status(404).end();
+    });
+    stream.pipe(res);
   }
 
   // GET /v1/skill/my-items — caller's own packages, bucketed by the latest version's state
