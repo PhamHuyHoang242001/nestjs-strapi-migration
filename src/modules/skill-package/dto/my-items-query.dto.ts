@@ -2,12 +2,20 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { SkillCategory } from '../skill-category.constant';
+import { SkillVersionState } from '@modules/databases/skill-version.entity';
 
-// Query DTO for GET /v1/skill/my-items — caller's own packages across all statuses.
-// Mirrors ListSkillQueryDto's page/limit/search/category guards (no tags filter here).
-// Filters are applied in-memory against the resolved representative version (its name/category
-// live on skill_versions, not skill_packages), so they are never string-concatenated into SQL.
+// Query DTO for GET /v1/skill/my-items — caller's own packages bucketed by the LATEST version's
+// state. `status` is REQUIRED: the endpoint always returns exactly one lifecycle bucket of the
+// caller's packages, keyed on the newest non-deleted version:
+//   pending  → newest version still awaiting review (not yet approved)
+//   approved → newest version approved
+//   rejected → newest version rejected
+// Filtering + pagination run entirely in SQL; search/category narrow within the chosen bucket.
 export class MyItemsQueryDto {
+  @ApiProperty({ description: 'Lifecycle bucket, matched against the latest version state', enum: SkillVersionState })
+  @IsEnum(SkillVersionState)
+  readonly status: SkillVersionState;
+
   @ApiProperty({ required: false, description: 'Page number', default: 1 })
   @IsOptional()
   @Transform(({ value }) => (value === undefined || value === '' ? 1 : Number(value)))

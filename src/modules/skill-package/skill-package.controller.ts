@@ -69,8 +69,9 @@ export class SkillPackageController {
     return this.queryService.detail(id, userId);
   }
 
-  // GET /v1/skill/my-items — caller's own packages (created_by) across all statuses.
-  @ApiOperation({ summary: "List caller's own skill packages (all statuses)" })
+  // GET /v1/skill/my-items — caller's own packages, bucketed by the latest version's state
+  // (status=pending|approved|rejected is required). SQL-paginated.
+  @ApiOperation({ summary: "List caller's own skill packages by latest-version state" })
   @Get('my-items')
   listMyItems(@Query() q: MyItemsQueryDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;

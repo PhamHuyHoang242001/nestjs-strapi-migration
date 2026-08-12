@@ -27,6 +27,15 @@ interface RawVersionRow {
   updated_at: Date | string;
 }
 
+// my-items row = the latest version per owned package joined to its package fields, plus the
+// window-function page total. `total_count` is identical on every row of a page (COUNT(*) OVER()).
+interface RawMyItemRow extends RawVersionRow {
+  pkg_status: SkillPackageStatus;
+  active_version_id: number | null;
+  created_by: number;
+  total_count: number | string;
+}
+
 @Injectable()
 export class SkillPackageQueryService {
   constructor(
@@ -205,118 +214,103 @@ export class SkillPackageQueryService {
     };
   }
 
-  // My Skill: the caller's own packages (created_by), ALL statuses, each with a representative
-  // version (active_version if set, else the latest by version_no) folded to a thin summary.
-  // The representative content columns (skill_md_content / reject_reason) are intentionally omitted
-  // from the summary — the grid needs only badge + identity, and shipping full markdown per row would
-  // bloat the payload / risk bulk-content exposure.
+  // My Skill: the caller's own packages, bucketed by the LATEST version's state (query.status,
+  // mandatory). "Latest" = newest non-deleted version by id — the monotonic surrogate, NOT version_no
+  // (a display label that may later be non-numeric, e.g. "1.0.1", so ordering on it would be wrong).
+  // We deliberately key on the latest version's state, not active_version_id: that column tracks the
+  // published/approved version and lags behind a newer pending or rejected resubmission.
+  //   pending  → newest version awaiting review    approved → newest version approved
+  //   rejected → newest version rejected
+  // Filtering (status + optional search/category) and pagination all run in one SQL round-trip:
+  // DISTINCT ON resolves the latest version per package, COUNT(*) OVER() yields the page total.
+  // Content columns (skill_md_content / reject_reason) are omitted — the grid needs only badge + identity.
   async listMyItems(query: MyItemsQueryDto, userId: number) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100);
-    const HARD_CAP = 500;
+    const offset = (page - 1) * limit;
 
-    // 1. Owned package rows (id DESC), capped defensively. Owner-scoped N is small.
-    const pkgs = await this.packageRepo.find({
-      where: { created_by: userId, is_deleted: false },
-      order: { id: 'DESC' },
-      take: HARD_CAP,
-      select: ['id', 'status', 'active_version_id', 'created_by'],
-    });
-    if (pkgs.length === HARD_CAP) {
-      // Surface truncation rather than silently dropping owned packages.
-      // eslint-disable-next-line no-console
-      console.warn(`listMyItems: user ${userId} hit HARD_CAP=${HARD_CAP}; results may be truncated`);
+    // Bind params positionally: $1=userId, $2=status, then any search/category, then limit/offset.
+    // Search/category are applied against the latest-version columns (never string-interpolated).
+    const params: unknown[] = [userId, query.status];
+    const filters: string[] = [];
+    const kw = query.search?.trim();
+    if (kw) {
+      params.push(`%${kw.toLowerCase()}%`);
+      filters.push(`(lower(name) LIKE $${params.length} OR lower(short_description) LIKE $${params.length})`);
     }
-    if (!pkgs.length) return { data: [], meta: { total: 0, page, limit } };
-
-    // 2. Resolve representative version per package (≤2 queries, no N+1).
-    const activeVersionIds = pkgs.map((p) => p.active_version_id).filter((id): id is number => id != null);
-    const nullActivePkgIds = pkgs.filter((p) => p.active_version_id == null).map((p) => p.id);
-
-    const repByPkgId = new Map<number, RawVersionRow>();
-    if (activeVersionIds.length) {
-      const activeRows = (await this.versionRepo.manager.query(
-        `SELECT * FROM skill_versions WHERE id = ANY($1) AND is_deleted = false`,
-        [activeVersionIds],
-      )) as RawVersionRow[];
-      const byId = new Map(activeRows.map((r) => [Number(r.id), r]));
-      for (const p of pkgs) {
-        if (p.active_version_id != null) {
-          const row = byId.get(p.active_version_id);
-          if (row) repByPkgId.set(p.id, row);
-        }
-      }
+    const cat = query.category?.trim();
+    if (cat) {
+      params.push(cat.toLowerCase());
+      filters.push(`lower(category) = $${params.length}`);
     }
-    if (nullActivePkgIds.length) {
-      // "Latest submitted" per package = highest id (insertion order), NOT highest version_no:
-      // version_no is a display label that may later be non-numeric (e.g. "1.0.1"), so ordering
-      // recency on it would be lexicographic and wrong. id is a monotonic surrogate — always safe.
-      const latestRows = (await this.versionRepo.manager.query(
-        `SELECT DISTINCT ON (skill_package_id) * FROM skill_versions
-         WHERE skill_package_id = ANY($1) AND is_deleted = false
-         ORDER BY skill_package_id, id DESC`,
-        [nullActivePkgIds],
-      )) as RawVersionRow[];
-      for (const row of latestRows) repByPkgId.set(Number(row.skill_package_id), row);
-    }
+    const filterSql = filters.length ? `AND ${filters.join(' AND ')}` : '';
+    const limitIdx = params.push(limit);
+    const offsetIdx = params.push(offset);
 
-    // 3. Batch-load zip files for the chosen representatives (MANDATORY — DISTINCT ON rows carry no
-    //    files relation, so without this the representative folds to file:null). Soft-delete filtered.
-    const repIds = Array.from(repByPkgId.values()).map((r) => Number(r.id));
+    const rows = (await this.versionRepo.manager.query(
+      `WITH latest AS (
+         SELECT DISTINCT ON (v.skill_package_id)
+           v.id, v.skill_package_id, v.version_no, v.state, v.name, v.short_description,
+           v.category, v.tags, v.avatar_url, v.created_at, v.updated_at,
+           p.status AS pkg_status, p.active_version_id, p.created_by
+         FROM skill_versions v
+         INNER JOIN skill_packages p ON p.id = v.skill_package_id
+         WHERE p.created_by = $1
+           AND p.is_deleted = false AND p.deleted_at IS NULL
+           AND v.is_deleted = false AND v.deleted_at IS NULL
+         ORDER BY v.skill_package_id, v.id DESC
+       ),
+       bucket AS (
+         SELECT * FROM latest WHERE state = $2 ${filterSql}
+       )
+       SELECT *, COUNT(*) OVER() AS total_count
+       FROM bucket
+       ORDER BY id DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params,
+    )) as RawMyItemRow[];
+
+    if (!rows.length) return { data: [], meta: { total: 0, page, limit } };
+    const total = Number(rows[0].total_count);
+
+    // Batch-load the zip file for the ≤limit representatives on this page only (raw rows carry no
+    // files relation, so without this each version folds to file:null). Soft-delete filtered.
+    const repIds = rows.map((r) => Number(r.id));
+    const fileRows = (await this.versionRepo.manager.query(
+      `SELECT * FROM skill_version_files
+       WHERE skill_version_id = ANY($1) AND deleted_at IS NULL AND is_deleted = false`,
+      [repIds],
+    )) as Array<SkillVersionFile & { skill_version_id: number }>;
     const filesByVersionId = new Map<number, SkillVersionFile[]>();
-    if (repIds.length) {
-      const fileRows = (await this.versionRepo.manager.query(
-        `SELECT * FROM skill_version_files
-         WHERE skill_version_id = ANY($1) AND deleted_at IS NULL AND is_deleted = false`,
-        [repIds],
-      )) as Array<SkillVersionFile & { skill_version_id: number }>;
-      for (const f of fileRows) {
-        const vid = Number(f.skill_version_id);
-        const list = filesByVersionId.get(vid) ?? [];
-        list.push(f);
-        filesByVersionId.set(vid, list);
-      }
+    for (const f of fileRows) {
+      const vid = Number(f.skill_version_id);
+      const list = filesByVersionId.get(vid) ?? [];
+      list.push(f);
+      filesByVersionId.set(vid, list);
     }
 
-    // 4. Filter (in-memory on representative — its name/category live on skill_versions), then paginate.
-    const kw = query.search?.trim().toLowerCase();
-    const cat = query.category?.trim().toLowerCase();
-    const rowsWithRep = pkgs
-      .map((p) => ({ pkg: p, rep: repByPkgId.get(p.id) }))
-      .filter((x): x is { pkg: typeof x.pkg; rep: RawVersionRow } => !!x.rep)
-      .filter((x) => {
-        if (kw && !(`${x.rep.name ?? ''}`.toLowerCase().includes(kw) || `${x.rep.short_description ?? ''}`.toLowerCase().includes(kw))) {
-          return false;
-        }
-        if (cat && `${x.rep.category ?? ''}`.toLowerCase() !== cat) return false;
-        return true;
-      });
-
-    const total = rowsWithRep.length;
-    const paged = rowsWithRep.slice((page - 1) * limit, (page - 1) * limit + limit);
-
-    const data = paged.map(({ pkg, rep }) => {
-      const file: SkillFileResponse | null = toVersionFile(filesByVersionId.get(Number(rep.id)));
+    const data = rows.map((r) => {
+      const file: SkillFileResponse | null = toVersionFile(filesByVersionId.get(Number(r.id)));
       return {
-        id: pkg.id,
-        status: pkg.status,
-        active_version_id: pkg.active_version_id,
-        created_by: pkg.created_by,
+        id: Number(r.skill_package_id),
+        status: r.pkg_status,
+        active_version_id: r.active_version_id,
+        created_by: r.created_by,
         // Thin projection — omit skill_md_content / reject_reason.
         version: {
-          id: Number(rep.id),
-          version_no: Number(rep.version_no),
-          state: rep.state,
-          name: rep.name,
-          short_description: rep.short_description,
-          category: rep.category,
-          tags: rep.tags ?? [],
-          avatar_url: rep.avatar_url ?? null,
+          id: Number(r.id),
+          version_no: Number(r.version_no),
+          state: r.state,
+          name: r.name,
+          short_description: r.short_description,
+          category: r.category,
+          tags: r.tags ?? [],
+          avatar_url: r.avatar_url ?? null,
           file,
-          created_at: rep.created_at,
-          updated_at: rep.updated_at,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
         },
-        latest_state: rep.state,
+        latest_state: r.state,
       };
     });
 
