@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -24,6 +25,7 @@ import {
   CreateSkillPackageDto,
   CreateSkillVersionDto,
   ListSkillQueryDto,
+  MyItemsQueryDto,
   RejectSkillVersionDto,
   ReviewQueryDto,
   ToggleStatusDto,
@@ -57,11 +59,23 @@ export class SkillPackageController {
     return this.queryService.list(q);
   }
 
-  // GET /v1/skill/items/:id — detail with versions[] folded in (M7).
+  // GET /v1/skill/items/:id — detail with versions[] folded in (M7) + caller-scoped flags.
+  // All callers are authenticated (BearerGuard); userId drives isUpdate / inactive access / scrubbing.
   @ApiOperation({ summary: 'Get skill package detail with version history' })
   @Get('items/:id')
-  getItem(@Param('id', ParseIntPipe) id: number) {
-    return this.queryService.detail(id);
+  getItem(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.detail(id, userId);
+  }
+
+  // GET /v1/skill/my-items — caller's own packages (created_by) across all statuses.
+  @ApiOperation({ summary: "List caller's own skill packages (all statuses)" })
+  @Get('my-items')
+  listMyItems(@Query() q: MyItemsQueryDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.listMyItems(q, userId);
   }
 
   // GET /v1/skill/reviews — pending versions queue; service enforces scope authz (C3).
@@ -102,9 +116,11 @@ export class SkillPackageController {
     return this.uploadService.createNew(dto, userId);
   }
 
-  // POST /v1/skill/items/:id/versions — add new version from Strapi URLs; requires skill_upload.
+  // PUT /v1/skill/items/:id/versions — submit a new version from Strapi URLs (full-body replace);
+  // requires skill_upload. Creates a pending version; the current active version keeps serving
+  // until this one is approved (see uploadService.createVersion / approve).
   @ApiOperation({ summary: 'Submit new version of an existing skill package (from Strapi URLs)' })
-  @Post('items/:id/versions')
+  @Put('items/:id/versions')
   @UseGuards(PermissionGuard)
   @RequirePermission('skill_upload')
   async createVersion(

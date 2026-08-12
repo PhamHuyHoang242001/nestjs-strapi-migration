@@ -66,6 +66,9 @@ describe('SkillPackageQueryService', () => {
       createQueryBuilder: jest.fn(),
       findOne: jest.fn(),
       find: jest.fn(),
+      // Default manager for the submitter-email resolver (SELECT id,email FROM users). Empty →
+      // submitted_by_email resolves to null. Tests needing real emails override manager.query.
+      manager: { query: jest.fn().mockResolvedValue([]) },
     };
     service = new SkillPackageQueryService(packageRepo, versionRepo, permissionQuery);
   });
@@ -170,7 +173,7 @@ describe('SkillPackageQueryService', () => {
     });
   });
 
-  // ---- detail — file object ----
+  // ---- detail — file object + permission gating ----
   describe('detail — folds files[] into a single `file` on active_version and history versions', () => {
     it('returns a `file` object on active_version and every history version, loading the files relation', async () => {
       const activeVersion = {
@@ -183,13 +186,15 @@ describe('SkillPackageQueryService', () => {
         id: 1,
         status: 'active',
         is_deleted: false,
+        created_by: USER_ID,
         active_version: activeVersion,
       });
       versionRepo.find = jest.fn().mockResolvedValue([
         { id: 11, version_no: 1, files: [{ file_kind: 'zip', file_url: '/uploads/v1.zip' }] },
       ]);
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
 
-      const result = await service.detail(1);
+      const result = await service.detail(1, USER_ID);
 
       // Avatar inline column + folded single `file` object on active_version (no raw files[]).
       expect((result.active_version as any).avatar_url).toBe('/uploads/a.png');
@@ -206,17 +211,50 @@ describe('SkillPackageQueryService', () => {
 
     it('throws NotFound when the package is missing', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue(null);
-      await expect(service.detail(999)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.detail(999, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws NotFound when the package is inactive (hidden from public detail)', async () => {
+    it('throws NotFound when the package is inactive and caller is not owner or approver', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: SkillPackageStatus.INACTIVE,
         is_deleted: false,
+        created_by: OTHER_USER_ID,
         active_version: null,
       });
-      await expect(service.detail(1)).rejects.toBeInstanceOf(NotFoundException);
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      await expect(service.detail(1, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('allows owner to view inactive package (permission gate for inactive)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.INACTIVE,
+        is_deleted: false,
+        created_by: USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.id).toBe(1);
+    });
+
+    it('allows approver to view inactive package (permission gate for inactive)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.INACTIVE,
+        is_deleted: false,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.id).toBe(1);
     });
 
     it('excludes soft-deleted (is_deleted=true) file rows before folding, on both active_version and history', async () => {
@@ -224,6 +262,7 @@ describe('SkillPackageQueryService', () => {
         id: 1,
         status: 'active',
         is_deleted: false,
+        created_by: USER_ID,
         active_version: {
           id: 10,
           files: [
@@ -242,12 +281,204 @@ describe('SkillPackageQueryService', () => {
           ],
         },
       ]);
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
 
-      const result = await service.detail(1);
+      const result = await service.detail(1, USER_ID);
 
       // The soft-deleted rows are filtered before folding → `file` reflects the live zip only.
       expect((result.active_version as any).file.file_url).toBe('/uploads/live.zip');
       expect((result.versions[0] as any).file.file_url).toBe('/uploads/v1-live.zip');
+    });
+  });
+
+  // ---- detail — isUpdate flag ----
+  describe('detail — isUpdate flag + hasPendingVersion', () => {
+    it('returns isUpdate=true when caller is the owner with skill_upload', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.isUpdate).toBe(true);
+    });
+
+    it('returns isUpdate=true when caller is an approver', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.isUpdate).toBe(true);
+    });
+
+    it('returns isUpdate=false when caller is not owner and not approver', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.isUpdate).toBe(false);
+    });
+
+    it('returns hasPendingVersion=true when a pending version exists', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 11, version_no: 2, state: SkillVersionState.PENDING, files: [] },
+        { id: 10, version_no: 1, state: SkillVersionState.APPROVED, files: [] },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.hasPendingVersion).toBe(true);
+    });
+
+    it('resolves submitted_by_email on active_version and history versions', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: USER_ID,
+        active_version: { id: 10, submitted_by: USER_ID, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 10, version_no: 1, state: SkillVersionState.APPROVED, submitted_by: USER_ID, files: [] },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      versionRepo.manager = { query: jest.fn().mockResolvedValue([{ id: USER_ID, email: 'uploader@bank.vn' }]) };
+
+      const result = await service.detail(1, USER_ID);
+      expect((result.active_version as any).submitted_by_email).toBe('uploader@bank.vn');
+      expect((result.versions[0] as any).submitted_by_email).toBe('uploader@bank.vn');
+      // numeric id preserved (additive contract)
+      expect((result.versions[0] as any).submitted_by).toBe(USER_ID);
+    });
+
+    it('returns hasPendingVersion=false when no pending version exists', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 10, version_no: 1, state: SkillVersionState.APPROVED, files: [] },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.hasPendingVersion).toBe(false);
+    });
+  });
+
+  // ---- detail — content scrubbing ----
+  describe('detail — content scrubbing for non-owner non-approver', () => {
+    it('owner sees full content on non-approved versions (pending/rejected)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: USER_ID,
+        active_version: { id: 10, files: [], state: SkillVersionState.APPROVED, skill_md_content: '# active' },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 11, version_no: 2, state: SkillVersionState.PENDING, files: [], skill_md_content: '# pending', reject_reason: null },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      const pending = (result.versions[0] as any);
+      expect(pending.skill_md_content).toBe('# pending');
+      expect(pending.reject_reason).toBeNull();
+    });
+
+    it('approver sees full content on non-approved versions (pending/rejected)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [], state: SkillVersionState.APPROVED, skill_md_content: '# active' },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 11, version_no: 2, state: SkillVersionState.PENDING, files: [], skill_md_content: '# pending', reject_reason: null },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      const result = await service.detail(1, USER_ID);
+      const pending = (result.versions[0] as any);
+      expect(pending.skill_md_content).toBe('# pending');
+      expect(pending.reject_reason).toBeNull();
+    });
+
+    it('non-owner non-approver receives scrubbed content (empty skill_md_content, null reject_reason) on pending versions', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [], state: SkillVersionState.APPROVED, skill_md_content: '# active' },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 11, version_no: 2, state: SkillVersionState.PENDING, files: [], skill_md_content: '# pending', reject_reason: null },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      const pending = (result.versions[0] as any);
+      expect(pending.skill_md_content).toBe('');
+      expect(pending.reject_reason).toBeNull();
+    });
+
+    it('non-owner non-approver receives scrubbed content on rejected versions', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [], state: SkillVersionState.APPROVED, skill_md_content: '# active' },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 11, version_no: 2, state: SkillVersionState.REJECTED, files: [], skill_md_content: '# rejected', reject_reason: 'needs work' },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      const result = await service.detail(1, USER_ID);
+      const rejected = (result.versions[0] as any);
+      expect(rejected.skill_md_content).toBe('');
+      expect(rejected.reject_reason).toBeNull();
+    });
+
+    it('all callers see full content on approved versions', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [], state: SkillVersionState.APPROVED, skill_md_content: '# active' },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 10, version_no: 1, state: SkillVersionState.APPROVED, files: [], skill_md_content: '# active', reject_reason: null },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      const result = await service.detail(1, USER_ID);
+      const approved = (result.versions[0] as any);
+      expect(approved.skill_md_content).toBe('# active');
+      expect(approved.reject_reason).toBeNull();
     });
   });
 
@@ -376,6 +607,256 @@ describe('SkillPackageQueryService', () => {
       expect(result.base).toBe('# base');
       expect(result.incoming).toBe('# incoming');
       expect(result.metadata).toMatchObject({ version_id: VERSION_ID, version_no: 2, name: 'v2' });
+    });
+  });
+
+  // ---- listMyItems — owner-scoped list with representative versions ----
+  describe('listMyItems — owner-scoped list with representative versions', () => {
+    it('filters by created_by=userId; only-owned packages', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+        { id: 2, created_by: USER_ID, status: SkillPackageStatus.INACTIVE, active_version_id: null },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([
+            { id: 20, skill_package_id: 2, version_no: 2, state: SkillVersionState.PENDING, name: 'v2', short_description: 'pending', category: 'data', tags: null, avatar_url: null, created_at: new Date(), updated_at: new Date() } as any,
+          ])
+          .mockResolvedValueOnce([]),
+      };
+
+      await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      expect(packageRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { created_by: USER_ID, is_deleted: false },
+        }),
+      );
+    });
+
+    it('returns {data, meta:{total, page, limit}} shape with pagination', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 2, limit: 10 }, USER_ID);
+
+      expect(result).toMatchObject({
+        data: expect.any(Array),
+        meta: { total: expect.any(Number), page: 2, limit: 10 },
+      });
+    });
+
+    it('uses active_version when active_version_id is set', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'active', short_description: 'active desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      const item = result.data[0];
+      expect(item.version.name).toBe('active');
+      expect(item.version.state).toBe(SkillVersionState.APPROVED);
+    });
+
+    it('uses latest version when active_version_id is null', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: null },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 20, skill_package_id: 1, version_no: 2, state: SkillVersionState.PENDING, name: 'latest', short_description: 'latest desc', category: 'util', tags: null, avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      const item = result.data[0];
+      expect(item.version.name).toBe('latest');
+      expect(item.version.version_no).toBe(2);
+    });
+
+    it('includes all statuses (active + inactive)', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+        { id: 2, created_by: USER_ID, status: SkillPackageStatus.INACTIVE, active_version_id: null },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([{ id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() }])
+          .mockResolvedValueOnce([{ id: 20, skill_package_id: 2, version_no: 1, state: SkillVersionState.PENDING, name: 'v2', short_description: 'desc2', category: 'data', tags: null, avatar_url: null, created_at: new Date(), updated_at: new Date() }])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data.map((x) => x.status)).toContain(SkillPackageStatus.ACTIVE);
+      expect(result.data.map((x) => x.status)).toContain(SkillPackageStatus.INACTIVE);
+    });
+
+    it('version projection omits skill_md_content and reject_reason', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      const version = result.data[0].version as any;
+      expect(version.skill_md_content).toBeUndefined();
+      expect(version.reject_reason).toBeUndefined();
+    });
+
+    it('includes file when representative has files', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([
+            { skill_version_id: 10, file_kind: 'zip', file_url: '/uploads/v1.zip', name: 'v1.zip', size: 1024, mime_type: 'application/zip' },
+          ]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      const file = result.data[0].version.file;
+      expect(file).toBeDefined();
+      expect(file?.file_url).toBe('/uploads/v1.zip');
+    });
+
+    it('includes file=null when representative has no files', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      expect(result.data[0].version.file).toBeNull();
+    });
+
+    it('filters by search (in-memory on representative name/short_description)', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+        { id: 2, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 11 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'API Skill', short_description: 'api stuff', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+            { id: 11, skill_package_id: 2, version_no: 1, state: SkillVersionState.APPROVED, name: 'Database Skill', short_description: 'db stuff', category: 'data', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() } as any,
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20, search: 'api' }, USER_ID);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].version.name).toBe('API Skill');
+    });
+
+    it('filters by category (in-memory on representative category)', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+        { id: 2, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 11 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() } as any,
+            { id: 11, skill_package_id: 2, version_no: 1, state: SkillVersionState.APPROVED, name: 'v2', short_description: 'desc', category: 'data', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() } as any,
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 1, limit: 20, category: 'data' as any }, USER_ID);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].version.category).toBe('data');
+    });
+
+    it('paginates after filtering (page 2, limit 1)', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([
+        { id: 1, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 10 },
+        { id: 2, created_by: USER_ID, status: SkillPackageStatus.ACTIVE, active_version_id: 11 },
+      ]);
+      versionRepo.manager = {
+        query: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 10, skill_package_id: 1, version_no: 1, state: SkillVersionState.APPROVED, name: 'v1', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+            { id: 11, skill_package_id: 2, version_no: 1, state: SkillVersionState.APPROVED, name: 'v2', short_description: 'desc', category: 'util', tags: [], avatar_url: null, created_at: new Date(), updated_at: new Date() },
+          ])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+      };
+
+      const result = await service.listMyItems({ page: 2, limit: 1 }, USER_ID);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].version.name).toBe('v2');
+      expect(result.meta.total).toBe(2);
+    });
+
+    it('returns empty data and total=0 when user has no packages', async () => {
+      packageRepo.find = jest.fn().mockResolvedValue([]);
+
+      const result = await service.listMyItems({ page: 1, limit: 20 }, USER_ID);
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
     });
   });
 });

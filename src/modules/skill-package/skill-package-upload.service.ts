@@ -31,8 +31,8 @@ export class SkillPackageUploadService {
   // Upload a new skill package (creates package row + v1 pending version) in one tx.
   // Self-approve is allowed by design — governance is an organisational concern, not enforced here.
   async createNew(dto: CreateSkillPackageDto, userId: number) {
-    // Fetch the zip from Strapi (origin + size guarded) BEFORE opening the DB tx —
-    // network I/O must not hold a tx lock. skill.md is validated/extracted from the bytes,
+    // Read the zip from the shared local upload dir (path + size guarded) BEFORE opening the
+    // DB tx — disk I/O must not hold a tx lock. skill.md is validated/extracted from the bytes,
     // but only the URL is persisted (diagnostic-style storage — no media row).
     const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
     const skillMdContent = extractSkillMdFromZip(zipFile.buffer);
@@ -80,7 +80,17 @@ export class SkillPackageUploadService {
     const pkg = await this.packageRepo.findOne({ where: { id: packageId, is_deleted: false } });
     if (!pkg) throw new NotFoundException('Skill package not found');
 
-    // Fetch + validate the zip before opening the tx (no network I/O under a tx lock).
+    // Ownership guard FIRST — before any disk I/O / SSRF-guarded fetch, so an unauthorized caller
+    // cannot force a server-side download of an attacker-influenced URL. PermissionGuard already
+    // guarantees skill_upload; this adds only the ownership delta: an approver may bump any package,
+    // an uploader only their own.
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    if (!canApprove && pkg.created_by !== userId) {
+      throw new ForbiddenException('You can only update skill packages you created');
+    }
+
+    // Read + validate the zip from local disk before opening the tx (no I/O under a tx lock).
     // Only the URL is persisted (diagnostic-style); the bytes are used solely for skill.md.
     const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
     const skillMdContent = extractSkillMdFromZip(zipFile.buffer);

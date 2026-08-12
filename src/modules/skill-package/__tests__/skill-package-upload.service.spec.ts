@@ -10,6 +10,7 @@ jest.mock('../skill-zip.util', () => ({
 }));
 
 const USER_ID = 100;
+const OTHER_USER_ID = 200;
 const PACKAGE_ID = 1;
 const VERSION_ID = 5;
 
@@ -250,7 +251,8 @@ describe('SkillPackageUploadService', () => {
     };
 
     it('assigns version_no=max+1 and persists the version (inline avatar_url) + zip file row in one tx', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false });
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
 
       const saved: any[] = [];
       dataSource.transaction = jest.fn(async (cb: any) => {
@@ -303,7 +305,8 @@ describe('SkillPackageUploadService', () => {
     });
 
     it('catches PG 23505 unique-violation → ConflictException (409)', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false });
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
 
       // Simulate PG unique-violation error from the partial-unique pending index.
       const pgError = new QueryFailedError('INSERT', [], new Error('dup key'));
@@ -314,7 +317,8 @@ describe('SkillPackageUploadService', () => {
     });
 
     it('other DB errors are re-thrown unchanged', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false });
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
 
       const pgError = new QueryFailedError('INSERT', [], new Error('connection lost'));
       (pgError as any).code = '57014'; // some other error
@@ -327,6 +331,85 @@ describe('SkillPackageUploadService', () => {
       packageRepo.findOne = jest.fn().mockResolvedValue(null);
 
       await expect(service.createVersion(999, dto as any, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('non-owner non-approver → ForbiddenException (guard before I/O)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']); // no skill_approve
+
+      await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+
+      // Ownership guard runs BEFORE fileFetch.downloadZip (no I/O for unauthorized caller).
+      expect(fileFetch.downloadZip).not.toHaveBeenCalled();
+    });
+
+    it('owner with skill_upload (no approve) → allowed', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValue([{ max: '1' }]),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
+            return { ...obj, id: 99 };
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
+      expect(result.version).toBeDefined();
+      expect(result.version.version_no).toBe(2);
+    });
+
+    it('non-owner with skill_approve (approver) → allowed', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValue([{ max: '2' }]),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
+            return { ...obj, id: 99 };
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
+      expect(result.version).toBeDefined();
+      expect(result.version.version_no).toBe(3);
+    });
+
+    it('owner + approver → allowed (both conditions satisfied)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload', 'skill_approve']);
+
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValue([{ max: '1' }]),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
+            return { ...obj, id: 99 };
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
+      expect(result.version).toBeDefined();
+      expect(result.version.version_no).toBe(2);
     });
   });
 

@@ -1,24 +1,94 @@
 import { BadGatewayException, Injectable, UnprocessableEntityException } from '@nestjs/common';
-import axios from 'axios';
-import { STRAPI_UPLOAD_TOKEN, STRAPI_UPLOAD_URL } from '@configuration/env.config';
+import { promises as fsp } from 'fs';
+import * as path from 'path';
+import { STRAPI_UPLOAD_URL } from '@configuration/env.config';
 
-// Pull-based upload: the client uploads the file to Strapi first and sends us the
-// resulting URL. We fetch the bytes from that URL to unzip/validate, and store the
-// URL as media.path. This service performs the fetch with two mandatory guards.
+// Pull-based upload: the client uploads the file to Strapi first and sends us the resulting
+// URL. Strapi and this service share the same `public/uploads` directory (shared volume), so
+// we read the zip bytes straight off local disk — NOT over HTTP. A direct HTTP GET to Strapi's
+// /uploads/*.zip is blocked by its preventAccessFile static-route guard; a filesystem read
+// bypasses that guard entirely, the same way the transform-file controller streams local files.
 const ZIP_MAX_BYTES = 20 * 1024 * 1024; // 20 MB — mirrors the previous multipart cap.
 
-// Normalised result of a fetched file; shaped to populate a Media row directly.
+// Local directory the app serves static uploads from (mirrors transform-file.controller).
+const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
+
+// Normalised result of a fetched file; shaped to populate the zip file row directly.
 export interface FetchedFile {
   buffer: Buffer;
   mimeType: string;
-  size: number; // bytes, measured from the actual download (never client-supplied)
-  filename: string; // basename parsed from the URL path
+  size: number; // bytes, measured from the actual file on disk (never client-supplied)
+  filename: string; // decoded basename parsed from the URL path
   originalName: string; // decoded basename
-  path: string; // absolute source URL (stored as media.path)
+  path: string; // source URL as-sent (stored as file_url)
 }
 
 @Injectable()
 export class SkillFileFetchService {
+  // Resolve a Strapi file URL to an on-disk path under the shared public/ directory.
+  // Accepts a full URL (http://host/uploads/x.zip) or a root-relative path (/uploads/x.zip);
+  // only the pathname is used. Path-traversal guard (identical to streamLocalFile) ensures the
+  // resolved path cannot escape public/ — e.g. "/uploads/../../etc/passwd" is rejected.
+  private resolveLocalPath(url: string): string {
+    let pathname: string;
+    try {
+      pathname = new URL(url).pathname; // absolute URL → take its path component
+    } catch {
+      pathname = url; // already a root-relative path
+    }
+
+    const relativePath = pathname.replace(/^\/+/, '');
+    const filePath = path.resolve(PUBLIC_DIR, relativePath);
+    const relativeFromPublic = path.relative(PUBLIC_DIR, filePath);
+    if (relativeFromPublic.startsWith('..') || path.isAbsolute(relativeFromPublic)) {
+      throw new UnprocessableEntityException('URL_NOT_ALLOWED: file path escapes the public directory');
+    }
+    return filePath;
+  }
+
+  // Read the zip bytes from the local shared upload directory, enforcing the size cap.
+  // Mirrors the transform-file controller's local-file read so Strapi's static-route guard
+  // (preventAccessFile) is never involved.
+  async downloadZip(url: string): Promise<FetchedFile> {
+    const filePath = this.resolveLocalPath(url);
+
+    // Stat first so an oversized file is rejected before it is loaded into memory.
+    let size: number;
+    try {
+      const stat = await fsp.stat(filePath);
+      if (!stat.isFile()) throw new Error('not a regular file');
+      size = stat.size;
+    } catch {
+      throw new UnprocessableEntityException('FILE_NOT_FOUND: file does not exist in the upload directory');
+    }
+
+    if (size > ZIP_MAX_BYTES) {
+      throw new UnprocessableEntityException(`FILE_TOO_LARGE: file ${size} bytes exceeds ${ZIP_MAX_BYTES}`);
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await fsp.readFile(filePath);
+    } catch (err: unknown) {
+      // A read failure after a successful stat (permissions, race deletion) surfaces as 502 so
+      // the client gets a clear upstream-read signal rather than an opaque 500.
+      const msg = err instanceof Error ? err.message : 'unknown read error';
+      throw new BadGatewayException(`Failed to read file from disk: ${msg}`);
+    }
+
+    const rawName = path.basename(filePath) || 'skill.zip';
+    const filename = decodeURIComponent(rawName);
+    return {
+      buffer,
+      // The skill file is always a zip archive; no need to sniff the extension.
+      mimeType: 'application/zip',
+      size: buffer.length,
+      filename,
+      originalName: filename,
+      path: url,
+    };
+  }
+
   // Resolve a possibly-relative Strapi URL to absolute against the configured base.
   private toAbsolute(url: string): string {
     try {
@@ -28,8 +98,9 @@ export class SkillFileFetchService {
     }
   }
 
-  // SSRF guard: the resolved URL MUST share the configured Strapi origin. Without
-  // this, a client could make the backend fetch arbitrary internal endpoints.
+  // Origin guard: the resolved URL MUST share the configured Strapi origin. Kept for the avatar
+  // URL, which is stored as-sent and served back to the client verbatim (by URL, not read from
+  // disk) — so it must still originate from the configured Strapi host.
   private assertAllowedOrigin(absoluteUrl: string): URL {
     const parsed = new URL(absoluteUrl);
     const base = new URL(STRAPI_UPLOAD_URL);
@@ -39,51 +110,10 @@ export class SkillFileFetchService {
     return parsed;
   }
 
-  // Download the zip bytes from a Strapi URL, enforcing origin + size caps.
-  async downloadZip(url: string): Promise<FetchedFile> {
-    const absolute = this.toAbsolute(url);
-    const parsed = this.assertAllowedOrigin(absolute);
-
-    let response;
-    try {
-      response = await axios.get<ArrayBuffer>(absolute, {
-        responseType: 'arraybuffer',
-        timeout: 30_000,
-        // Reject oversized payloads at the transport layer (zip-bomb / abuse guard).
-        maxContentLength: ZIP_MAX_BYTES,
-        maxBodyLength: ZIP_MAX_BYTES,
-        headers: STRAPI_UPLOAD_TOKEN ? { Authorization: `Bearer ${STRAPI_UPLOAD_TOKEN}` } : {},
-      });
-    } catch (err: unknown) {
-      // Any connectivity / non-2xx / oversize failure surfaces as 502 so the client
-      // gets a clear upstream-fetch signal rather than an opaque 500.
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new BadGatewayException(`Failed to download file from Strapi: ${msg}`);
-    }
-
-    const buffer = Buffer.from(response.data);
-    if (buffer.length > ZIP_MAX_BYTES) {
-      throw new UnprocessableEntityException(
-        `FILE_TOO_LARGE: downloaded ${buffer.length} bytes exceeds ${ZIP_MAX_BYTES}`,
-      );
-    }
-
-    const rawName = parsed.pathname.split('/').pop() || 'skill.zip';
-    const filename = decodeURIComponent(rawName);
-    return {
-      buffer,
-      mimeType: (response.headers['content-type'] as string) || 'application/zip',
-      size: buffer.length,
-      filename,
-      originalName: filename,
-      path: absolute,
-    };
-  }
-
-  // Validate a Strapi URL WITHOUT downloading its bytes. Used for the avatar URL, which
-  // is stored as-sent and only ever served back by URL — but must still originate from the
-  // configured Strapi host (SSRF guard) so a client cannot make us persist an arbitrary URL.
-  // Throws 422 on a malformed or foreign-origin URL.
+  // Validate a Strapi URL WITHOUT reading any bytes. Used for the avatar URL, which is stored
+  // as-sent and only ever served back by URL — but must still originate from the configured
+  // Strapi host so a client cannot make us persist an arbitrary URL. Throws 422 on a malformed
+  // or foreign-origin URL.
   assertStrapiUrl(url: string): void {
     const absolute = this.toAbsolute(url);
     this.assertAllowedOrigin(absolute);

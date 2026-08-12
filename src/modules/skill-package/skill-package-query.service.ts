@@ -4,9 +4,28 @@ import { Repository } from 'typeorm';
 import { SkillPackage, SkillPackageStatus } from '@modules/databases/skill-package.entity';
 import { SkillVersion, SkillVersionState } from '@modules/databases/skill-version.entity';
 import { ListSkillQueryDto } from './dto/list-skill-query.dto';
+import { MyItemsQueryDto } from './dto/my-items-query.dto';
 import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
-import { formatVersion } from './skill-response.helper';
+import { formatVersion, toVersionFile, SkillFileResponse } from './skill-response.helper';
+import { SkillVersionFile } from '@modules/databases/skill-version-file.entity';
+
+// Shape of a raw skill_versions row returned by manager.query() for representative resolution.
+// Only the columns the my-items summary reads are typed; skill_md_content / reject_reason are
+// intentionally not surfaced downstream.
+interface RawVersionRow {
+  id: number | string;
+  skill_package_id: number | string;
+  version_no: number | string;
+  state: SkillVersionState;
+  name: string;
+  short_description: string;
+  category: string;
+  tags: string[] | null;
+  avatar_url: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
 
 @Injectable()
 export class SkillPackageQueryService {
@@ -17,6 +36,18 @@ export class SkillPackageQueryService {
     private readonly versionRepo: Repository<SkillVersion>,
     private readonly permissionQuery: PermissionQueryService,
   ) {}
+
+  // Resolve a set of user ids → email for person-display fields (e.g. "Người đăng"). One batched
+  // query, deduped, null-safe. Returns a Map(id → email); ids with no user row are simply absent.
+  private async resolveEmails(ids: Array<number | null | undefined>): Promise<Map<number, string>> {
+    const unique = Array.from(new Set(ids.filter((x): x is number => typeof x === 'number')));
+    if (!unique.length) return new Map();
+    const rows = (await this.versionRepo.manager.query(
+      'SELECT id, email FROM users WHERE id = ANY($1)',
+      [unique],
+    )) as Array<{ id: number; email: string }>;
+    return new Map(rows.map((r) => [Number(r.id), r.email]));
+  }
 
   // List active packages, joining the active version's fields.
   // Sort: id DESC (deterministic — prevents page drift). Limit capped at 100 via DTO (M2).
@@ -94,19 +125,34 @@ export class SkillPackageQueryService {
   }
 
   // Detail: active version + all versions history (M7 — no separate versions endpoint).
-  // Versions ordered version_no DESC so the newest is first.
-  async detail(packageId: number) {
+  // Versions ordered by id DESC (insertion order = recency) so the newest submitted version is
+  // first. Recency is deliberately derived from the surrogate id, NOT from version_no: version_no
+  // is a display label whose definition may later change to a non-numeric scheme (e.g. "1.0.1"),
+  // under which a version_no sort would be lexicographic and wrong. Caller-scoped: computes
+  // edit/pending flags, gates inactive access to owner/approver, and scrubs non-approved draft
+  // content from callers who are neither the owner nor an approver.
+  async detail(packageId: number, userId: number) {
     const pkg = await this.packageRepo.findOne({
       where: { id: packageId, is_deleted: false },
       relations: ['active_version', 'active_version.files'],
     });
-    if (!pkg || pkg.status === SkillPackageStatus.INACTIVE) {
+    if (!pkg) throw new NotFoundException('Skill package not found');
+
+    // Resolve caller permissions once (per-user TTL cache upstream).
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    const canUpload = codes.includes('skill_upload');
+    const isOwner = pkg.created_by === userId;
+
+    // Inactive packages are visible only to the owner or an approver; everyone else gets 404
+    // (no anonymous callers — BearerGuard blocks them before the handler).
+    if (pkg.status === SkillPackageStatus.INACTIVE && !isOwner && !canApprove) {
       throw new NotFoundException('Skill package not found or inactive');
     }
 
     const versions = await this.versionRepo.find({
       where: { skill_package_id: packageId, is_deleted: false },
-      order: { version_no: 'DESC' },
+      order: { id: 'DESC' }, // recency by surrogate id, label-agnostic (see method doc)
       relations: ['files'],
     });
 
@@ -120,13 +166,161 @@ export class SkillPackageQueryService {
       if (v.files) v.files = v.files.filter(notDeleted);
     }
 
+    // Edit gate: approver may edit any package; an uploader may edit only their own.
+    const isUpdate = canApprove || (canUpload && isOwner);
+    const hasPendingVersion = versions.some((v) => v.state === SkillVersionState.PENDING);
+
+    // Content scrubbing: a caller who is neither owner nor approver must not read the draft
+    // skill.md / reject reason of non-approved (pending/rejected) versions. The approved
+    // active_version content stays visible to all. Mirrors the per-version gate in getDiff().
+    const canSeeAllContent = isOwner || canApprove;
+    const scrub = (v: SkillVersion): SkillVersion => {
+      if (canSeeAllContent || v.state === SkillVersionState.APPROVED) return v;
+      // Hide the author's unapproved draft artefacts (skill.md body, reject reason, release note)
+      // from callers who are neither the owner nor an approver.
+      return { ...v, skill_md_content: '', reject_reason: null, changelog_note: null } as SkillVersion;
+    };
+
+    // Resolve submitter ids → email so the client shows "Người đăng" as an email, not a raw id.
+    const emailMap = await this.resolveEmails([
+      pkg.active_version?.submitted_by,
+      ...versions.map((v) => v.submitted_by),
+    ]);
+    const addSubmitterEmail = <T extends { submitted_by: number }>(fv: T | null | undefined) =>
+      fv
+        ? ({ ...fv, submitted_by_email: emailMap.get(fv.submitted_by) ?? null } as T & {
+            submitted_by_email: string | null;
+          })
+        : fv;
+
     // Fold files[] → single `file` object on the active_version and every history version
-    // (diagnostic-parity); avatar_url stays an inline URL column.
+    // (diagnostic-parity); avatar_url stays an inline URL column. submitted_by_email is additive
+    // (numeric submitted_by kept for any id-based client logic).
     return {
       ...pkg,
-      active_version: formatVersion(pkg.active_version),
-      versions: versions.map((v) => formatVersion(v)),
+      active_version: addSubmitterEmail(formatVersion(pkg.active_version)),
+      versions: versions.map((v) => addSubmitterEmail(formatVersion(scrub(v)))),
+      isUpdate,
+      hasPendingVersion,
     };
+  }
+
+  // My Skill: the caller's own packages (created_by), ALL statuses, each with a representative
+  // version (active_version if set, else the latest by version_no) folded to a thin summary.
+  // The representative content columns (skill_md_content / reject_reason) are intentionally omitted
+  // from the summary — the grid needs only badge + identity, and shipping full markdown per row would
+  // bloat the payload / risk bulk-content exposure.
+  async listMyItems(query: MyItemsQueryDto, userId: number) {
+    const page = query.page ?? 1;
+    const limit = Math.min(query.limit ?? 20, 100);
+    const HARD_CAP = 500;
+
+    // 1. Owned package rows (id DESC), capped defensively. Owner-scoped N is small.
+    const pkgs = await this.packageRepo.find({
+      where: { created_by: userId, is_deleted: false },
+      order: { id: 'DESC' },
+      take: HARD_CAP,
+      select: ['id', 'status', 'active_version_id', 'created_by'],
+    });
+    if (pkgs.length === HARD_CAP) {
+      // Surface truncation rather than silently dropping owned packages.
+      // eslint-disable-next-line no-console
+      console.warn(`listMyItems: user ${userId} hit HARD_CAP=${HARD_CAP}; results may be truncated`);
+    }
+    if (!pkgs.length) return { data: [], meta: { total: 0, page, limit } };
+
+    // 2. Resolve representative version per package (≤2 queries, no N+1).
+    const activeVersionIds = pkgs.map((p) => p.active_version_id).filter((id): id is number => id != null);
+    const nullActivePkgIds = pkgs.filter((p) => p.active_version_id == null).map((p) => p.id);
+
+    const repByPkgId = new Map<number, RawVersionRow>();
+    if (activeVersionIds.length) {
+      const activeRows = (await this.versionRepo.manager.query(
+        `SELECT * FROM skill_versions WHERE id = ANY($1) AND is_deleted = false`,
+        [activeVersionIds],
+      )) as RawVersionRow[];
+      const byId = new Map(activeRows.map((r) => [Number(r.id), r]));
+      for (const p of pkgs) {
+        if (p.active_version_id != null) {
+          const row = byId.get(p.active_version_id);
+          if (row) repByPkgId.set(p.id, row);
+        }
+      }
+    }
+    if (nullActivePkgIds.length) {
+      // "Latest submitted" per package = highest id (insertion order), NOT highest version_no:
+      // version_no is a display label that may later be non-numeric (e.g. "1.0.1"), so ordering
+      // recency on it would be lexicographic and wrong. id is a monotonic surrogate — always safe.
+      const latestRows = (await this.versionRepo.manager.query(
+        `SELECT DISTINCT ON (skill_package_id) * FROM skill_versions
+         WHERE skill_package_id = ANY($1) AND is_deleted = false
+         ORDER BY skill_package_id, id DESC`,
+        [nullActivePkgIds],
+      )) as RawVersionRow[];
+      for (const row of latestRows) repByPkgId.set(Number(row.skill_package_id), row);
+    }
+
+    // 3. Batch-load zip files for the chosen representatives (MANDATORY — DISTINCT ON rows carry no
+    //    files relation, so without this the representative folds to file:null). Soft-delete filtered.
+    const repIds = Array.from(repByPkgId.values()).map((r) => Number(r.id));
+    const filesByVersionId = new Map<number, SkillVersionFile[]>();
+    if (repIds.length) {
+      const fileRows = (await this.versionRepo.manager.query(
+        `SELECT * FROM skill_version_files
+         WHERE skill_version_id = ANY($1) AND deleted_at IS NULL AND is_deleted = false`,
+        [repIds],
+      )) as Array<SkillVersionFile & { skill_version_id: number }>;
+      for (const f of fileRows) {
+        const vid = Number(f.skill_version_id);
+        const list = filesByVersionId.get(vid) ?? [];
+        list.push(f);
+        filesByVersionId.set(vid, list);
+      }
+    }
+
+    // 4. Filter (in-memory on representative — its name/category live on skill_versions), then paginate.
+    const kw = query.search?.trim().toLowerCase();
+    const cat = query.category?.trim().toLowerCase();
+    const rowsWithRep = pkgs
+      .map((p) => ({ pkg: p, rep: repByPkgId.get(p.id) }))
+      .filter((x): x is { pkg: typeof x.pkg; rep: RawVersionRow } => !!x.rep)
+      .filter((x) => {
+        if (kw && !(`${x.rep.name ?? ''}`.toLowerCase().includes(kw) || `${x.rep.short_description ?? ''}`.toLowerCase().includes(kw))) {
+          return false;
+        }
+        if (cat && `${x.rep.category ?? ''}`.toLowerCase() !== cat) return false;
+        return true;
+      });
+
+    const total = rowsWithRep.length;
+    const paged = rowsWithRep.slice((page - 1) * limit, (page - 1) * limit + limit);
+
+    const data = paged.map(({ pkg, rep }) => {
+      const file: SkillFileResponse | null = toVersionFile(filesByVersionId.get(Number(rep.id)));
+      return {
+        id: pkg.id,
+        status: pkg.status,
+        active_version_id: pkg.active_version_id,
+        created_by: pkg.created_by,
+        // Thin projection — omit skill_md_content / reject_reason.
+        version: {
+          id: Number(rep.id),
+          version_no: Number(rep.version_no),
+          state: rep.state,
+          name: rep.name,
+          short_description: rep.short_description,
+          category: rep.category,
+          tags: rep.tags ?? [],
+          avatar_url: rep.avatar_url ?? null,
+          file,
+          created_at: rep.created_at,
+          updated_at: rep.updated_at,
+        },
+        latest_state: rep.state,
+      };
+    });
+
+    return { data, meta: { total, page, limit } };
   }
 
   // Review queue: approvers see all pending; non-approvers are forced to own-submitted only.
@@ -167,9 +361,13 @@ export class SkillPackageQueryService {
 
     const [data, countRow] = await Promise.all([qb.getMany(), countQb.getRawOne<{ count: string }>()]);
 
-    // Fold each pending version's files[] → single `file` object (diagnostic-parity).
+    // Resolve submitter ids → email so the review queue lists "Người tạo" as email, not a raw id.
+    const emailMap = await this.resolveEmails(data.map((v) => v.submitted_by));
+
+    // Fold each pending version's files[] → single `file` object (diagnostic-parity), then attach
+    // the submitter email (additive; numeric submitted_by kept for the client-side creator filter).
     return {
-      data: data.map((v) => formatVersion(v)),
+      data: data.map((v) => ({ ...formatVersion(v), submitted_by_email: emailMap.get(v.submitted_by) ?? null })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
     };
   }
@@ -204,6 +402,9 @@ export class SkillPackageQueryService {
       baseContent = activeVersion?.skill_md_content ?? null;
     }
 
+    // Resolve the submitter email so the review screen shows "Submitted by" as email, not a raw id.
+    const emailMap = await this.resolveEmails([version.submitted_by]);
+
     return {
       base: baseContent,
       incoming: version.skill_md_content,
@@ -216,6 +417,7 @@ export class SkillPackageQueryService {
         tags: version.tags,
         changelog_note: version.changelog_note,
         submitted_by: version.submitted_by,
+        submitted_by_email: emailMap.get(version.submitted_by) ?? null,
         submitted_at: version.created_at,
       },
     };

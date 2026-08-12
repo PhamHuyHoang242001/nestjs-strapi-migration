@@ -4,7 +4,7 @@
  * Boots the full AppModule against a real Postgres (env DB_*). Drives the exact HTTP
  * endpoints the FE asset-hub module calls (see EDA_FE/src/modules/asset-hub/pages/skill/api/skillApi.ts):
  *   POST   /v1/skill/items                 (uploadNew)
- *   POST   /v1/skill/items/:id/versions    (uploadUpdate)
+ *   PUT    /v1/skill/items/:id/versions    (uploadUpdate)
  *   GET    /v1/skill/items                 (list)
  *   GET    /v1/skill/items/:id             (detail)
  *   GET    /v1/skill/reviews               (reviews)
@@ -134,11 +134,20 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
 
   // Pull-based upload helper: registers the skill.md the fetch stub will return for a
   // freshly-minted zip_url, then POSTs the JSON body the FE sends (zip_url + fields + tags).
-  function uploadReq(user: any, path: string, fields: Record<string, string>, tags: string[], zipMd: string) {
+  // method: create-package (`POST /items`) stays POST; create-version (`PUT /items/:id/versions`)
+  // passes 'put'. Body/response identical across both verbs.
+  function uploadReq(
+    user: any,
+    path: string,
+    fields: Record<string, string>,
+    tags: string[],
+    zipMd: string,
+    method: 'post' | 'put' = 'post',
+  ) {
     zipUrlSeq += 1;
     const zipUrl = `http://strapi.test/uploads/skill-${zipUrlSeq}.zip`;
     zipContentByUrl.set(zipUrl, zipMd);
-    return as(user).post(path).send({ ...fields, tags, zip_url: zipUrl });
+    return as(user)[method](path).send({ ...fields, tags, zip_url: zipUrl });
   }
 
   async function hardDeletePackage(pkgId: number): Promise<void> {
@@ -310,8 +319,8 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
   it('9) uploader submits v2 (pending); active still points at v1', async () => {
     const res = await uploadReq(uploader, `${BASE}/items/${packageId}/versions`,
       { name: `${PREFIX}Excel Analyzer`, short_description: 'Now with pivots', category: 'data-analysis' },
-      ['excel'], MD_V2,
-    ).expect(201);
+      ['excel'], MD_V2, 'put',
+    ).expect(200);
     expect(res.body.version.version_no).toBe(2);
     versionTwoId = res.body.version.id;
 
@@ -322,7 +331,7 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
   it('9b) a second pending version is blocked while one is already pending (409)', async () => {
     await uploadReq(uploader, `${BASE}/items/${packageId}/versions`,
       { name: `${PREFIX}Excel Analyzer`, short_description: 'dup pending', category: 'data-analysis' },
-      [], '# dup',
+      [], '# dup', 'put',
     ).expect(409);
   });
 
