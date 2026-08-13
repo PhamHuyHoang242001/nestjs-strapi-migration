@@ -345,6 +345,31 @@ describe('PromptLibraryUploadService', () => {
       await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
 
+    it('existing pending version → ConflictException before avatar validation or transaction', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
+      versionRepo.findOne.mockResolvedValue({ id: VERSION_ID, state: PromptVersionState.PENDING });
+
+      const request = service.createVersion(
+        PACKAGE_ID,
+        { ...dto, avatar_url: '/uploads/invalid.png' } as any,
+        USER_ID,
+      );
+      await expect(request).rejects.toBeInstanceOf(ConflictException);
+      await expect(request).rejects.toMatchObject({ status: 409 });
+
+      expect(versionRepo.findOne).toHaveBeenCalledWith({
+        where: {
+          prompt_package_id: PACKAGE_ID,
+          state: PromptVersionState.PENDING,
+          is_deleted: false,
+        },
+        select: { id: true },
+      });
+      expect(avatarUrl.assertStrapiUrl).not.toHaveBeenCalled();
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
     it('other DB errors are re-thrown unchanged', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);

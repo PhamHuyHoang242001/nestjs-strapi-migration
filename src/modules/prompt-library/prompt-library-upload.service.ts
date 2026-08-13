@@ -12,6 +12,14 @@ import { PermissionQueryService } from '@common/authorization/services/permissio
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
 const PG_UNIQUE_VIOLATION = '23505';
+const PENDING_VERSION_CONFLICT_MESSAGE =
+  'A pending version already exists for this package. Approve or reject it before submitting a new one.';
+
+function isPgUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof QueryFailedError && (error as QueryFailedError & { code?: string }).code === PG_UNIQUE_VIOLATION
+  );
+}
 
 @Injectable()
 export class PromptLibraryUploadService {
@@ -84,6 +92,21 @@ export class PromptLibraryUploadService {
       throw new ForbiddenException('You can only update prompt packages you created');
     }
 
+    // Fail fast before validating payload URLs. The partial unique index remains the concurrency
+    // authority; this preflight gives existing-pending requests deterministic 409 behavior while
+    // the database constraint still closes the check-then-insert race.
+    const pendingVersion = await this.versionRepo.findOne({
+      where: {
+        prompt_package_id: packageId,
+        state: PromptVersionState.PENDING,
+        is_deleted: false,
+      },
+      select: { id: true },
+    });
+    if (pendingVersion) {
+      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+    }
+
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
 
     try {
@@ -127,10 +150,8 @@ export class PromptLibraryUploadService {
       // Catch PG unique-violation on partial-unique pending index → 409.
       // The constraint uidx_prompt_versions_one_pending_per_package is
       // partial: (prompt_package_id) WHERE state='pending' AND is_deleted=false.
-      if (err instanceof QueryFailedError && (err as any).code === PG_UNIQUE_VIOLATION) {
-        throw new ConflictException(
-          'A pending version already exists for this package. Approve or reject it before submitting a new one.',
-        );
+      if (isPgUniqueViolation(err)) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
       }
       throw err;
     }
@@ -176,7 +197,7 @@ export class PromptLibraryUploadService {
     } catch (err) {
       // The approved-only partial-unique (prompt_package_id, version_no) can now fire here if a
       // duplicate approved number is ever produced concurrently — surface it as a clean 409.
-      if (err instanceof QueryFailedError && (err as any).code === PG_UNIQUE_VIOLATION) {
+      if (isPgUniqueViolation(err)) {
         throw new ConflictException('This version number is already approved for this package.');
       }
       throw err;

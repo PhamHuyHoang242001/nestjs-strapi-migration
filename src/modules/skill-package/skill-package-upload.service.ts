@@ -15,6 +15,14 @@ import { PermissionQueryService } from '@common/authorization/services/permissio
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
 const PG_UNIQUE_VIOLATION = '23505';
+const PENDING_VERSION_CONFLICT_MESSAGE =
+  'A pending version already exists for this package. Approve or reject it before submitting a new one.';
+
+function isPgUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof QueryFailedError && (error as QueryFailedError & { code?: string }).code === PG_UNIQUE_VIOLATION
+  );
+}
 
 @Injectable()
 export class SkillPackageUploadService {
@@ -96,6 +104,21 @@ export class SkillPackageUploadService {
       throw new ForbiddenException('You can only update skill packages you created');
     }
 
+    // Fail fast before reading/parsing the submitted ZIP. The partial unique index remains the
+    // concurrency authority; this preflight enforces the business rule with deterministic error
+    // precedence and avoids expensive payload work when a review is already outstanding.
+    const pendingVersion = await this.versionRepo.findOne({
+      where: {
+        skill_package_id: packageId,
+        state: SkillVersionState.PENDING,
+        is_deleted: false,
+      },
+      select: { id: true },
+    });
+    if (pendingVersion) {
+      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+    }
+
     // Read + validate the zip from local disk before opening the tx (no I/O under a tx lock).
     // Only the URL is persisted (diagnostic-style); the bytes are used solely for skill.md.
     const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
@@ -146,10 +169,8 @@ export class SkillPackageUploadService {
       // Catch PG unique-violation on partial-unique pending index → 409.
       // The constraint uidx_skill_versions_one_pending_per_package is
       // partial: (skill_package_id) WHERE state='pending' AND is_deleted=false.
-      if (err instanceof QueryFailedError && (err as any).code === PG_UNIQUE_VIOLATION) {
-        throw new ConflictException(
-          'A pending version already exists for this package. Approve or reject it before submitting a new one.',
-        );
+      if (isPgUniqueViolation(err)) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
       }
       throw err;
     }
@@ -196,7 +217,7 @@ export class SkillPackageUploadService {
     } catch (err) {
       // The approved-only partial-unique (skill_package_id, version_no) can now fire here if a
       // duplicate approved number is ever produced concurrently — surface it as a clean 409.
-      if (err instanceof QueryFailedError && (err as any).code === PG_UNIQUE_VIOLATION) {
+      if (isPgUniqueViolation(err)) {
         throw new ConflictException('This version number is already approved for this package.');
       }
       throw err;
