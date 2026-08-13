@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PromptLibraryQueryService } from '../prompt-library-query.service';
 import { PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 import { PromptVersionState } from '@modules/databases/prompt-version.entity';
@@ -74,6 +74,42 @@ describe('PromptLibraryQueryService', () => {
       manager: { query: jest.fn().mockResolvedValue([]) },
     };
     service = new PromptLibraryQueryService(packageRepo, versionRepo, permissionQuery);
+  });
+
+  describe('stats — latest version per package + independent published count', () => {
+    it('maps PostgreSQL aggregate values to numeric workspace counters', async () => {
+      versionRepo.manager.query.mockResolvedValue([
+        { total: '9', pending: '3', approved: '5', rejected: '1', published: '6' },
+      ]);
+
+      await expect(service.stats()).resolves.toEqual({
+        data: { total: 9, pending: 3, approved: 5, rejected: 1, published: 6 },
+      });
+
+      const sql = versionRepo.manager.query.mock.calls[0][0] as string;
+      expect(sql).toContain('DISTINCT ON (v.prompt_package_id)');
+      expect(sql).toContain('ORDER BY v.prompt_package_id, v.id DESC');
+      expect(sql).toContain("FILTER (WHERE state = 'rejected')");
+      expect(sql).toContain('av.id = p.active_version_id');
+      expect(sql).toContain('av.prompt_package_id = p.id');
+      expect(sql).toContain("av.state = 'approved'");
+      expect(sql).toContain("p.status = 'active'");
+      expect(sql).toContain('v.deleted_at IS NULL AND v.is_deleted = false');
+      expect(sql).toContain('p.deleted_at IS NULL AND p.is_deleted = false');
+      expect(sql).toContain('av.deleted_at IS NULL');
+      expect(sql).toContain('av.is_deleted = false');
+      expect(versionRepo.manager.query.mock.calls[0][1]).toBeUndefined();
+      expect(sql).not.toContain('submitted_by');
+      expect(sql).not.toContain('created_by');
+    });
+
+    it('returns zero counters when the aggregate returns no row', async () => {
+      versionRepo.manager.query.mockResolvedValue([]);
+
+      await expect(service.stats()).resolves.toEqual({
+        data: { total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
+      });
+    });
   });
 
   // ---- list ----
@@ -522,6 +558,123 @@ describe('PromptLibraryQueryService', () => {
 
       const joined = qb.capturedWheres.join(' | ');
       expect(joined).toContain('pv.submitted_by = :userId');
+    });
+  });
+
+  describe('versionDetail — submitter, package creator, or approver', () => {
+    const makeVersion = (overrides: Record<string, unknown> = {}) => ({
+      id: VERSION_ID,
+      prompt_package_id: PACKAGE_ID,
+      submitted_by: OTHER_USER_ID,
+      state: PromptVersionState.PENDING,
+      old_version: 1,
+      version_no: 1,
+      prompt_content: '# incoming',
+      reject_reason: null,
+      ...overrides,
+    });
+
+    it.each([
+      ['submitter', USER_ID, OTHER_USER_ID, [], false],
+      ['package creator', OTHER_USER_ID, USER_ID, [], false],
+      ['approver', OTHER_USER_ID, OTHER_USER_ID, ['prompt_approve'], true],
+    ])('allows %s and returns pending predecessor comparison', async (_label, submitter, creator, codes, canReview) => {
+      versionRepo.findOne = jest
+        .fn()
+        .mockResolvedValueOnce(makeVersion({ submitted_by: submitter }))
+        .mockResolvedValueOnce({ id: 8, version_no: 1, prompt_content: '# predecessor' });
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        code: 'prompt_1',
+        status: PromptPackageStatus.ACTIVE,
+        active_version_id: 8,
+        created_by: creator,
+      });
+      permissionQuery.getUserPermissions.mockResolvedValue(codes);
+
+      const result = await service.versionDetail(VERSION_ID, USER_ID);
+
+      expect(result.comparison).toEqual({
+        base_version_id: 8,
+        base_version_no: 1,
+        base: '# predecessor',
+        incoming: '# incoming',
+      });
+      expect(result.can_review).toBe(canReview);
+      expect(result.package).toEqual({
+        id: PACKAGE_ID,
+        code: 'prompt_1',
+        status: PromptPackageStatus.ACTIVE,
+        active_version_id: 8,
+        created_by: creator,
+      });
+      expect(versionRepo.findOne).toHaveBeenLastCalledWith({
+        where: {
+          prompt_package_id: PACKAGE_ID,
+          version_no: 1,
+          state: PromptVersionState.APPROVED,
+          is_deleted: false,
+          deleted_at: expect.anything(),
+        },
+      });
+      expect(result.version.prompt_content).toBe('# incoming');
+    });
+
+    it('denies a caller outside the access union', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion());
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('returns first pending with null base and no predecessor lookup', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: USER_ID, old_version: null }));
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      const result = await service.versionDetail(VERSION_ID, USER_ID);
+
+      expect(result.comparison).toEqual({
+        base_version_id: null,
+        base_version_no: null,
+        base: null,
+        incoming: '# incoming',
+      });
+      expect(versionRepo.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails closed when a declared approved predecessor is missing', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValueOnce(makeVersion({ submitted_by: USER_ID })).mockResolvedValueOnce(null);
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+
+      await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it.each([PromptVersionState.APPROVED, PromptVersionState.REJECTED])(
+      '%s returns full detail without comparison or review capability',
+      async (state) => {
+        versionRepo.findOne = jest.fn().mockResolvedValue(
+          makeVersion({ submitted_by: USER_ID, state, reject_reason: state === PromptVersionState.REJECTED ? 'Fix it' : null }),
+        );
+        packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
+        permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
+
+        const result = await service.versionDetail(VERSION_ID, USER_ID);
+
+        expect(result.comparison).toBeNull();
+        expect(result.can_review).toBe(false);
+        expect(result.version.reject_reason).toBe(state === PromptVersionState.REJECTED ? 'Fix it' : null);
+      },
+    );
+
+    it('denies a deleted/missing target or package', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(makeVersion());
+      await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+
+      packageRepo.findOne = jest.fn().mockResolvedValue(null);
+      await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

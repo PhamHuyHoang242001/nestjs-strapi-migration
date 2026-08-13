@@ -37,6 +37,10 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('listItems')).toBeUndefined();
   });
 
+  it('stats has no RequirePermission metadata (auth-only, whole database)', () => {
+    expect(getPerm('stats')).toBeUndefined();
+  });
+
   it('getItem has no RequirePermission metadata', () => {
     expect(getPerm('getItem')).toBeUndefined();
   });
@@ -49,6 +53,10 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('getDiff')).toBeUndefined();
   });
 
+  it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {
+    expect(getPerm('getVersion')).toBeUndefined();
+  });
+
   it('myPermissions has no RequirePermission metadata', () => {
     expect(getPerm('myPermissions')).toBeUndefined();
   });
@@ -56,8 +64,10 @@ describe('PromptLibraryController — perm mapping', () => {
   // Verify no DataAccess metadata on any prompt route (no owner-scope on prompt routes).
   const allMethods = [
     'listItems',
+    'stats',
     'getItem',
     'listReviews',
+    'getVersion',
     'getDiff',
     'myPermissions',
     'createItem',

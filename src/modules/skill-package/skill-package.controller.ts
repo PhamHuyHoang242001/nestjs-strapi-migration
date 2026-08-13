@@ -66,6 +66,13 @@ export class SkillPackageController {
     return this.queryService.list(q);
   }
 
+  // GET /v1/skill/stats — whole-workspace latest-state + actual-published counters.
+  @ApiOperation({ summary: 'Get Skill workspace dashboard counters' })
+  @Get('stats')
+  stats() {
+    return this.queryService.stats();
+  }
+
   // GET /v1/skill/items/:id — detail with versions[] folded in (M7) + caller-scoped flags.
   // All callers are authenticated (BearerGuard); userId drives isUpdate / inactive access / scrubbing.
   @ApiOperation({ summary: 'Get skill package detail with version history' })
@@ -135,6 +142,16 @@ export class SkillPackageController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.queryService.listVersions(q, userId);
+  }
+
+  // GET /v1/skill/versions/:vid — full caller-authorized version detail. Service permits the
+  // submitter, package creator, or an approver and builds predecessor comparison for pending rows.
+  @ApiOperation({ summary: 'Get skill version detail' })
+  @Get('versions/:vid')
+  getVersion(@Param('vid', ParseIntPipe) vid: number, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.versionDetail(vid, userId);
   }
 
   // GET /v1/skill/versions/:vid/diff — service enforces owner-or-approver (C4).

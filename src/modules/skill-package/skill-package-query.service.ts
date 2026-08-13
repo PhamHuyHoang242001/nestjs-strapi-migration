@@ -1,6 +1,6 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { SkillPackage, SkillPackageStatus } from '@modules/databases/skill-package.entity';
 import { SkillVersion, SkillVersionState } from '@modules/databases/skill-version.entity';
 import { ListSkillQueryDto } from './dto/list-skill-query.dto';
@@ -29,6 +29,52 @@ export class SkillPackageQueryService {
       unique,
     ])) as Array<{ id: number; email: string }>;
     return new Map(rows.map((r) => [Number(r.id), r.email]));
+  }
+
+  // Dashboard counters for the whole Skill workspace. Each live package contributes exactly once
+  // to the lifecycle counters via its greatest live version id. Published is intentionally separate:
+  // a package may remain published while a newer update is pending or rejected.
+  async stats() {
+    const rows = (await this.versionRepo.manager.query(`
+      WITH latest AS (
+        SELECT DISTINCT ON (v.skill_package_id) v.state
+        FROM skill_versions v
+        INNER JOIN skill_packages p ON p.id = v.skill_package_id
+        WHERE v.deleted_at IS NULL AND v.is_deleted = false
+          AND p.deleted_at IS NULL AND p.is_deleted = false
+        ORDER BY v.skill_package_id, v.id DESC
+      )
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE state = 'pending')::int AS pending,
+        COUNT(*) FILTER (WHERE state = 'approved')::int AS approved,
+        COUNT(*) FILTER (WHERE state = 'rejected')::int AS rejected,
+        (
+          SELECT COUNT(*)::int
+          FROM skill_packages p
+          INNER JOIN skill_versions av
+            ON av.id = p.active_version_id
+           AND av.skill_package_id = p.id
+           AND av.state = 'approved'
+           AND av.deleted_at IS NULL
+           AND av.is_deleted = false
+          WHERE p.status = 'active'
+            AND p.active_version_id IS NOT NULL
+            AND p.deleted_at IS NULL
+            AND p.is_deleted = false
+        ) AS published
+      FROM latest
+    `)) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published', number | string>>;
+    const row = rows[0];
+    return {
+      data: {
+        total: Number(row?.total ?? 0),
+        pending: Number(row?.pending ?? 0),
+        approved: Number(row?.approved ?? 0),
+        rejected: Number(row?.rejected ?? 0),
+        published: Number(row?.published ?? 0),
+      },
+    };
   }
 
   // List active packages, joining the active version's fields.
@@ -335,6 +381,82 @@ export class SkillPackageQueryService {
     return {
       data: data.map((v) => ({ ...formatVersion(v), submitted_by_email: emailMap.get(v.submitted_by) ?? null })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
+    };
+  }
+
+  // Version detail for both the review and "My Version" screens. Access deliberately mirrors the
+  // union of those entry points: submitter, package creator, or approver. A pending version compares
+  // against its immutable approved predecessor (old_version), never the package's current active
+  // version, so historical review remains stable after later versions are published.
+  async versionDetail(versionId: number, userId: number) {
+    const version = await this.versionRepo.findOne({
+      where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
+      relations: ['files'],
+    });
+    if (!version) throw new NotFoundException('Skill version not found');
+
+    const pkg = await this.packageRepo.findOne({
+      where: { id: version.skill_package_id, is_deleted: false, deleted_at: IsNull() },
+    });
+    if (!pkg) throw new NotFoundException('Skill package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    const canAccess = version.submitted_by === userId || pkg.created_by === userId || canApprove;
+    if (!canAccess) throw new ForbiddenException('You do not have access to this skill version');
+
+    let comparison: {
+      base_version_id: number | null;
+      base_version_no: number | null;
+      base: string | null;
+      incoming: string;
+    } | null = null;
+
+    if (version.state === SkillVersionState.PENDING) {
+      let predecessor: SkillVersion | null = null;
+      if (version.old_version != null) {
+        predecessor = await this.versionRepo.findOne({
+          where: {
+            skill_package_id: version.skill_package_id,
+            version_no: version.old_version,
+            state: SkillVersionState.APPROVED,
+            is_deleted: false,
+            deleted_at: IsNull(),
+          },
+        });
+        if (!predecessor) {
+          throw new ConflictException('Approved predecessor for this skill version was not found');
+        }
+      }
+      comparison = {
+        base_version_id: predecessor?.id ?? null,
+        base_version_no: predecessor?.version_no ?? null,
+        base: predecessor?.skill_md_content ?? null,
+        incoming: version.skill_md_content,
+      };
+    }
+
+    const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
+    if (version.files) version.files = version.files.filter((file) => !file.is_deleted);
+
+    const formattedVersion = formatVersion(version);
+    return {
+      package: {
+        id: pkg.id,
+        code: pkg.code,
+        status: pkg.status,
+        active_version_id: pkg.active_version_id,
+        created_by: pkg.created_by,
+      },
+      version: formattedVersion
+        ? {
+            ...formattedVersion,
+            submitted_by_email: emailMap.get(version.submitted_by) ?? null,
+            reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
+          }
+        : formattedVersion,
+      comparison,
+      can_review: version.state === SkillVersionState.PENDING && canApprove,
     };
   }
 

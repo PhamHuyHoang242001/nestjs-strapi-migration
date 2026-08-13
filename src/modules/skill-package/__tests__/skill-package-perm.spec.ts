@@ -37,6 +37,10 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('listItems')).toBeUndefined();
   });
 
+  it('stats has no RequirePermission metadata (auth-only, whole database)', () => {
+    expect(getPerm('stats')).toBeUndefined();
+  });
+
   it('getItem has no RequirePermission metadata', () => {
     expect(getPerm('getItem')).toBeUndefined();
   });
@@ -49,6 +53,10 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('getDiff')).toBeUndefined();
   });
 
+  it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {
+    expect(getPerm('getVersion')).toBeUndefined();
+  });
+
   it('myPermissions has no RequirePermission metadata', () => {
     expect(getPerm('myPermissions')).toBeUndefined();
   });
@@ -56,8 +64,10 @@ describe('SkillPackageController — perm mapping', () => {
   // M6: verify no DataAccess metadata on any skill route.
   const allMethods = [
     'listItems',
+    'stats',
     'getItem',
     'listReviews',
+    'getVersion',
     'getDiff',
     'myPermissions',
     'createItem',

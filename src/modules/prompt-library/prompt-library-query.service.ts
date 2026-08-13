@@ -1,6 +1,6 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 import { PromptVersion, PromptVersionState } from '@modules/databases/prompt-version.entity';
 import { ListPromptQueryDto } from './dto/list-prompt-query.dto';
@@ -27,6 +27,52 @@ export class PromptLibraryQueryService {
       unique,
     ])) as Array<{ id: number; email: string }>;
     return new Map(rows.map((r) => [Number(r.id), r.email]));
+  }
+
+  // Dashboard counters for the whole Prompt workspace. Each live package contributes exactly once
+  // to the lifecycle counters via its greatest live version id. Published is intentionally separate:
+  // a package may remain published while a newer update is pending or rejected.
+  async stats() {
+    const rows = (await this.versionRepo.manager.query(`
+      WITH latest AS (
+        SELECT DISTINCT ON (v.prompt_package_id) v.state
+        FROM prompt_versions v
+        INNER JOIN prompt_packages p ON p.id = v.prompt_package_id
+        WHERE v.deleted_at IS NULL AND v.is_deleted = false
+          AND p.deleted_at IS NULL AND p.is_deleted = false
+        ORDER BY v.prompt_package_id, v.id DESC
+      )
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE state = 'pending')::int AS pending,
+        COUNT(*) FILTER (WHERE state = 'approved')::int AS approved,
+        COUNT(*) FILTER (WHERE state = 'rejected')::int AS rejected,
+        (
+          SELECT COUNT(*)::int
+          FROM prompt_packages p
+          INNER JOIN prompt_versions av
+            ON av.id = p.active_version_id
+           AND av.prompt_package_id = p.id
+           AND av.state = 'approved'
+           AND av.deleted_at IS NULL
+           AND av.is_deleted = false
+          WHERE p.status = 'active'
+            AND p.active_version_id IS NOT NULL
+            AND p.deleted_at IS NULL
+            AND p.is_deleted = false
+        ) AS published
+      FROM latest
+    `)) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published', number | string>>;
+    const row = rows[0];
+    return {
+      data: {
+        total: Number(row?.total ?? 0),
+        pending: Number(row?.pending ?? 0),
+        approved: Number(row?.approved ?? 0),
+        rejected: Number(row?.rejected ?? 0),
+        published: Number(row?.published ?? 0),
+      },
+    };
   }
 
   // List active packages, joining the active version's fields.
@@ -311,6 +357,75 @@ export class PromptLibraryQueryService {
     return {
       data: data.map((v) => ({ ...v, submitted_by_email: emailMap.get(v.submitted_by) ?? null })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
+    };
+  }
+
+  // Full version detail shared by review and "My Version". Access is the union of those screens:
+  // submitter, package creator, or approver. Pending comparison uses the stored approved predecessor
+  // rather than active_version_id, keeping the result stable after later publication changes.
+  async versionDetail(versionId: number, userId: number) {
+    const version = await this.versionRepo.findOne({
+      where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
+    });
+    if (!version) throw new NotFoundException('Prompt version not found');
+
+    const pkg = await this.packageRepo.findOne({
+      where: { id: version.prompt_package_id, is_deleted: false, deleted_at: IsNull() },
+    });
+    if (!pkg) throw new NotFoundException('Prompt package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('prompt_approve');
+    const canAccess = version.submitted_by === userId || pkg.created_by === userId || canApprove;
+    if (!canAccess) throw new ForbiddenException('You do not have access to this prompt version');
+
+    let comparison: {
+      base_version_id: number | null;
+      base_version_no: number | null;
+      base: string | null;
+      incoming: string;
+    } | null = null;
+
+    if (version.state === PromptVersionState.PENDING) {
+      let predecessor: PromptVersion | null = null;
+      if (version.old_version != null) {
+        predecessor = await this.versionRepo.findOne({
+          where: {
+            prompt_package_id: version.prompt_package_id,
+            version_no: version.old_version,
+            state: PromptVersionState.APPROVED,
+            is_deleted: false,
+            deleted_at: IsNull(),
+          },
+        });
+        if (!predecessor) {
+          throw new ConflictException('Approved predecessor for this prompt version was not found');
+        }
+      }
+      comparison = {
+        base_version_id: predecessor?.id ?? null,
+        base_version_no: predecessor?.version_no ?? null,
+        base: predecessor?.prompt_content ?? null,
+        incoming: version.prompt_content,
+      };
+    }
+
+    const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
+    return {
+      package: {
+        id: pkg.id,
+        code: pkg.code,
+        status: pkg.status,
+        active_version_id: pkg.active_version_id,
+        created_by: pkg.created_by,
+      },
+      version: {
+        ...version,
+        submitted_by_email: emailMap.get(version.submitted_by) ?? null,
+        reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
+      },
+      comparison,
+      can_review: version.state === PromptVersionState.PENDING && canApprove,
     };
   }
 
