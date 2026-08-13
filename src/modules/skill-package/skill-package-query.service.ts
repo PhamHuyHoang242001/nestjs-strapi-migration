@@ -4,37 +4,11 @@ import { Repository } from 'typeorm';
 import { SkillPackage, SkillPackageStatus } from '@modules/databases/skill-package.entity';
 import { SkillVersion, SkillVersionState } from '@modules/databases/skill-version.entity';
 import { ListSkillQueryDto } from './dto/list-skill-query.dto';
-import { MyItemsQueryDto } from './dto/my-items-query.dto';
+import { ListVersionsDto } from './dto/list-versions.dto';
 import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
-import { formatVersion, toVersionFile, SkillFileResponse } from './skill-response.helper';
-import { SkillVersionFile, SkillVersionFileKind } from '@modules/databases/skill-version-file.entity';
-
-// Shape of a raw skill_versions row returned by manager.query() for representative resolution.
-// Only the columns the my-items summary reads are typed; skill_md_content / reject_reason are
-// intentionally not surfaced downstream.
-interface RawVersionRow {
-  id: number | string;
-  skill_package_id: number | string;
-  version_no: number | string;
-  state: SkillVersionState;
-  name: string;
-  short_description: string;
-  category: string;
-  tags: string[] | null;
-  avatar_url: string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-// my-items row = the latest version per owned package joined to its package fields, plus the
-// window-function page total. `total_count` is identical on every row of a page (COUNT(*) OVER()).
-interface RawMyItemRow extends RawVersionRow {
-  pkg_status: SkillPackageStatus;
-  active_version_id: number | null;
-  created_by: number;
-  total_count: number | string;
-}
+import { formatVersion } from './skill-response.helper';
+import { SkillVersionFileKind } from '@modules/databases/skill-version-file.entity';
 
 @Injectable()
 export class SkillPackageQueryService {
@@ -158,9 +132,11 @@ export class SkillPackageQueryService {
       throw new NotFoundException('Skill package not found or inactive');
     }
 
+    // History is APPROVED-only for every role (the timeline shows the published lineage). Order by
+    // id DESC — recency by surrogate id, a locked label-agnostic decision (see method doc).
     const versions = await this.versionRepo.find({
-      where: { skill_package_id: packageId, is_deleted: false },
-      order: { id: 'DESC' }, // recency by surrogate id, label-agnostic (see method doc)
+      where: { skill_package_id: packageId, is_deleted: false, state: SkillVersionState.APPROVED },
+      order: { id: 'DESC' },
       relations: ['files'],
     });
 
@@ -176,7 +152,12 @@ export class SkillPackageQueryService {
 
     // Edit gate: approver may edit any package; an uploader may edit only their own.
     const isUpdate = canApprove || (canUpload && isOwner);
-    const hasPendingVersion = versions.some((v) => v.state === SkillVersionState.PENDING);
+    // hasPendingVersion MUST be sourced from a separate query — the versions[] above is approved-only
+    // now, so deriving it from that array would always report false and never disable the Edit button.
+    const hasPendingVersion =
+      (await this.versionRepo.count({
+        where: { skill_package_id: packageId, is_deleted: false, state: SkillVersionState.PENDING },
+      })) > 0;
 
     // Content scrubbing: a caller who is neither owner nor approver must not read the draft
     // skill.md / reject reason of non-approved (pending/rejected) versions. The approved
@@ -213,107 +194,99 @@ export class SkillPackageQueryService {
     };
   }
 
-  // My Skill: the caller's own packages, bucketed by the LATEST version's state (query.status,
-  // mandatory). "Latest" = newest non-deleted version by id — the monotonic surrogate, NOT version_no
-  // (a display label that may later be non-numeric, e.g. "1.0.1", so ordering on it would be wrong).
-  // We deliberately key on the latest version's state, not active_version_id: that column tracks the
-  // published/approved version and lags behind a newer pending or rejected resubmission.
-  //   pending  → newest version awaiting review    approved → newest version approved
-  //   rejected → newest version rejected
-  // Filtering (status + optional search/category) and pagination all run in one SQL round-trip:
-  // DISTINCT ON resolves the latest version per package, COUNT(*) OVER() yields the page total.
-  // Content columns (skill_md_content / reject_reason) are omitted — the grid needs only badge + identity.
-  async listMyItems(query: MyItemsQueryDto, userId: number) {
-    const page = query.page ?? 1;
-    const limit = Math.min(query.limit ?? 20, 100);
-    const offset = (page - 1) * limit;
-
-    // Bind params positionally: $1=userId, $2=status, then any search/category, then limit/offset.
-    // Search/category are applied against the latest-version columns (never string-interpolated).
-    const params: unknown[] = [userId, query.status];
-    const filters: string[] = [];
-    const kw = query.search?.trim();
-    if (kw) {
-      params.push(`%${kw.toLowerCase()}%`);
-      filters.push(`(lower(name) LIKE $${params.length} OR lower(short_description) LIKE $${params.length})`);
+  // "My Version" list: flat 1-row-per-version across pending + approved + rejected, always scoped to
+  // the caller. Every caller — INCLUDING approvers — sees only the versions they personally submitted
+  // (v.submitted_by) OR that belong to a package they created (p.created_by). There is no role-based
+  // "see all" here; an approver's org-wide view lives in the review queue, not this personal list.
+  // Thin projection (NO content columns). codesOnly=true short-circuits to the distinct-code list for
+  // the filter multi-select under the IDENTICAL visibility predicate so the options can never drift.
+  async listVersions(query: ListVersionsDto, userId: number) {
+    // Shared visibility WHERE + params for both the list and codesOnly modes. Own-scope is always
+    // applied — the caller's role does not widen it.
+    const params: unknown[] = [];
+    const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
+    params.push(userId);
+    where.push(`(v.submitted_by = $${params.length} OR p.created_by = $${params.length})`);
+    if (query.skill_package_id?.length) {
+      params.push(query.skill_package_id);
+      where.push(`p.id = ANY($${params.length})`);
     }
-    const cat = query.category?.trim();
-    if (cat) {
-      params.push(cat.toLowerCase());
-      filters.push(`lower(category) = $${params.length}`);
-    }
-    const filterSql = filters.length ? `AND ${filters.join(' AND ')}` : '';
-    const limitIdx = params.push(limit);
-    const offsetIdx = params.push(offset);
+    const whereSql = where.join(' AND ');
 
-    const rows = (await this.versionRepo.manager.query(
-      `WITH latest AS (
-         SELECT DISTINCT ON (v.skill_package_id)
-           v.id, v.skill_package_id, v.version_no, v.state, v.name, v.short_description,
-           v.category, v.tags, v.avatar_url, v.created_at, v.updated_at,
-           p.status AS pkg_status, p.active_version_id, p.created_by
+    // Filter-options mode: one distinct (id, code, name) row per accessible package, newest name wins.
+    if (query.codesOnly) {
+      const rows = (await this.versionRepo.manager.query(
+        `SELECT DISTINCT ON (p.code) p.id AS package_id, p.code, v.name AS package_name
          FROM skill_versions v
          INNER JOIN skill_packages p ON p.id = v.skill_package_id
-         WHERE p.created_by = $1
-           AND p.is_deleted = false AND p.deleted_at IS NULL
-           AND v.is_deleted = false AND v.deleted_at IS NULL
-         ORDER BY v.skill_package_id, v.id DESC
-       ),
-       bucket AS (
-         SELECT * FROM latest WHERE state = $2 ${filterSql}
-       )
-       SELECT *, COUNT(*) OVER() AS total_count
-       FROM bucket
-       ORDER BY id DESC
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      params,
-    )) as RawMyItemRow[];
-
-    if (!rows.length) return { data: [], meta: { total: 0, page, limit } };
-    const total = Number(rows[0].total_count);
-
-    // Batch-load the zip file for the ≤limit representatives on this page only (raw rows carry no
-    // files relation, so without this each version folds to file:null). Soft-delete filtered.
-    const repIds = rows.map((r) => Number(r.id));
-    const fileRows = (await this.versionRepo.manager.query(
-      `SELECT * FROM skill_version_files
-       WHERE skill_version_id = ANY($1) AND deleted_at IS NULL AND is_deleted = false`,
-      [repIds],
-    )) as Array<SkillVersionFile & { skill_version_id: number }>;
-    const filesByVersionId = new Map<number, SkillVersionFile[]>();
-    for (const f of fileRows) {
-      const vid = Number(f.skill_version_id);
-      const list = filesByVersionId.get(vid) ?? [];
-      list.push(f);
-      filesByVersionId.set(vid, list);
+         WHERE ${whereSql}
+         ORDER BY p.code, v.id DESC`,
+        params,
+      )) as Array<{ package_id: number; code: string; package_name: string }>;
+      return { data: rows.map((r) => ({ ...r, package_id: Number(r.package_id) })) };
     }
 
-    const data = rows.map((r) => {
-      const file: SkillFileResponse | null = toVersionFile(filesByVersionId.get(Number(r.id)));
-      return {
-        id: Number(r.skill_package_id),
-        status: r.pkg_status,
-        active_version_id: r.active_version_id,
-        created_by: r.created_by,
-        // Thin projection — omit skill_md_content / reject_reason.
-        version: {
-          id: Number(r.id),
-          version_no: Number(r.version_no),
-          state: r.state,
-          name: r.name,
-          short_description: r.short_description,
-          category: r.category,
-          tags: r.tags ?? [],
-          avatar_url: r.avatar_url ?? null,
-          file,
-          created_at: r.created_at,
-          updated_at: r.updated_at,
-        },
-        latest_state: r.state,
-      };
-    });
+    // State filter is applied to the rows only (NOT to codesOnly — the select lists all accessible
+    // packages regardless of the currently chosen state).
+    const rowParams = [...params];
+    let stateSql = '';
+    if (query.state && query.state !== 'all') {
+      rowParams.push(query.state);
+      stateSql = ` AND v.state = $${rowParams.length}`;
+    }
 
-    return { data, meta: { total, page, limit } };
+    const page = query.page ?? 1;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const orderDir = query.sort === 'oldest' ? 'ASC' : 'DESC';
+
+    const countRows = (await this.versionRepo.manager.query(
+      `SELECT COUNT(*)::int AS total
+       FROM skill_versions v
+       INNER JOIN skill_packages p ON p.id = v.skill_package_id
+       WHERE ${whereSql}${stateSql}`,
+      rowParams,
+    )) as Array<{ total: number }>;
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const limitIdx = rowParams.push(pageSize);
+    const offsetIdx = rowParams.push((page - 1) * pageSize);
+    const rows = (await this.versionRepo.manager.query(
+      `SELECT p.id AS package_id, p.code, v.id AS version_id, v.name AS package_name,
+              v.old_version, v.version_no, v.state, v.submitted_by, v.created_at
+       FROM skill_versions v
+       INNER JOIN skill_packages p ON p.id = v.skill_package_id
+       WHERE ${whereSql}${stateSql}
+       ORDER BY v.created_at ${orderDir}, v.id ${orderDir}
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      rowParams,
+    )) as Array<{
+      package_id: number;
+      code: string;
+      version_id: number;
+      package_name: string;
+      old_version: number | null;
+      version_no: number;
+      state: SkillVersionState;
+      submitted_by: number;
+      created_at: Date | string;
+    }>;
+
+    const emailMap = await this.resolveEmails(rows.map((r) => r.submitted_by));
+    const data = rows.map((r) => ({
+      package_id: Number(r.package_id),
+      code: r.code,
+      package_name: r.package_name,
+      version_id: Number(r.version_id),
+      old_version: r.old_version == null ? null : Number(r.old_version),
+      version_no: Number(r.version_no),
+      state: r.state,
+      submitted_by_email: emailMap.get(Number(r.submitted_by)) ?? null,
+      created_at: r.created_at,
+      // "mới" badge signal: first-ever pending (never had an approved predecessor).
+      is_first_pending: r.state === SkillVersionState.PENDING && r.old_version == null,
+    }));
+
+    return { data, meta: { total, page, limit: pageSize } };
   }
 
   // Review queue: approvers see all pending; non-approvers are forced to own-submitted only.
@@ -404,6 +377,9 @@ export class SkillPackageQueryService {
       metadata: {
         version_id: version.id,
         version_no: version.version_no,
+        // Predecessor approved number this version builds on (NULL = first-ever). Additive: lets the
+        // review UI render "mới" vs "v{old_version} chờ duyệt" instead of a bare placeholder number.
+        old_version: version.old_version ?? null,
         state: version.state,
         name: version.name,
         category: version.category,

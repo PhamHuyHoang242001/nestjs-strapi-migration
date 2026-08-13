@@ -27,6 +27,14 @@ export class PromptVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public version_no: number;
 
+  // Predecessor approved version_no this row builds on (NULL for the first-ever version).
+  // Numbering mechanic: an update sets old_version = latest approved non-deleted version_no and
+  // version_no = old_version (a placeholder sharing the live number); approve finalizes
+  // version_no = (old_version ?? 0) + 1. A pending row with old_version IS NULL is the "mới" signal.
+  // version_no stays NOT NULL; only this predecessor label is nullable.
+  @Column({ type: 'int', nullable: true })
+  public old_version: number | null;
+
   @Column({ type: 'varchar', default: PromptVersionState.PENDING })
   public state: PromptVersionState;
 

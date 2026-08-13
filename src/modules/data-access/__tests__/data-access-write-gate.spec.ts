@@ -11,7 +11,7 @@ import { RecordPathService } from '../services/record-path.service';
 import { CreateDataAccessDto } from '../dto/create-data-access.dto';
 
 const DIAG_TABLE = 'bi_hub_diagnostic_reports'; // in MANAGE_ENABLED_MODULES
-const OTHER_TABLE = 'bi_payment_programs'; // NOT in MANAGE_ENABLED_MODULES
+const OWNER_CHAIN_TABLE = 'bi_hub_reports'; // rule-target, owner-chain, NOT manage-enabled → now gated
 
 /**
  * Builds a service whose canManageRecord answers per (recordId) via `manageable`,
@@ -118,10 +118,13 @@ describe('DataAccessService write-gate (manage-enabled table)', () => {
     // (no rule created because we threw before entering the transaction).
   });
 
-  it('create: table OUTSIDE MANAGE_ENABLED_MODULES → no record-scope gate', async () => {
-    const { service, filterManageableRecords } = makeService({ tableName: OTHER_TABLE, manageable: () => false });
-    await expect(service.create(baseDto([1, 2]), 'u', { id: 5 }, 'user')).resolves.toBeDefined();
-    expect(filterManageableRecords).not.toHaveBeenCalled();
+  it('create: owner-chain rule-target table (not manage-enabled) → now gated with create-verb', async () => {
+    const { service, filterManageableRecords } = makeService({ tableName: OWNER_CHAIN_TABLE, manageable: () => false });
+    // The gate now covers every rule-target table, not just manage-enabled ones (hole closed).
+    await expect(service.create(baseDto([1, 2]), 'u', { id: 5 }, 'user')).rejects.toThrow('not_record_manager');
+    expect(filterManageableRecords).toHaveBeenCalledWith(CALLER, OWNER_CHAIN_TABLE, [1, 2], 'perm_data_access_create', {
+      bypassCache: true,
+    });
   });
 
   it('create: no caller (internal/unscoped) → no gate', async () => {

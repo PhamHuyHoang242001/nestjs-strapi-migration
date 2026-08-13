@@ -2,6 +2,7 @@ import { RedisAdapter } from '@common/infrastructure/redis.adapter';
 import { ExecutionContext } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { FRONTEND_BASE_URL, PUBLIC_BASE_URL } from '@configuration/env.config';
 import { TransformFileAuthGuard } from './transform-file-auth.guard';
 import { TransformFileAuthRedirectException } from './transform-file-auth-redirect.exception';
 
@@ -82,8 +83,10 @@ describe('TransformFileAuthGuard', () => {
       await guard.canActivate(asContext(req));
     } catch (err) {
       const url = (err as TransformFileAuthRedirectException).url;
-      expect(url).toContain('/login?url=');
-      expect(url).toContain(encodeURIComponent('https://api.example.com/api/media/transform-file/5'));
+      // Return target is built from the configured public origin (PUBLIC_BASE_URL), NOT the request
+      // protocol/host — behind an ingress the pod sees an unreachable cluster-internal host.
+      expect(url).toContain(`${FRONTEND_BASE_URL}/login?url=`);
+      expect(url).toContain(encodeURIComponent(`${PUBLIC_BASE_URL}/api/media/transform-file/5`));
     }
   });
 

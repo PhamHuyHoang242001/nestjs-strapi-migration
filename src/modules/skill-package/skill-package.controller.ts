@@ -31,7 +31,7 @@ import {
   CreateSkillPackageDto,
   CreateSkillVersionDto,
   ListSkillQueryDto,
-  MyItemsQueryDto,
+  ListVersionsDto,
   RejectSkillVersionDto,
   ReviewQueryDto,
   ToggleStatusDto,
@@ -116,16 +116,6 @@ export class SkillPackageController {
     stream.pipe(res);
   }
 
-  // GET /v1/skill/my-items — caller's own packages, bucketed by the latest version's state
-  // (status=pending|approved|rejected is required). SQL-paginated.
-  @ApiOperation({ summary: "List caller's own skill packages by latest-version state" })
-  @Get('my-items')
-  listMyItems(@Query() q: MyItemsQueryDto, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number;
-    if (!userId) throw new ForbiddenException('User not authenticated');
-    return this.queryService.listMyItems(q, userId);
-  }
-
   // GET /v1/skill/reviews — pending versions queue; service enforces scope authz (C3).
   @ApiOperation({ summary: 'Review queue (approver=all pending; else own only)' })
   @Get('reviews')
@@ -133,6 +123,18 @@ export class SkillPackageController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.queryService.listReviews(q, userId);
+  }
+
+  // GET /v1/skill/versions — flat "My Version" list (all states) with code/state filters +
+  // pagination. codesOnly=true returns the distinct-code options for the filter select.
+  // BearerGuard only; always own-scoped in the service — every caller, approver included, sees only
+  // versions they submitted or that belong to a package they created (role never widens this).
+  @ApiOperation({ summary: 'List my versions (own-scope for every role, approver included)' })
+  @Get('versions')
+  listVersions(@Query() q: ListVersionsDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.listVersions(q, userId);
   }
 
   // GET /v1/skill/versions/:vid/diff — service enforces owner-or-approver (C4).

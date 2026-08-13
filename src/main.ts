@@ -16,7 +16,14 @@ import i18n from './service/i18n';
 import * as bodyParser from 'body-parser';
 import { NODE_ENVIRONMENT } from './constant';
 
-function initializeApp(app: INestApplication): void {
+function initializeApp(app: NestExpressApplication): void {
+  // Express 5 defaults the query parser to 'simple' (Node querystring), which does NOT understand
+  // bracket-array notation: `tags[]=a&tags[]=b` yields a literal key `tags[]`
+  // instead of an array under `tags`, so array query params silently drop (whitelist strips
+  // the unknown key). Restore the 'extended' (qs) parser so `key[]=...` maps to an array — matching
+  // how the frontend (axios default) serializes array params.
+  app.set('query parser', 'extended');
+
   app.enableCors({
     // Reflect the request origin when it is in the allowlist. Required because a `*` wildcard
     // is invalid together with `credentials: true`, which browsers reject for credentialed calls.

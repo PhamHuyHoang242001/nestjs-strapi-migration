@@ -164,7 +164,7 @@ describe('DataAccessInterceptor — dataScope shape', () => {
     expect(ownerScope.getOwnedRoots).not.toHaveBeenCalled();
   });
 
-  it('rootTable IS the table itself (bi_payment_projects, root with no owner config) → ownedRoots null when user owns none', async () => {
+  it('child table resolves to its hierarchy root (bi_payment_projects → bi_hub_bicc_departments) → ownedRoots null when user owns none', async () => {
     reflector.getAllAndOverride.mockReturnValue({ tableName: 'bi_payment_projects', permissionCode: 'pay_view' });
     permissionCache.getAccessibleRecords.mockResolvedValue([10]);
     ownerScope.getOwnedRoots.mockResolvedValue([]);
@@ -172,8 +172,10 @@ describe('DataAccessInterceptor — dataScope shape', () => {
     const info: Record<string, unknown> = { user: { id: 1 }, client: 'user' };
     await interceptor.intercept(context(info), next);
 
+    // bi_payment_projects is parented under bi_hub_bicc_departments in HIERARCHY_MAP, so the owner
+    // scope is resolved against that root (not the table itself).
     expect(info.dataScope).toEqual({ explicit: [10], ownedRoots: null });
-    expect(ownerScope.getOwnedRoots).toHaveBeenCalledWith(1, 'bi_payment_projects');
+    expect(ownerScope.getOwnedRoots).toHaveBeenCalledWith(1, 'bi_hub_bicc_departments');
   });
 
   it('regression guard: interceptor never reintroduces the legacy accessibleDataIds field', async () => {

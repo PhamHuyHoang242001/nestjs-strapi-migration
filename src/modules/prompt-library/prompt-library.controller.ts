@@ -29,7 +29,7 @@ import {
   CreatePromptPackageDto,
   CreatePromptVersionDto,
   ListPromptQueryDto,
-  MyItemsQueryDto,
+  ListVersionsDto,
   RejectPromptVersionDto,
   ReviewQueryDto,
   ToggleStatusDto,
@@ -90,16 +90,6 @@ export class PromptLibraryController {
     res.send(md);
   }
 
-  // GET /v1/prompt/my-items — caller's own packages, bucketed by the latest version's state
-  // (status=pending|approved|rejected is required). SQL-paginated.
-  @ApiOperation({ summary: "List caller's own prompt packages by latest-version state" })
-  @Get('my-items')
-  listMyItems(@Query() q: MyItemsQueryDto, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number;
-    if (!userId) throw new ForbiddenException('User not authenticated');
-    return this.queryService.listMyItems(q, userId);
-  }
-
   // GET /v1/prompt/reviews — pending versions queue; service enforces scope authz.
   @ApiOperation({ summary: 'Review queue (approver=all pending; else own only)' })
   @Get('reviews')
@@ -107,6 +97,18 @@ export class PromptLibraryController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.queryService.listReviews(q, userId);
+  }
+
+  // GET /v1/prompt/versions — flat "My Version" list (all states) with code/state filters +
+  // pagination. codesOnly=true returns the distinct-code options for the filter select.
+  // BearerGuard only; always own-scoped in the service — every caller, approver included, sees only
+  // versions they submitted or that belong to a package they created (role never widens this).
+  @ApiOperation({ summary: 'List my versions (own-scope for every role, approver included)' })
+  @Get('versions')
+  listVersions(@Query() q: ListVersionsDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.listVersions(q, userId);
   }
 
   // GET /v1/prompt/versions/:vid/diff — service enforces owner-or-approver.

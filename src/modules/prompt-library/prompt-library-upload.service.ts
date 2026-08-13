@@ -39,15 +39,21 @@ export class PromptLibraryUploadService {
           status: PromptPackageStatus.ACTIVE,
           active_version_id: null,
           created_by: userId,
+          // Placeholder; the real code needs the generated id and is set immediately below.
+          code: '',
         }),
       );
 
-      // version_no=1 assigned at submit time.
+      // code = 'prompt_<id>' — set post-insert (id known only now) in the SAME tx.
+      await manager.update(PromptPackage, savedPkg.id, { code: `prompt_${savedPkg.id}` });
+
+      // First-ever version: version_no=1 (NOT NULL) and old_version=NULL (the "mới" signal).
       const savedVersion = await manager.save(
         PromptVersion,
         manager.create(PromptVersion, {
           prompt_package_id: savedPkg.id,
           version_no: 1,
+          old_version: null,
           state: PromptVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
@@ -82,21 +88,27 @@ export class PromptLibraryUploadService {
 
     try {
       return await this.dataSource.transaction(async (manager) => {
-        // Assign version_no as max(existing) + 1. The SELECT FOR UPDATE on package
-        // row plus the unique index (package_id, version_no) together prevent races.
-        // If two concurrent submits collide on the partial-unique pending index,
-        // PG raises 23505 which we catch below and surface as 409.
+        // Serialize concurrent submits on the same package via a row lock, then derive old_version
+        // from the latest APPROVED non-deleted version_no — NOT from active_version_id, which can
+        // point at a soft-deleted row. The pending version shares that number as a placeholder
+        // (version_no = old_version); approve later finalizes version_no = (old_version ?? 0) + 1.
+        // The one-pending partial index still guards against a second pending (23505 → 409 below).
         await manager.query('SELECT id FROM prompt_packages WHERE id = $1 FOR UPDATE', [packageId]);
 
         const maxRow = await manager.query<{ max: string | null }[]>(
-          'SELECT MAX(version_no) AS max FROM prompt_versions WHERE prompt_package_id = $1 AND deleted_at IS NULL',
+          `SELECT MAX(version_no) AS max FROM prompt_versions
+           WHERE prompt_package_id = $1 AND state = 'approved' AND is_deleted = false AND deleted_at IS NULL`,
           [packageId],
         );
-        const nextVersionNo = Number(maxRow[0]?.max ?? 0) + 1;
+        const oldVersion = maxRow[0]?.max == null ? null : Number(maxRow[0].max);
+        // version_no stays NOT NULL: fall back to 1 when nothing is approved yet (resubmit after a
+        // rejected first version) — same shape as a fresh first pending (old_version NULL).
+        const placeholderVersionNo = oldVersion ?? 1;
 
         const version = manager.create(PromptVersion, {
           prompt_package_id: packageId,
-          version_no: nextVersionNo,
+          version_no: placeholderVersionNo,
+          old_version: oldVersion,
           state: PromptVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
@@ -109,7 +121,7 @@ export class PromptLibraryUploadService {
         });
         const saved = await manager.save(PromptVersion, version);
 
-        return { version: { id: saved.id, version_no: nextVersionNo } };
+        return { version: { id: saved.id, version_no: placeholderVersionNo } };
       });
     } catch (err) {
       // Catch PG unique-violation on partial-unique pending index → 409.
@@ -127,36 +139,48 @@ export class PromptLibraryUploadService {
   // Approve a pending version in a single transaction (atomicity requirement).
   // Sets version.state=approved and package.active_version_id = version.id atomically.
   async approve(versionId: number, userId: number) {
-    return this.dataSource.transaction(async (manager) => {
-      // pessimistic_write lock: a concurrent second approve blocks here, then
-      // reads state=approved and 403s — preventing double-approve overwriting
-      // reviewed_by/at under the "only pending can be approved" invariant.
-      const version = await manager.findOne(PromptVersion, {
-        where: { id: versionId, is_deleted: false },
-        lock: { mode: 'pessimistic_write' },
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        // pessimistic_write lock: a concurrent second approve blocks here, then
+        // reads state=approved and 403s — preventing double-approve overwriting
+        // reviewed_by/at under the "only pending can be approved" invariant.
+        const version = await manager.findOne(PromptVersion, {
+          where: { id: versionId, is_deleted: false },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!version) throw new NotFoundException('Prompt version not found');
+        if (version.state !== PromptVersionState.PENDING) {
+          throw new ForbiddenException('Only pending versions can be approved');
+        }
+
+        // Finalize the gapless approved number: (predecessor approved ?? 0) + 1. old_version is
+        // left untouched so the approved row records what it built on.
+        version.version_no = (version.old_version ?? 0) + 1;
+        version.state = PromptVersionState.APPROVED;
+        version.reviewed_by = userId;
+        version.reviewed_at = new Date();
+        await manager.save(PromptVersion, version);
+
+        // Promote this version to the active version; ensure package is active.
+        const pkg = await manager.findOne(PromptPackage, {
+          where: { id: version.prompt_package_id },
+        });
+        if (!pkg) throw new NotFoundException('Prompt package not found');
+
+        pkg.active_version_id = versionId;
+        pkg.status = PromptPackageStatus.ACTIVE;
+        await manager.save(PromptPackage, pkg);
+
+        return { version_id: versionId, package_id: version.prompt_package_id };
       });
-      if (!version) throw new NotFoundException('Prompt version not found');
-      if (version.state !== PromptVersionState.PENDING) {
-        throw new ForbiddenException('Only pending versions can be approved');
+    } catch (err) {
+      // The approved-only partial-unique (prompt_package_id, version_no) can now fire here if a
+      // duplicate approved number is ever produced concurrently — surface it as a clean 409.
+      if (err instanceof QueryFailedError && (err as any).code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException('This version number is already approved for this package.');
       }
-
-      version.state = PromptVersionState.APPROVED;
-      version.reviewed_by = userId;
-      version.reviewed_at = new Date();
-      await manager.save(PromptVersion, version);
-
-      // Promote this version to the active version; ensure package is active.
-      const pkg = await manager.findOne(PromptPackage, {
-        where: { id: version.prompt_package_id },
-      });
-      if (!pkg) throw new NotFoundException('Prompt package not found');
-
-      pkg.active_version_id = versionId;
-      pkg.status = PromptPackageStatus.ACTIVE;
-      await manager.save(PromptPackage, pkg);
-
-      return { version_id: versionId, package_id: version.prompt_package_id };
-    });
+      throw err;
+    }
   }
 
   // Reject requires a non-empty reason; the DTO's @IsNotEmpty handles the 400 case.

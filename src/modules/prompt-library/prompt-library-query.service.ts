@@ -4,35 +4,9 @@ import { Repository } from 'typeorm';
 import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 import { PromptVersion, PromptVersionState } from '@modules/databases/prompt-version.entity';
 import { ListPromptQueryDto } from './dto/list-prompt-query.dto';
-import { MyItemsQueryDto } from './dto/my-items-query.dto';
+import { ListVersionsDto } from './dto/list-versions.dto';
 import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
-
-// Shape of a raw prompt_versions row returned by manager.query() for representative resolution.
-// Only the columns the my-items summary reads are typed; prompt_content / reject_reason are
-// intentionally not surfaced downstream.
-interface RawVersionRow {
-  id: number | string;
-  prompt_package_id: number | string;
-  version_no: number | string;
-  state: PromptVersionState;
-  name: string;
-  short_description: string;
-  category: string;
-  tags: string[] | null;
-  avatar_url: string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-// my-items row = the latest version per owned package joined to its package fields, plus the
-// window-function page total. `total_count` is identical on every row of a page (COUNT(*) OVER()).
-interface RawMyItemRow extends RawVersionRow {
-  pkg_status: PromptPackageStatus;
-  active_version_id: number | null;
-  created_by: number;
-  total_count: number | string;
-}
 
 @Injectable()
 export class PromptLibraryQueryService {
@@ -149,14 +123,21 @@ export class PromptLibraryQueryService {
       throw new NotFoundException('Prompt package not found or inactive');
     }
 
+    // History is APPROVED-only for every role (the timeline shows the published lineage). Order by
+    // id DESC — recency by surrogate id, a locked label-agnostic decision (see method doc).
     const versions = await this.versionRepo.find({
-      where: { prompt_package_id: packageId, is_deleted: false },
-      order: { id: 'DESC' }, // recency by surrogate id, label-agnostic (see method doc)
+      where: { prompt_package_id: packageId, is_deleted: false, state: PromptVersionState.APPROVED },
+      order: { id: 'DESC' },
     });
 
     // Edit gate: approver may edit any package; an uploader may edit only their own.
     const isUpdate = canApprove || (canUpload && isOwner);
-    const hasPendingVersion = versions.some((v) => v.state === PromptVersionState.PENDING);
+    // hasPendingVersion MUST be sourced from a separate query — the versions[] above is approved-only
+    // now, so deriving it from that array would always report false and never disable the Edit button.
+    const hasPendingVersion =
+      (await this.versionRepo.count({
+        where: { prompt_package_id: packageId, is_deleted: false, state: PromptVersionState.PENDING },
+      })) > 0;
 
     // Content scrubbing: a caller who is neither owner nor approver must not read the draft
     // prompt_content / reject reason of non-approved (pending/rejected) versions. The approved
@@ -192,87 +173,99 @@ export class PromptLibraryQueryService {
     };
   }
 
-  // My Prompt: the caller's own packages, bucketed by the LATEST version's state (query.status,
-  // mandatory). "Latest" = newest non-deleted version by id — the monotonic surrogate, NOT version_no
-  // (a display label that may later be non-numeric, e.g. "1.0.1", so ordering on it would be wrong).
-  // We deliberately key on the latest version's state, not active_version_id: that column tracks the
-  // published/approved version and lags behind a newer pending or rejected resubmission.
-  //   pending  → newest version awaiting review    approved → newest version approved
-  //   rejected → newest version rejected
-  // Filtering (status + optional search/category) and pagination all run in one SQL round-trip:
-  // DISTINCT ON resolves the latest version per package, COUNT(*) OVER() yields the page total.
-  // Content columns (prompt_content / reject_reason) are omitted — the grid needs only badge + identity.
-  async listMyItems(query: MyItemsQueryDto, userId: number) {
-    const page = query.page ?? 1;
-    const limit = Math.min(query.limit ?? 20, 100);
-    const offset = (page - 1) * limit;
-
-    // Bind params positionally: $1=userId, $2=status, then any search/category, then limit/offset.
-    // Search/category are applied against the latest-version columns (never string-interpolated).
-    const params: unknown[] = [userId, query.status];
-    const filters: string[] = [];
-    const kw = query.search?.trim();
-    if (kw) {
-      params.push(`%${kw.toLowerCase()}%`);
-      filters.push(`(lower(name) LIKE $${params.length} OR lower(short_description) LIKE $${params.length})`);
+  // "My Version" list: flat 1-row-per-version across pending + approved + rejected, always scoped to
+  // the caller. Every caller — INCLUDING approvers — sees only the versions they personally submitted
+  // (v.submitted_by) OR that belong to a package they created (p.created_by). There is no role-based
+  // "see all" here; an approver's org-wide view lives in the review queue, not this personal list.
+  // Thin projection (NO content columns). codesOnly=true short-circuits to the distinct-code list for
+  // the filter multi-select under the IDENTICAL visibility predicate so the options can never drift.
+  async listVersions(query: ListVersionsDto, userId: number) {
+    // Shared visibility WHERE + params for both the list and codesOnly modes. Own-scope is always
+    // applied — the caller's role does not widen it.
+    const params: unknown[] = [];
+    const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
+    params.push(userId);
+    where.push(`(v.submitted_by = $${params.length} OR p.created_by = $${params.length})`);
+    if (query.prompt_package_id?.length) {
+      params.push(query.prompt_package_id);
+      where.push(`p.id = ANY($${params.length})`);
     }
-    const cat = query.category?.trim();
-    if (cat) {
-      params.push(cat.toLowerCase());
-      filters.push(`lower(category) = $${params.length}`);
-    }
-    const filterSql = filters.length ? `AND ${filters.join(' AND ')}` : '';
-    const limitIdx = params.push(limit);
-    const offsetIdx = params.push(offset);
+    const whereSql = where.join(' AND ');
 
-    const rows = (await this.versionRepo.manager.query(
-      `WITH latest AS (
-         SELECT DISTINCT ON (v.prompt_package_id)
-           v.id, v.prompt_package_id, v.version_no, v.state, v.name, v.short_description,
-           v.category, v.tags, v.avatar_url, v.created_at, v.updated_at,
-           p.status AS pkg_status, p.active_version_id, p.created_by
+    // Filter-options mode: one distinct (id, code, name) row per accessible package, newest name wins.
+    if (query.codesOnly) {
+      const rows = (await this.versionRepo.manager.query(
+        `SELECT DISTINCT ON (p.code) p.id AS package_id, p.code, v.name AS package_name
          FROM prompt_versions v
          INNER JOIN prompt_packages p ON p.id = v.prompt_package_id
-         WHERE p.created_by = $1
-           AND p.is_deleted = false AND p.deleted_at IS NULL
-           AND v.is_deleted = false AND v.deleted_at IS NULL
-         ORDER BY v.prompt_package_id, v.id DESC
-       ),
-       bucket AS (
-         SELECT * FROM latest WHERE state = $2 ${filterSql}
-       )
-       SELECT *, COUNT(*) OVER() AS total_count
-       FROM bucket
-       ORDER BY id DESC
+         WHERE ${whereSql}
+         ORDER BY p.code, v.id DESC`,
+        params,
+      )) as Array<{ package_id: number; code: string; package_name: string }>;
+      return { data: rows.map((r) => ({ ...r, package_id: Number(r.package_id) })) };
+    }
+
+    // State filter is applied to the rows only (NOT to codesOnly — the select lists all accessible
+    // packages regardless of the currently chosen state).
+    const rowParams = [...params];
+    let stateSql = '';
+    if (query.state && query.state !== 'all') {
+      rowParams.push(query.state);
+      stateSql = ` AND v.state = $${rowParams.length}`;
+    }
+
+    const page = query.page ?? 1;
+    const pageSize = Math.min(query.pageSize ?? 20, 100);
+    const orderDir = query.sort === 'oldest' ? 'ASC' : 'DESC';
+
+    const countRows = (await this.versionRepo.manager.query(
+      `SELECT COUNT(*)::int AS total
+       FROM prompt_versions v
+       INNER JOIN prompt_packages p ON p.id = v.prompt_package_id
+       WHERE ${whereSql}${stateSql}`,
+      rowParams,
+    )) as Array<{ total: number }>;
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const limitIdx = rowParams.push(pageSize);
+    const offsetIdx = rowParams.push((page - 1) * pageSize);
+    const rows = (await this.versionRepo.manager.query(
+      `SELECT p.id AS package_id, p.code, v.id AS version_id, v.name AS package_name,
+              v.old_version, v.version_no, v.state, v.submitted_by, v.created_at
+       FROM prompt_versions v
+       INNER JOIN prompt_packages p ON p.id = v.prompt_package_id
+       WHERE ${whereSql}${stateSql}
+       ORDER BY v.created_at ${orderDir}, v.id ${orderDir}
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      params,
-    )) as RawMyItemRow[];
+      rowParams,
+    )) as Array<{
+      package_id: number;
+      code: string;
+      version_id: number;
+      package_name: string;
+      old_version: number | null;
+      version_no: number;
+      state: PromptVersionState;
+      submitted_by: number;
+      created_at: Date | string;
+    }>;
 
-    if (!rows.length) return { data: [], meta: { total: 0, page, limit } };
-    const total = Number(rows[0].total_count);
-
+    const emailMap = await this.resolveEmails(rows.map((r) => r.submitted_by));
     const data = rows.map((r) => ({
-      id: Number(r.prompt_package_id),
-      status: r.pkg_status,
-      active_version_id: r.active_version_id,
-      created_by: r.created_by,
-      // Thin projection — omit prompt_content / reject_reason.
-      version: {
-        id: Number(r.id),
-        version_no: Number(r.version_no),
-        state: r.state,
-        name: r.name,
-        short_description: r.short_description,
-        category: r.category,
-        tags: r.tags ?? [],
-        avatar_url: r.avatar_url ?? null,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-      },
-      latest_state: r.state,
+      package_id: Number(r.package_id),
+      code: r.code,
+      package_name: r.package_name,
+      version_id: Number(r.version_id),
+      old_version: r.old_version == null ? null : Number(r.old_version),
+      version_no: Number(r.version_no),
+      state: r.state,
+      submitted_by_email: emailMap.get(Number(r.submitted_by)) ?? null,
+      created_at: r.created_at,
+      // "mới" badge signal: first-ever pending (never had an approved predecessor).
+      is_first_pending: r.state === PromptVersionState.PENDING && r.old_version == null,
     }));
 
-    return { data, meta: { total, page, limit } };
+    return { data, meta: { total, page, limit: pageSize } };
   }
 
   // Review queue: approvers see all pending; non-approvers are forced to own-submitted only.
@@ -360,6 +353,9 @@ export class PromptLibraryQueryService {
       metadata: {
         version_id: version.id,
         version_no: version.version_no,
+        // Predecessor approved number this version builds on (NULL = first-ever). Additive: lets the
+        // review UI render "mới" vs "v{old_version} chờ duyệt" instead of a bare placeholder number.
+        old_version: version.old_version ?? null,
         state: version.state,
         name: version.name,
         category: version.category,

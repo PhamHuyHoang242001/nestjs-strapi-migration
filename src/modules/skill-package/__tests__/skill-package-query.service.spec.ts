@@ -66,6 +66,9 @@ describe('SkillPackageQueryService', () => {
       createQueryBuilder: jest.fn(),
       findOne: jest.fn(),
       find: jest.fn(),
+      // hasPendingVersion is now sourced from a separate COUNT (history is approved-only). Default 0
+      // → no pending; tests needing a pending override this.
+      count: jest.fn().mockResolvedValue(0),
       // Default manager for the submitter-email resolver (SELECT id,email FROM users). Empty →
       // submitted_by_email resolves to null. Tests needing real emails override manager.query.
       manager: { query: jest.fn().mockResolvedValue([]) },
@@ -343,21 +346,47 @@ describe('SkillPackageQueryService', () => {
       expect(result.isUpdate).toBe(false);
     });
 
-    it('returns hasPendingVersion=true when a pending version exists', async () => {
+    it('returns hasPendingVersion=true from a SEPARATE count query even though history is approved-only', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: SkillPackageStatus.ACTIVE,
         created_by: USER_ID,
         active_version: { id: 10, files: [] },
       });
+      // History is approved-only now — the pending version is NOT in this array.
       versionRepo.find = jest.fn().mockResolvedValue([
-        { id: 11, version_no: 2, state: SkillVersionState.PENDING, files: [] },
         { id: 10, version_no: 1, state: SkillVersionState.APPROVED, files: [] },
       ]);
+      // The separate EXISTS/COUNT query reports the pending version.
+      versionRepo.count = jest.fn().mockResolvedValue(1);
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
 
       const result = await service.detail(1, USER_ID);
       expect(result.hasPendingVersion).toBe(true);
+      // Sourced from count, NOT from the approved-only history array.
+      expect(versionRepo.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ state: SkillVersionState.PENDING }) }),
+      );
+    });
+
+    it('detail history fetch is filtered to approved-only (id DESC order preserved)', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      await service.detail(1, USER_ID);
+
+      expect(versionRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ state: SkillVersionState.APPROVED, is_deleted: false }),
+          order: { id: 'DESC' },
+        }),
+      );
     });
 
     it('resolves submitted_by_email on active_version and history versions', async () => {
@@ -655,161 +684,138 @@ describe('SkillPackageQueryService', () => {
     });
   });
 
-  // ---- listMyItems — owner-scoped, bucketed by latest-version state, SQL-paginated ----
-  describe('listMyItems — status bucket on latest version + SQL pagination', () => {
-    // Helper: stub the two manager.query round-trips (1: bucket rows, 2: file rows) and expose the
-    // mock so tests can assert the emitted SQL / bound params of the bucket query.
-    function stubQueries(bucketRows: any[], fileRows: any[] = []) {
-      const query = jest.fn().mockResolvedValueOnce(bucketRows).mockResolvedValueOnce(fileRows);
+  // ---- listVersions — flat version-management list, permission-driven visibility ----
+  describe('listVersions — visibility from permission set (C1), thin projection, filters', () => {
+    // Dispatch manager.query by SQL shape: codesOnly / count / email-resolver / rows.
+    function stub(opts: { count?: number; rows?: any[]; codes?: any[]; emails?: any[] } = {}) {
+      const { count = 0, rows = [], codes = [], emails = [] } = opts;
+      const query = jest.fn().mockImplementation(async (sql: string) => {
+        if (/DISTINCT ON \(p\.code\)/.test(sql)) return codes;
+        if (/COUNT\(\*\)::int/.test(sql)) return [{ total: count }];
+        if (/SELECT id, email FROM users/.test(sql)) return emails;
+        return rows;
+      });
       versionRepo.manager = { query };
       return query;
     }
 
-    // A latest-version row as returned by the WITH…DISTINCT ON query (includes joined pkg fields
-    // and the COUNT(*) OVER() page total). Overridable per test.
-    function row(over: Record<string, unknown> = {}) {
+    function rawRow(over: Record<string, unknown> = {}) {
       return {
-        id: 10,
-        skill_package_id: 1,
+        package_id: 1,
+        code: 'skill_1',
+        version_id: 10,
+        package_name: 'My Skill',
+        old_version: null,
         version_no: 1,
-        state: SkillVersionState.APPROVED,
-        name: 'v1',
-        short_description: 'desc',
-        category: 'util',
-        tags: [],
-        avatar_url: null,
+        state: SkillVersionState.PENDING,
+        submitted_by: USER_ID,
         created_at: new Date(),
-        updated_at: new Date(),
-        pkg_status: SkillPackageStatus.ACTIVE,
-        active_version_id: 10,
-        created_by: USER_ID,
-        total_count: '1',
         ...over,
       };
     }
 
-    it('scopes to the caller ($1=userId) and binds the status bucket as $2', async () => {
-      const query = stubQueries([row({ state: SkillVersionState.PENDING })]);
+    it('non-approver → own-scope predicate (submitted_by OR created_by) applied', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']); // no skill_approve
+      const query = stub({ count: 1, rows: [rawRow()] });
 
-      await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.PENDING }, USER_ID);
+      await service.listVersions({ page: 1, pageSize: 20, state: 'all' }, USER_ID);
 
-      const [sql, params] = query.mock.calls[0];
-      expect(sql).toContain('DISTINCT ON (v.skill_package_id)');
-      expect(sql).toContain('p.created_by = $1');
-      expect(sql).toContain('WHERE state = $2');
-      expect(params[0]).toBe(USER_ID);
-      expect(params[1]).toBe(SkillVersionState.PENDING);
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
     });
 
-    it('paginates in SQL: LIMIT/OFFSET params derived from page/limit; total from COUNT(*) OVER()', async () => {
-      const query = stubQueries([row({ total_count: '7' })]);
+    it('approver → STILL own-scoped ("My Version" — role does not widen visibility)', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      const query = stub({ count: 0, rows: [] });
 
-      const result = await service.listMyItems({ page: 3, limit: 10, status: SkillVersionState.APPROVED }, USER_ID);
+      await service.listVersions({ page: 1, pageSize: 20, state: 'all' }, USER_ID);
 
-      const params = query.mock.calls[0][1];
-      // Last two bound params are limit then offset ((page-1)*limit = 20).
-      expect(params[params.length - 2]).toBe(10);
-      expect(params[params.length - 1]).toBe(20);
-      expect(result.meta).toEqual({ total: 7, page: 3, limit: 10 });
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      // Own-scope predicate applied for everyone, approver included — no "see all" here.
+      expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
     });
 
-    it('returns {data, meta:{total, page, limit}} mapped from bucket rows', async () => {
-      stubQueries([row()]);
+    it('skill_package_id can never widen scope: passing package ids stays own-scoped', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      const query = stub({ count: 0, rows: [] });
 
-      const result = await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.APPROVED }, USER_ID);
+      await service.listVersions({ skill_package_id: [7, 8], state: 'all' }, USER_ID);
 
-      expect(result).toMatchObject({ data: expect.any(Array), meta: { total: 1, page: 1, limit: 20 } });
-      const item = result.data[0];
-      expect(item.id).toBe(1);
-      expect(item.status).toBe(SkillPackageStatus.ACTIVE);
-      expect(item.latest_state).toBe(SkillVersionState.APPROVED);
-      expect(item.version.state).toBe(SkillVersionState.APPROVED);
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      // Own-scope predicate is unconditional; the id filter only narrows within own-scope.
+      expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
+      expect(sqls).toContain('p.id = ANY($2)');
     });
 
-    it('rejected bucket surfaces the latest (rejected) version, not active_version_id', async () => {
-      // active_version_id still points at the old approved v1, but the latest row is a rejected v2.
-      stubQueries([
-        row({ id: 22, version_no: 2, state: SkillVersionState.REJECTED, name: 'v2-reject', active_version_id: 10 }),
-      ]);
+    it('thin projection: rows carry NO content (skill_md_content / reject_reason absent)', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      stub({ count: 1, rows: [rawRow({ version_no: 2, old_version: 1, state: SkillVersionState.APPROVED })] });
 
-      const result = await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.REJECTED }, USER_ID);
-
-      expect(result.data[0].version.name).toBe('v2-reject');
-      expect(result.data[0].version.version_no).toBe(2);
-      expect(result.data[0].latest_state).toBe(SkillVersionState.REJECTED);
+      const result = await service.listVersions({ state: 'all' }, USER_ID);
+      const row = result.data[0] as any;
+      expect(row.skill_md_content).toBeUndefined();
+      expect(row.reject_reason).toBeUndefined();
+      expect(row).toMatchObject({ code: 'skill_1', old_version: 1, version_no: 2, state: SkillVersionState.APPROVED });
     });
 
-    it('appends a bound search fragment; keyword lowercased + wrapped in wildcards', async () => {
-      const query = stubQueries([row({ name: 'API Skill', short_description: 'api stuff' })]);
+    it('is_first_pending = true only for a first-ever pending (pending AND old_version=null)', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      stub({
+        count: 3,
+        rows: [
+          rawRow({ version_id: 10, state: SkillVersionState.PENDING, old_version: null }),
+          rawRow({ version_id: 11, state: SkillVersionState.PENDING, old_version: 1 }),
+          rawRow({ version_id: 12, state: SkillVersionState.APPROVED, old_version: null, version_no: 1 }),
+        ],
+      });
 
-      await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.APPROVED, search: 'API' }, USER_ID);
-
-      const [sql, params] = query.mock.calls[0];
-      expect(sql).toContain('lower(name) LIKE');
-      expect(sql).toContain('lower(short_description) LIKE');
-      expect(params).toContain('%api%');
+      const result = await service.listVersions({ state: 'all' }, USER_ID);
+      const byId = Object.fromEntries(result.data.map((r) => [r.version_id, r.is_first_pending]));
+      expect(byId[10]).toBe(true); // first pending
+      expect(byId[11]).toBe(false); // update pending
+      expect(byId[12]).toBe(false); // approved first
     });
 
-    it('appends a bound category fragment (lowercased equality)', async () => {
-      const query = stubQueries([row({ category: 'data' })]);
+    it('id + state filters and created_at sort are applied; total from count', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      const query = stub({ count: 5, rows: [rawRow()] });
 
-      await service.listMyItems(
-        { page: 1, limit: 20, status: SkillVersionState.APPROVED, category: 'Data' as any },
+      const result = await service.listVersions(
+        { skill_package_id: [1, 2], state: 'pending', page: 2, pageSize: 10, sort: 'newest' },
         USER_ID,
       );
 
-      const [sql, params] = query.mock.calls[0];
-      expect(sql).toContain('lower(category) = ');
-      expect(params).toContain('data');
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      // $1 is the always-applied own-scope userId; the id filter/state shift to $2/$3.
+      expect(sqls).toContain('p.id = ANY($2)');
+      expect(sqls).toContain('v.state = $3');
+      expect(sqls).toContain('ORDER BY v.created_at DESC');
+      expect(result.meta).toEqual({ total: 5, page: 2, limit: 10 });
     });
 
-    it('version projection omits skill_md_content and reject_reason', async () => {
-      stubQueries([row()]);
+    it('codesOnly returns distinct {package_id, code, package_name} under the SAME visibility predicate', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']); // non-approver
+      const query = stub({ codes: [{ package_id: 42, code: 'skill_1', package_name: 'My Skill' }] });
 
-      const result = await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.APPROVED }, USER_ID);
+      const result = await service.listVersions({ codesOnly: true }, USER_ID);
 
-      const version = result.data[0].version as any;
-      expect(version.skill_md_content).toBeUndefined();
-      expect(version.reject_reason).toBeUndefined();
+      expect(result).toEqual({ data: [{ package_id: 42, code: 'skill_1', package_name: 'My Skill' }] });
+      const codeSql = query.mock.calls.map((c) => c[0] as string).find((s) => /DISTINCT ON \(p\.code\)/.test(s))!;
+      // The options select carries the package id so the FE can filter by id.
+      expect(codeSql).toContain('p.id AS package_id');
+      // Identical own-scope visibility predicate as the list mode.
+      expect(codeSql).toContain('v.submitted_by = $1 OR p.created_by = $1');
     });
 
-    it('folds the representative zip into a single `file` object', async () => {
-      stubQueries(
-        [row()],
-        [
-          {
-            skill_version_id: 10,
-            file_kind: 'zip',
-            file_url: '/uploads/v1.zip',
-            name: 'v1.zip',
-            size: 1024,
-            mime_type: 'application/zip',
-          },
-        ],
-      );
+    it('skill_package_id omitted → no id predicate (returns full own-scope)', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      const query = stub({ count: 1, rows: [rawRow()] });
 
-      const result = await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.APPROVED }, USER_ID);
+      await service.listVersions({ state: 'all' }, USER_ID);
 
-      expect(result.data[0].version.file?.file_url).toBe('/uploads/v1.zip');
-    });
-
-    it('file=null when the representative has no zip row', async () => {
-      stubQueries([row()], []);
-
-      const result = await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.APPROVED }, USER_ID);
-
-      expect(result.data[0].version.file).toBeNull();
-    });
-
-    it('returns empty data and total=0 (and skips the file query) when the bucket is empty', async () => {
-      const query = stubQueries([], []);
-
-      const result = await service.listMyItems({ page: 1, limit: 20, status: SkillVersionState.PENDING }, USER_ID);
-
-      expect(result.data).toEqual([]);
-      expect(result.meta.total).toBe(0);
-      // No representatives → no second (file-loading) round-trip.
-      expect(query).toHaveBeenCalledTimes(1);
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      expect(sqls).not.toContain('p.id = ANY');
     });
   });
+
 });

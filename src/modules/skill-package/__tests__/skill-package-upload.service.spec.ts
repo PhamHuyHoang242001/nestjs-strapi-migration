@@ -20,6 +20,7 @@ function makeDs(txResult?: unknown) {
       const manager: any = {
         create: jest.fn((Entity: any, data: any) => ({ ...data })),
         save: jest.fn(async (Entity: any, obj: any) => ({ ...obj, id: Math.floor(Math.random() * 1000) + 1 })),
+        update: jest.fn(),
         findOne: jest.fn(),
         query: jest.fn().mockResolvedValue([{ max: '1' }]),
       };
@@ -78,7 +79,7 @@ describe('SkillPackageUploadService', () => {
       tags: [],
     };
 
-    function captureDs(saved: any[]) {
+    function captureDs(saved: any[], updates: any[] = []) {
       return {
         transaction: jest.fn(async (cb: any) => {
           const manager = {
@@ -87,6 +88,9 @@ describe('SkillPackageUploadService', () => {
               const row = { ...obj, id: 1 };
               saved.push({ entity: _Entity?.name, row });
               return row;
+            }),
+            update: jest.fn(async (_Entity: any, id: any, patch: any) => {
+              updates.push({ entity: _Entity?.name, id, patch });
             }),
           };
           return cb(manager);
@@ -123,6 +127,23 @@ describe('SkillPackageUploadService', () => {
       // The zip is downloaded (via file.fileUrl) to extract skill.md; avatar origin is validated.
       expect(fileFetch.downloadZip).toHaveBeenCalledWith('/uploads/skill.zip');
       expect(fileFetch.assertStrapiUrl).toHaveBeenCalledWith('/uploads/avatar.png');
+    });
+
+    it('first version is old_version=null, version_no=1, and sets code=skill_<id> post-insert in the tx', async () => {
+      const saved: any[] = [];
+      const updates: any[] = [];
+      dataSource = captureDs(saved, updates);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      await service.createNew(dto as any, USER_ID);
+
+      const versionRow = saved.map((s) => s.row).find((r) => r.version_no === 1);
+      expect(versionRow.old_version).toBeNull();
+      expect(versionRow.state).toBe(SkillVersionState.PENDING);
+      // code is set post-insert (id known only after the package save) in the SAME tx.
+      const codeUpdate = updates.find((u) => u.entity === 'SkillPackage');
+      expect(codeUpdate).toBeDefined();
+      expect(codeUpdate.patch).toEqual({ code: 'skill_1' });
     });
 
     it('falls back to the server-parsed filename when file.name is omitted; still writes the zip row', async () => {
@@ -179,6 +200,67 @@ describe('SkillPackageUploadService', () => {
       expect(savedVersion?.reviewed_by).toBe(USER_ID);
       // Package must point to the approved version.
       expect(savedPkg?.active_version_id).toBe(VERSION_ID);
+    });
+
+    it('finalizes version_no=(old_version ?? 0)+1: update-pending old_version=1 → approved version_no=2', async () => {
+      const version = {
+        id: VERSION_ID,
+        skill_package_id: PACKAGE_ID,
+        state: SkillVersionState.PENDING,
+        old_version: 1,
+        version_no: 1, // placeholder shared with the live approved v1
+      };
+      const pkg = { id: PACKAGE_ID, active_version_id: 3, status: SkillPackageStatus.ACTIVE };
+      let savedVersion: any;
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockImplementation(async (_E: any, { where }: any) => {
+            if (where.id === VERSION_ID) return { ...version };
+            if (where.id === PACKAGE_ID) return { ...pkg };
+            return null;
+          }),
+          save: jest.fn(async (_E: any, obj: any) => {
+            if (obj.version_no !== undefined && obj.state === SkillVersionState.APPROVED) savedVersion = obj;
+            return { ...obj };
+          }),
+        };
+        return cb(manager);
+      });
+
+      await service.approve(VERSION_ID, USER_ID);
+      expect(savedVersion?.version_no).toBe(2);
+      expect(savedVersion?.old_version).toBe(1); // predecessor preserved
+    });
+
+    it('first approve (old_version=null) → version_no=1', async () => {
+      const version = { id: VERSION_ID, skill_package_id: PACKAGE_ID, state: SkillVersionState.PENDING, old_version: null, version_no: 1 };
+      const pkg = { id: PACKAGE_ID, active_version_id: null, status: SkillPackageStatus.ACTIVE };
+      let savedVersion: any;
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockImplementation(async (_E: any, { where }: any) => {
+            if (where.id === VERSION_ID) return { ...version };
+            if (where.id === PACKAGE_ID) return { ...pkg };
+            return null;
+          }),
+          save: jest.fn(async (_E: any, obj: any) => {
+            if (obj.version_no !== undefined && obj.state === SkillVersionState.APPROVED) savedVersion = obj;
+            return { ...obj };
+          }),
+        };
+        return cb(manager);
+      });
+
+      await service.approve(VERSION_ID, USER_ID);
+      expect(savedVersion?.version_no).toBe(1);
+    });
+
+    it('duplicate approved version_no (PG 23505) → ConflictException (409)', async () => {
+      const pgError = new QueryFailedError('UPDATE', [], new Error('dup key'));
+      (pgError as any).code = '23505';
+      dataSource.transaction = jest.fn().mockRejectedValue(pgError);
+
+      await expect(service.approve(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('approve of non-pending version → ForbiddenException', async () => {
@@ -250,14 +332,14 @@ describe('SkillPackageUploadService', () => {
       tags: [],
     };
 
-    it('assigns version_no=max+1 and persists the version (inline avatar_url) + zip file row in one tx', async () => {
+    it('sets old_version=latest approved, version_no=placeholder (=old_version) + zip file row in one tx', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
 
       const saved: any[] = [];
       dataSource.transaction = jest.fn(async (cb: any) => {
         const manager = {
-          // First query = SELECT ... FOR UPDATE (result ignored); MAX(version_no) → 3.
+          // First query = SELECT ... FOR UPDATE (result ignored); MAX(approved version_no) → 3.
           query: jest.fn().mockResolvedValue([{ max: '3' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
           save: jest.fn(async (_E: any, obj: any) => {
@@ -273,13 +355,16 @@ describe('SkillPackageUploadService', () => {
       const dtoV2 = { ...dto, avatar_url: '/uploads/av.png', changelog_note: 'bump' };
       const result = await service.createVersion(PACKAGE_ID, dtoV2 as any, USER_ID);
 
-      // version_no = max(3) + 1.
-      expect(result.version.version_no).toBe(4);
+      // Pending update: version_no is the placeholder sharing the live approved number (3); approve
+      // later finalizes it to 4. old_version records the predecessor (3).
+      expect(result.version.version_no).toBe(3);
 
       const versionRow = saved.find((s) => s.entity === 'SkillVersion')?.row;
       expect(versionRow).toMatchObject({
         skill_package_id: PACKAGE_ID,
-        version_no: 4,
+        version_no: 3,
+        old_version: 3,
+        state: SkillVersionState.PENDING,
         submitted_by: USER_ID,
         changelog_note: 'bump',
         skill_md_content: '# mock skill.md',
@@ -363,7 +448,8 @@ describe('SkillPackageUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      expect(result.version.version_no).toBe(2);
+      // latest approved = 1 → placeholder version_no = 1 (approve later → 2).
+      expect(result.version.version_no).toBe(1);
     });
 
     it('non-owner with skill_approve (approver) → allowed', async () => {
@@ -386,7 +472,8 @@ describe('SkillPackageUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      expect(result.version.version_no).toBe(3);
+      // latest approved = 2 → placeholder version_no = 2 (approve later → 3).
+      expect(result.version.version_no).toBe(2);
     });
 
     it('owner + approver → allowed (both conditions satisfied)', async () => {
@@ -409,7 +496,34 @@ describe('SkillPackageUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      expect(result.version.version_no).toBe(2);
+      // latest approved = 1 → placeholder version_no = 1 (approve later → 2).
+      expect(result.version.version_no).toBe(1);
+    });
+
+    it('no approved version yet (resubmit after reject): old_version=null, version_no falls back to 1', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          // MAX(approved version_no) → NULL (nothing approved yet).
+          query: jest.fn().mockResolvedValue([{ max: null }]),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
+            return { ...obj, id: 99 };
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+
+      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
+      expect(result.version.version_no).toBe(1);
+      const versionRow = saved.find((s) => s.entity === 'SkillVersion')?.row;
+      expect(versionRow.old_version).toBeNull();
+      expect(versionRow.version_no).toBe(1);
     });
   });
 

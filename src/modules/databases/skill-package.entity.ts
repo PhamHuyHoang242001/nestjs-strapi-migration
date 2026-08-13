@@ -19,6 +19,12 @@ export class SkillPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', default: SkillPackageStatus.ACTIVE })
   public status: SkillPackageStatus;
 
+  // Stable public code `skill_<id>` — a bijection of the primary key. Stored + backfilled and set
+  // post-insert inside the create transaction (id is known only after insert). Intentionally NOT
+  // unique-indexed: derived from the PK it can never collide, so a unique index is dead weight.
+  @Column({ type: 'varchar' })
+  public code: string;
+
   // User who originally created/submitted the package (plain FK, no decorator — auth user).
   @Column({ type: 'int' })
   public created_by: number;

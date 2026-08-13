@@ -15,6 +15,7 @@ function makeDs(txResult?: unknown) {
       const manager: any = {
         create: jest.fn((Entity: any, data: any) => ({ ...data })),
         save: jest.fn(async (Entity: any, obj: any) => ({ ...obj, id: Math.floor(Math.random() * 1000) + 1 })),
+        update: jest.fn(),
         findOne: jest.fn(),
         query: jest.fn().mockResolvedValue([{ max: '1' }]),
       };
@@ -61,7 +62,7 @@ describe('PromptLibraryUploadService', () => {
       tags: [],
     };
 
-    function captureDs(saved: any[]) {
+    function captureDs(saved: any[], updates: any[] = []) {
       return {
         transaction: jest.fn(async (cb: any) => {
           const manager = {
@@ -71,11 +72,30 @@ describe('PromptLibraryUploadService', () => {
               saved.push({ entity: _Entity?.name, row });
               return row;
             }),
+            update: jest.fn(async (_Entity: any, id: any, patch: any) => {
+              updates.push({ entity: _Entity?.name, id, patch });
+            }),
           };
           return cb(manager);
         }),
       } as any;
     }
+
+    it('first version is old_version=null, version_no=1, and sets code=prompt_<id> post-insert in the tx', async () => {
+      const saved: any[] = [];
+      const updates: any[] = [];
+      dataSource = captureDs(saved, updates);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+
+      await service.createNew(dto as any, USER_ID);
+
+      const versionRow = saved.map((s) => s.row).find((r) => r.version_no === 1);
+      expect(versionRow.old_version).toBeNull();
+      expect(versionRow.state).toBe(PromptVersionState.PENDING);
+      const codeUpdate = updates.find((u) => u.entity === 'PromptPackage');
+      expect(codeUpdate).toBeDefined();
+      expect(codeUpdate.patch).toEqual({ code: 'prompt_1' });
+    });
 
     it('stores prompt_content + avatar_url inline on the v1 version; no file entity saved', async () => {
       const saved: any[] = [];
@@ -138,6 +158,67 @@ describe('PromptLibraryUploadService', () => {
       expect(savedVersion?.state).toBe(PromptVersionState.APPROVED);
       expect(savedVersion?.reviewed_by).toBe(USER_ID);
       expect(savedPkg?.active_version_id).toBe(VERSION_ID);
+    });
+
+    it('finalizes version_no=(old_version ?? 0)+1: update-pending old_version=1 → approved version_no=2', async () => {
+      const version = {
+        id: VERSION_ID,
+        prompt_package_id: PACKAGE_ID,
+        state: PromptVersionState.PENDING,
+        old_version: 1,
+        version_no: 1,
+      };
+      const pkg = { id: PACKAGE_ID, active_version_id: 3, status: PromptPackageStatus.ACTIVE };
+      let savedVersion: any;
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockImplementation(async (_E: any, { where }: any) => {
+            if (where.id === VERSION_ID) return { ...version };
+            if (where.id === PACKAGE_ID) return { ...pkg };
+            return null;
+          }),
+          save: jest.fn(async (_E: any, obj: any) => {
+            if (obj.version_no !== undefined && obj.state === PromptVersionState.APPROVED) savedVersion = obj;
+            return { ...obj };
+          }),
+        };
+        return cb(manager);
+      });
+
+      await service.approve(VERSION_ID, USER_ID);
+      expect(savedVersion?.version_no).toBe(2);
+      expect(savedVersion?.old_version).toBe(1);
+    });
+
+    it('first approve (old_version=null) → version_no=1', async () => {
+      const version = { id: VERSION_ID, prompt_package_id: PACKAGE_ID, state: PromptVersionState.PENDING, old_version: null, version_no: 1 };
+      const pkg = { id: PACKAGE_ID, active_version_id: null, status: PromptPackageStatus.ACTIVE };
+      let savedVersion: any;
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          findOne: jest.fn().mockImplementation(async (_E: any, { where }: any) => {
+            if (where.id === VERSION_ID) return { ...version };
+            if (where.id === PACKAGE_ID) return { ...pkg };
+            return null;
+          }),
+          save: jest.fn(async (_E: any, obj: any) => {
+            if (obj.version_no !== undefined && obj.state === PromptVersionState.APPROVED) savedVersion = obj;
+            return { ...obj };
+          }),
+        };
+        return cb(manager);
+      });
+
+      await service.approve(VERSION_ID, USER_ID);
+      expect(savedVersion?.version_no).toBe(1);
+    });
+
+    it('duplicate approved version_no (PG 23505) → ConflictException (409)', async () => {
+      const pgError = new QueryFailedError('UPDATE', [], new Error('dup key'));
+      (pgError as any).code = '23505';
+      dataSource.transaction = jest.fn().mockRejectedValue(pgError);
+
+      await expect(service.approve(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('approve of non-pending version → ForbiddenException', async () => {
@@ -209,14 +290,14 @@ describe('PromptLibraryUploadService', () => {
       tags: [],
     };
 
-    it('assigns version_no=max+1 and persists the version (inline prompt_content + avatar_url) in one tx', async () => {
+    it('sets old_version=latest approved, version_no=placeholder (=old_version) inline in one tx', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
 
       const saved: any[] = [];
       dataSource.transaction = jest.fn(async (cb: any) => {
         const manager = {
-          // First query = SELECT ... FOR UPDATE (result ignored); MAX(version_no) → 3.
+          // First query = SELECT ... FOR UPDATE (result ignored); MAX(approved version_no) → 3.
           query: jest.fn().mockResolvedValue([{ max: '3' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
           save: jest.fn(async (_E: any, obj: any) => {
@@ -232,13 +313,16 @@ describe('PromptLibraryUploadService', () => {
       const dtoV2 = { ...dto, avatar_url: '/uploads/av.png', changelog_note: 'bump' };
       const result = await service.createVersion(PACKAGE_ID, dtoV2 as any, USER_ID);
 
-      // version_no = max(3) + 1.
-      expect(result.version.version_no).toBe(4);
+      // Pending update: version_no is the placeholder sharing the live approved number (3); approve
+      // later finalizes it to 4. old_version records the predecessor (3).
+      expect(result.version.version_no).toBe(3);
 
       const versionRow = saved.find((s) => s.entity === 'PromptVersion')?.row;
       expect(versionRow).toMatchObject({
         prompt_package_id: PACKAGE_ID,
-        version_no: 4,
+        version_no: 3,
+        old_version: 3,
+        state: PromptVersionState.PENDING,
         submitted_by: USER_ID,
         changelog_note: 'bump',
         prompt_content: 'v2 prompt body',
@@ -310,7 +394,33 @@ describe('PromptLibraryUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      expect(result.version.version_no).toBe(2);
+      // latest approved = 1 → placeholder version_no = 1 (approve later → 2).
+      expect(result.version.version_no).toBe(1);
+    });
+
+    it('no approved version yet (resubmit after reject): old_version=null, version_no falls back to 1', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
+
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValue([{ max: null }]),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
+            return { ...obj, id: 99 };
+          }),
+        };
+        return cb(manager);
+      });
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+
+      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
+      expect(result.version.version_no).toBe(1);
+      const versionRow = saved.find((s) => s.entity === 'PromptVersion')?.row;
+      expect(versionRow.old_version).toBeNull();
+      expect(versionRow.version_no).toBe(1);
     });
 
     it('non-owner with prompt_approve (approver) → allowed', async () => {
@@ -333,7 +443,8 @@ describe('PromptLibraryUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      expect(result.version.version_no).toBe(3);
+      // latest approved = 2 → placeholder version_no = 2 (approve later → 3).
+      expect(result.version.version_no).toBe(2);
     });
 
     it('owner + approver → allowed (both conditions satisfied)', async () => {
@@ -356,7 +467,8 @@ describe('PromptLibraryUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      expect(result.version.version_no).toBe(2);
+      // latest approved = 1 → placeholder version_no = 1 (approve later → 2).
+      expect(result.version.version_no).toBe(1);
     });
   });
 
