@@ -45,6 +45,7 @@ import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.mo
 import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-output.module';
 import { SkillPackageModule } from '@modules/skill-package/skill-package.module';
 import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.module';
+import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -113,6 +114,7 @@ import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.modu
     ServiceTokenModule,
     SkillPackageModule,
     PromptLibraryModule,
+    LatestArtifactsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -29,6 +29,10 @@ export const ENCRYPT_KEY: string = process.env.ENCRYPT_KEY ?? '12345';
 // Secret used to sign service tokens (name-compatible with the Strapi backend).
 export const ADMIN_JWT_SECRET: string = process.env.ADMIN_JWT_SECRET ?? process.env.ENCRYPT_KEY ?? '12345';
 export const ENABLE_CRONJOB: string = process.env.ENABLE_CRONJOB ?? 'enable';
+// How many latest skills / prompts the asset-hub "latest" feed returns per type.
+// The count that the request asks for ("2 newest") lives here so it can be tuned per
+// environment without a code change. Clamped to >= 1 to avoid an empty/negative LIMIT.
+export const LATEST_ARTIFACTS_LIMIT: number = Math.max(1, Number(process.env.LATEST_ARTIFACTS_LIMIT ?? '2'));
 export const BASE_URL: string = process.env.BASE_URL ?? 'api';
 export const SWAGGER_BASE_URL: string = process.env.SWAGGER_BASE_URL ?? process.env.DOCS_BASE_URL ?? 'api/docs';
 export const APP_VERSION: string = process.env.APP_VERSION ?? process.env.API_VERSION ?? '1.0';
