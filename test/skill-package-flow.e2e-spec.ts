@@ -60,6 +60,12 @@ function makeZip(skillMd: string): Buffer {
   return zip.toBuffer();
 }
 
+// Wrap a markdown body with the frontmatter the Agent Skills standard requires, so
+// every uploaded skill.md passes validateSkillMd (name + description + line cap).
+function skillMd(body: string, name = 'excel-analyzer'): string {
+  return `---\nname: ${name}\ndescription: A test skill. Use when running the e2e suite.\n---\n${body}`;
+}
+
 // Maps each generated zip_url to the skill.md content the fetch stub should return,
 // so different uploads (v1/v2) yield different parsed content.
 const zipContentByUrl = new Map<string, string>();
@@ -69,7 +75,7 @@ let zipUrlSeq = 0;
 // exercises the real unzip/validate path without any network I/O.
 const fileFetchStub = {
   downloadZip: async (url: string) => {
-    const md = zipContentByUrl.get(url) ?? '# default skill\n';
+    const md = zipContentByUrl.get(url) ?? skillMd('# default skill\n');
     const buffer = makeZip(md);
     return {
       buffer,
@@ -216,13 +222,13 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
 
   it('rejects upload from a user lacking skill_upload (403)', async () => {
     await uploadReq(outsider, `${BASE}/items`,
-      { name: `${PREFIX}denied`, short_description: 'no perm', category: 'general' }, [], '# denied')
+      { name: `${PREFIX}denied`, short_description: 'no perm', category: 'general' }, [], skillMd('# denied\n'))
       .expect(403);
   });
 
   // ---- Full happy path --------------------------------------------------------
 
-  const MD_V1 = '# Excel Analyzer\n\nAnalyzes spreadsheets.\n';
+  const MD_V1 = skillMd('# Excel Analyzer\n\nAnalyzes spreadsheets.\n');
   let packageId: number;
   let versionOneId: number;
 
@@ -313,7 +319,7 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
 
   // ---- Second version: update -> approve -> active flips ----------------------
 
-  const MD_V2 = '# Excel Analyzer\n\nAnalyzes spreadsheets AND pivots.\n';
+  const MD_V2 = skillMd('# Excel Analyzer\n\nAnalyzes spreadsheets AND pivots.\n');
   let versionTwoId: number;
 
   it('9) uploader submits v2 (pending); active still points at v1', async () => {
@@ -331,7 +337,7 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
   it('9b) a second pending version is blocked while one is already pending (409)', async () => {
     await uploadReq(uploader, `${BASE}/items/${packageId}/versions`,
       { name: `${PREFIX}Excel Analyzer`, short_description: 'dup pending', category: 'data-analysis' },
-      [], '# dup', 'put',
+      [], skillMd('# dup\n'), 'put',
     ).expect(409);
   });
 
@@ -371,7 +377,7 @@ describe('SkillPackage full flow (e2e, real DB): upload -> approve -> view', () 
 
   it('13) reject requires a reason (400) and marks the version rejected', async () => {
     const created = await uploadReq(uploader, `${BASE}/items`,
-      { name: `${PREFIX}ToReject`, short_description: 'will be rejected', category: 'other' }, [], '# reject me',
+      { name: `${PREFIX}ToReject`, short_description: 'will be rejected', category: 'other' }, [], skillMd('# reject me\n'),
     ).expect(201);
     const rejectPkgId = created.body.package.id;
     const rejectVerId = created.body.version.id;

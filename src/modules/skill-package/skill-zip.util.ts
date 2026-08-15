@@ -3,6 +3,7 @@
 // `new AdmZip()` would throw. import-equals binds the constructor directly.
 import AdmZip = require('adm-zip');
 import { UnprocessableEntityException } from '@nestjs/common';
+import { validateSkillMd } from './skill-md-validation.util';
 
 // Hard caps to prevent zip-bomb attacks. Values chosen to bound memory usage
 // per upload request: 200 entries × 5MB per entry = 1GB theoretical max, capped
@@ -21,7 +22,10 @@ const MAX_COMPRESSION_RATIO = 100; // 100:1 ratio guard against zip bombs
  *  - Compression-ratio cap per entry (zip-bomb ratio)
  *  - Path-traversal check on every entry name (zip-slip)
  *
- * Throws 422 if skill.md is absent.
+ * After extraction the content is validated against the Agent Skills standard
+ * (frontmatter, name, description, line-count cap) — see validateSkillMd.
+ *
+ * Throws 422 if skill.md is absent or fails standard validation.
  */
 export function extractSkillMdFromZip(buffer: Buffer): string {
   let zip: AdmZip;
@@ -98,5 +102,7 @@ export function extractSkillMdFromZip(buffer: Buffer): string {
 
   // Decompress only the skill.md entry — no other content is read.
   const content = zip.readAsText(skillMdEntry);
+  // Enforce the Agent Skills standard on the extracted content (throws 422 on violation).
+  validateSkillMd(content);
   return content;
 }
