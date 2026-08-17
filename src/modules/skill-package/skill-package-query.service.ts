@@ -80,9 +80,20 @@ export class SkillPackageQueryService {
   // List active packages, joining the active version's fields.
   // Sort: id DESC (deterministic — prevents page drift). Limit capped at 100 via DTO (M2).
   // Filters are always parameter-bound (never string-interpolated into SQL).
-  async list(query: ListSkillQueryDto) {
+  async list(query: ListSkillQueryDto, userId: number) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100); // double-cap even if DTO max bypassed
+
+    // Status gate: inactive packages are approver-only (mirrors the detail() inactive guard).
+    // An omitted status, or any non-approver, is scoped to active; only an approver explicitly
+    // asking for inactive flips the filter. The list therefore never leaks inactive packages to
+    // ordinary callers even though the route carries no owner scope.
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    const statusFilter =
+      query.status === SkillPackageStatus.INACTIVE && canApprove
+        ? SkillPackageStatus.INACTIVE
+        : SkillPackageStatus.ACTIVE;
 
     const qb = this.packageRepo
       .createQueryBuilder('pkg')
@@ -92,7 +103,7 @@ export class SkillPackageQueryService {
       // the version (returned automatically). Filter both soft-delete markers uniformly.
       .leftJoinAndSelect('av.files', 'avf', 'avf.deleted_at IS NULL AND avf.is_deleted = false')
       .where('pkg.deleted_at IS NULL')
-      .andWhere('pkg.status = :status', { status: SkillPackageStatus.ACTIVE })
+      .andWhere('pkg.status = :status', { status: statusFilter })
       .andWhere('pkg.active_version_id IS NOT NULL');
 
     // Keyword filter: ILIKE against version name, short_description, and the tags array
@@ -130,7 +141,7 @@ export class SkillPackageQueryService {
       .createQueryBuilder('pkg')
       .innerJoin('pkg.active_version', 'av', 'av.deleted_at IS NULL')
       .where('pkg.deleted_at IS NULL')
-      .andWhere('pkg.status = :status', { status: SkillPackageStatus.ACTIVE })
+      .andWhere('pkg.status = :status', { status: statusFilter })
       .andWhere('pkg.active_version_id IS NOT NULL')
       .select('COUNT(pkg.id)', 'count');
 

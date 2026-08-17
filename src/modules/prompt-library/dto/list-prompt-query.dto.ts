@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PromptCategory } from '../prompt-category.constant';
+import { PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 
 // Query DTO for GET /v1/prompt/items.
 // limit is capped at 100 (uncapped limit is a DoS risk on large tables).
@@ -32,6 +33,16 @@ export class ListPromptQueryDto {
   @IsOptional()
   @IsEnum(PromptCategory)
   readonly category?: PromptCategory;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Filter by package status. inactive is only honored for approvers; other callers are always scoped to active.',
+    enum: PromptPackageStatus,
+  })
+  @IsOptional()
+  @IsEnum(PromptPackageStatus)
+  readonly status?: PromptPackageStatus;
 
   @ApiProperty({ required: false, description: 'Filter by tags (comma-separated or array)', type: [String] })
   @IsOptional()

@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { SkillCategory } from '../skill-category.constant';
+import { SkillPackageStatus } from '@modules/databases/skill-package.entity';
 
 // Query DTO for GET /v1/skill/items.
 // limit is capped at 100 (M2 — uncapped limit is a DoS risk on large tables).
@@ -32,6 +33,16 @@ export class ListSkillQueryDto {
   @IsOptional()
   @IsEnum(SkillCategory)
   readonly category?: SkillCategory;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Filter by package status. inactive is only honored for approvers; other callers are always scoped to active.',
+    enum: SkillPackageStatus,
+  })
+  @IsOptional()
+  @IsEnum(SkillPackageStatus)
+  readonly status?: SkillPackageStatus;
 
   @ApiProperty({ required: false, description: 'Filter by tags (comma-separated or array)', type: [String] })
   @IsOptional()

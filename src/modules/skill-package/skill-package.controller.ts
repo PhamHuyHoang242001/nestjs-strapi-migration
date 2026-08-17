@@ -59,11 +59,14 @@ export class SkillPackageController {
     private readonly fileFetchService: SkillFileFetchService,
   ) {}
 
-  // GET /v1/skill/items — list active packages with active version joined.
-  @ApiOperation({ summary: 'List active skill packages' })
+  // GET /v1/skill/items — list packages with active version joined. Defaults to active-only;
+  // status=inactive is honored only for approvers (drives the status gate in the service).
+  @ApiOperation({ summary: 'List skill packages (active by default; inactive for approvers)' })
   @Get('items')
-  listItems(@Query() q: ListSkillQueryDto) {
-    return this.queryService.list(q);
+  listItems(@Query() q: ListSkillQueryDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.list(q, userId);
   }
 
   // GET /v1/skill/stats — whole-workspace latest-state + actual-published counters.

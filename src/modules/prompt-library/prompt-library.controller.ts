@@ -55,11 +55,14 @@ export class PromptLibraryController {
     private readonly uploadService: PromptLibraryUploadService,
   ) {}
 
-  // GET /v1/prompt/items — list active packages with active version joined.
-  @ApiOperation({ summary: 'List active prompt packages' })
+  // GET /v1/prompt/items — list packages with active version joined. Defaults to active-only;
+  // status=inactive is honored only for approvers (drives the status gate in the service).
+  @ApiOperation({ summary: 'List prompt packages (active by default; inactive for approvers)' })
   @Get('items')
-  listItems(@Query() q: ListPromptQueryDto) {
-    return this.queryService.list(q);
+  listItems(@Query() q: ListPromptQueryDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.list(q, userId);
   }
 
   // GET /v1/prompt/stats — whole-workspace latest-state + actual-published counters.

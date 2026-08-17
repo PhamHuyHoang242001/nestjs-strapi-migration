@@ -56,7 +56,8 @@ describe('SkillPackageQueryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    permissionQuery = { getUserPermissions: jest.fn() };
+    // Default: caller has no permissions (non-approver) — list() resolves this for its status gate.
+    permissionQuery = { getUserPermissions: jest.fn().mockResolvedValue([]) };
     packageRepo = {
       createQueryBuilder: jest.fn(),
       findOne: jest.fn(),
@@ -118,7 +119,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.list({ page: 1, limit: 200, search: undefined });
+      await service.list({ page: 1, limit: 200, search: undefined }, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
       // Active-only filter must be present.
@@ -132,11 +133,43 @@ describe('SkillPackageQueryService', () => {
       expect(qb.take).toHaveBeenCalledWith(100);
     });
 
+    it('status defaults to active when omitted', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      await service.list({ page: 1, limit: 10 }, USER_ID);
+
+      expect(qb.capturedParams.status).toBe(SkillPackageStatus.ACTIVE);
+    });
+
+    it('approver may filter status=inactive', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      await service.list({ page: 1, limit: 10, status: SkillPackageStatus.INACTIVE }, USER_ID);
+
+      // Approver's inactive request is honored on both page + count queries.
+      expect(qb.capturedParams.status).toBe(SkillPackageStatus.INACTIVE);
+    });
+
+    it('non-approver requesting status=inactive is forced back to active (no leak)', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']); // not an approver
+
+      await service.list({ page: 1, limit: 10, status: SkillPackageStatus.INACTIVE }, USER_ID);
+
+      // Inactive is approver-only; a non-approver never sees inactive packages via the list.
+      expect(qb.capturedParams.status).toBe(SkillPackageStatus.ACTIVE);
+    });
+
     it('search filter is parameter-bound (not string-concatenated)', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.list({ page: 1, limit: 10, search: 'hello world' });
+      await service.list({ page: 1, limit: 10, search: 'hello world' }, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
       expect(joined).toContain('ILIKE :search');
@@ -148,7 +181,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.list({ page: 1, limit: 10, search: 'happ' });
+      await service.list({ page: 1, limit: 10, search: 'happ' }, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
       // Tags jsonb is cast to text and ILIKE'd so "happ" matches tag "happy".
@@ -165,7 +198,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.list({ page: 1, limit: 10, search: 'happ' });
+      await service.list({ page: 1, limit: 10, search: 'happ' }, USER_ID);
 
       // Mock returns the same builder for page + count createQueryBuilder calls, so the tag
       // clause must appear twice — once per query — or pagination total would diverge.
@@ -179,7 +212,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.list({ page: 1, limit: 10, tags: ['nestjs', 'api'] });
+      await service.list({ page: 1, limit: 10, tags: ['nestjs', 'api'] }, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
       expect(joined).toContain('av.tags @> :tags::jsonb');
@@ -191,7 +224,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder([{ id: 1 }], '5');
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      const result = await service.list({ page: 2, limit: 5 });
+      const result = await service.list({ page: 2, limit: 5 }, USER_ID);
 
       expect(result).toMatchObject({ data: [{ id: 1 }], meta: { total: 5, page: 2, limit: 5 } });
     });
@@ -215,7 +248,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder([pkg], '1');
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      const result = await service.list({ page: 1, limit: 10 });
+      const result = await service.list({ page: 1, limit: 10 }, USER_ID);
 
       const av = result.data[0].active_version as any;
       // Avatar is a native inline column; the zip is folded to the single `file` object (no raw files[]).
@@ -241,7 +274,7 @@ describe('SkillPackageQueryService', () => {
       const qb = makeQueryBuilder([pkg], '1');
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      const result = await service.list({ page: 1, limit: 10 });
+      const result = await service.list({ page: 1, limit: 10 }, USER_ID);
 
       const av = result.data[0].active_version as any;
       expect(av.file).toBeNull();
