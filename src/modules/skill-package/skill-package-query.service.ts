@@ -521,6 +521,9 @@ export class SkillPackageQueryService {
       metadata: {
         version_id: version.id,
         version_no: version.version_no,
+        // Stable public code of the item (skill_<id>). Additive: lets the review UI show the same
+        // identifier as detail()/list without a second fetch. Null-safe if the package row is missing.
+        code: pkg?.code ?? null,
         // Predecessor approved number this version builds on (NULL = first-ever). Additive: lets the
         // review UI render "mới" vs "v{old_version} chờ duyệt" instead of a bare placeholder number.
         old_version: version.old_version ?? null,

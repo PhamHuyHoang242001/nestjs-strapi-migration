@@ -805,12 +805,23 @@ describe('PromptLibraryQueryService', () => {
         return null;
       });
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, active_version_id: ACTIVE_VID });
+      packageRepo.findOne = jest
+        .fn()
+        .mockResolvedValue({ id: PACKAGE_ID, code: 'prompt_7', active_version_id: ACTIVE_VID });
 
       const result = await service.getDiff(VERSION_ID, USER_ID);
       expect(result.base).toBe('# base');
       expect(result.incoming).toBe('# incoming');
-      expect(result.metadata).toMatchObject({ version_id: VERSION_ID, version_no: 2, name: 'v2' });
+      expect(result.metadata).toMatchObject({ version_id: VERSION_ID, version_no: 2, name: 'v2', code: 'prompt_7' });
+    });
+
+    it('metadata.code is null when the package row is missing', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion());
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+      packageRepo.findOne = jest.fn().mockResolvedValue(null);
+
+      const result = await service.getDiff(VERSION_ID, USER_ID);
+      expect(result.metadata.code).toBeNull();
     });
   });
 
