@@ -95,18 +95,18 @@ export class SkillPackageQueryService {
       .andWhere('pkg.status = :status', { status: SkillPackageStatus.ACTIVE })
       .andWhere('pkg.active_version_id IS NOT NULL');
 
-    // Keyword filter: ILIKE against version name, short_description, and each tag element
-    // (parameter-bound). Tags are a jsonb string array; jsonb_array_elements_text expands it so
-    // the keyword substring-matches a single tag (e.g. "happ" matches tag "happy").
+    // Keyword filter: ILIKE against version name, short_description, and the tags array
+    // (parameter-bound). Tags are a jsonb string array; casting to text lets the keyword
+    // substring-match a tag as plain text (e.g. "happ" matches tag "happy"). A scalar cast is
+    // used instead of a jsonb_array_elements_text subquery because this query paginates with
+    // skip/take + joins — TypeORM rewrites that into a DISTINCT subquery and a correlated
+    // subquery in the WHERE breaks the generated SQL.
     if (query.search?.trim()) {
       const kw = `%${query.search.trim()}%`;
       qb.andWhere(
         `(LOWER(av.name) ILIKE :search
           OR LOWER(av.short_description) ILIKE :search
-          OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements_text(av.tags) AS tag_elem
-            WHERE tag_elem ILIKE :search
-          ))`,
+          OR av.tags::text ILIKE :search)`,
         { search: kw.toLowerCase() },
       );
     }
@@ -139,10 +139,7 @@ export class SkillPackageQueryService {
       countQb.andWhere(
         `(LOWER(av.name) ILIKE :search
           OR LOWER(av.short_description) ILIKE :search
-          OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements_text(av.tags) AS tag_elem
-            WHERE tag_elem ILIKE :search
-          ))`,
+          OR av.tags::text ILIKE :search)`,
         { search: kw.toLowerCase() },
       );
     }

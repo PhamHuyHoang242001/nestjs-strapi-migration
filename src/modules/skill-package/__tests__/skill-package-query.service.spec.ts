@@ -144,16 +144,18 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.search).toContain('hello world');
     });
 
-    it('search also substring-matches jsonb tag elements (parameter-bound)', async () => {
+    it('search also substring-matches the tags array as text (parameter-bound, no subquery)', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
       await service.list({ page: 1, limit: 10, search: 'happ' });
 
       const joined = qb.capturedWheres.join(' | ');
-      // Tags are expanded to rows and ILIKE'd per element so "happ" matches tag "happy".
-      expect(joined).toContain('jsonb_array_elements_text(av.tags)');
-      expect(joined).toContain('tag_elem ILIKE :search');
+      // Tags jsonb is cast to text and ILIKE'd so "happ" matches tag "happy".
+      expect(joined).toContain('av.tags::text ILIKE :search');
+      // Must NOT use a correlated subquery — that breaks TypeORM's skip/take DISTINCT rewrite.
+      expect(joined).not.toContain('jsonb_array_elements_text');
+      expect(joined).not.toContain('EXISTS');
       // Still ORed with name/short_description; reuses the single bound :search param.
       expect(joined).toContain('LOWER(av.name) ILIKE :search');
       expect(qb.capturedParams.search).toContain('happ');
@@ -168,7 +170,7 @@ describe('SkillPackageQueryService', () => {
       // Mock returns the same builder for page + count createQueryBuilder calls, so the tag
       // clause must appear twice — once per query — or pagination total would diverge.
       const occurrences = qb.capturedWheres.filter((w: string) =>
-        w.includes('jsonb_array_elements_text(av.tags)'),
+        w.includes('av.tags::text ILIKE :search'),
       ).length;
       expect(occurrences).toBe(2);
     });
