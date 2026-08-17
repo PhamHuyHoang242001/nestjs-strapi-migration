@@ -144,6 +144,35 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.search).toContain('hello world');
     });
 
+    it('search also substring-matches jsonb tag elements (parameter-bound)', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.list({ page: 1, limit: 10, search: 'happ' });
+
+      const joined = qb.capturedWheres.join(' | ');
+      // Tags are expanded to rows and ILIKE'd per element so "happ" matches tag "happy".
+      expect(joined).toContain('jsonb_array_elements_text(av.tags)');
+      expect(joined).toContain('tag_elem ILIKE :search');
+      // Still ORed with name/short_description; reuses the single bound :search param.
+      expect(joined).toContain('LOWER(av.name) ILIKE :search');
+      expect(qb.capturedParams.search).toContain('happ');
+    });
+
+    it('tag-in-search clause is applied to BOTH page and count queries (no total drift)', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.list({ page: 1, limit: 10, search: 'happ' });
+
+      // Mock returns the same builder for page + count createQueryBuilder calls, so the tag
+      // clause must appear twice — once per query — or pagination total would diverge.
+      const occurrences = qb.capturedWheres.filter((w: string) =>
+        w.includes('jsonb_array_elements_text(av.tags)'),
+      ).length;
+      expect(occurrences).toBe(2);
+    });
+
     it('tags filter uses jsonb @> bound parameter', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);

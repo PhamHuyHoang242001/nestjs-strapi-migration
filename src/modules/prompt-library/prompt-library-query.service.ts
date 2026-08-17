@@ -89,12 +89,20 @@ export class PromptLibraryQueryService {
       .andWhere('pkg.status = :status', { status: PromptPackageStatus.ACTIVE })
       .andWhere('pkg.active_version_id IS NOT NULL');
 
-    // Keyword filter: ILIKE against version name and short_description (parameter-bound).
+    // Keyword filter: ILIKE against version name, short_description, and each tag element
+    // (parameter-bound). Tags are a jsonb string array; jsonb_array_elements_text expands it so
+    // the keyword substring-matches a single tag (e.g. "happ" matches tag "happy").
     if (query.search?.trim()) {
       const kw = `%${query.search.trim()}%`;
-      qb.andWhere('(LOWER(av.name) ILIKE :search OR LOWER(av.short_description) ILIKE :search)', {
-        search: kw.toLowerCase(),
-      });
+      qb.andWhere(
+        `(LOWER(av.name) ILIKE :search
+          OR LOWER(av.short_description) ILIKE :search
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(av.tags) AS tag_elem
+            WHERE tag_elem ILIKE :search
+          ))`,
+        { search: kw.toLowerCase() },
+      );
     }
 
     if (query.category?.trim()) {
@@ -123,9 +131,15 @@ export class PromptLibraryQueryService {
 
     if (query.search?.trim()) {
       const kw = `%${query.search.trim()}%`;
-      countQb.andWhere('(LOWER(av.name) ILIKE :search OR LOWER(av.short_description) ILIKE :search)', {
-        search: kw.toLowerCase(),
-      });
+      countQb.andWhere(
+        `(LOWER(av.name) ILIKE :search
+          OR LOWER(av.short_description) ILIKE :search
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(av.tags) AS tag_elem
+            WHERE tag_elem ILIKE :search
+          ))`,
+        { search: kw.toLowerCase() },
+      );
     }
     if (query.category?.trim()) {
       countQb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
