@@ -48,13 +48,13 @@ describe('SkillFileFetchService.downloadZip (local disk read)', () => {
     );
   });
 
-  it('rejects a file exceeding the 20MB cap', async () => {
+  it('rejects a file exceeding the 5MB cap', async () => {
     const bigName = '__skill_fetch_big__.zip';
     const bigPath = path.resolve(PUBLIC_DIR, REL_DIR, bigName);
-    // Sparse 21MB file — big enough to trip the cap without allocating real bytes.
+    // Sparse 6MB file — just over the cap, trips it without allocating real bytes.
     const fh = await fsp.open(bigPath, 'w');
     try {
-      await fh.truncate(21 * 1024 * 1024);
+      await fh.truncate(6 * 1024 * 1024);
     } finally {
       await fh.close();
     }

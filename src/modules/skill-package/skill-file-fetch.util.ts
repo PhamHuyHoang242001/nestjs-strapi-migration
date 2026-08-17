@@ -8,7 +8,9 @@ import { STRAPI_UPLOAD_URL } from '@configuration/env.config';
 // we read the zip bytes straight off local disk — NOT over HTTP. A direct HTTP GET to Strapi's
 // /uploads/*.zip is blocked by its preventAccessFile static-route guard; a filesystem read
 // bypasses that guard entirely, the same way the transform-file controller streams local files.
-const ZIP_MAX_BYTES = 20 * 1024 * 1024; // 20 MB — mirrors the previous multipart cap.
+// Raw uploaded .zip byte cap. The archive holds skill.md plus optional attachments
+// (scripts/, references/, assets/ …); the whole package must stay within this budget.
+const ZIP_MAX_BYTES = 5 * 1024 * 1024; // 5 MB total for the whole skill.zip.
 
 // Local directory the app serves static uploads from (mirrors transform-file.controller).
 const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
