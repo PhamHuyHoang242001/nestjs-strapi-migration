@@ -223,7 +223,7 @@ async function ensureSchema(m: EntityManager): Promise<void> {
       state             VARCHAR NOT NULL DEFAULT 'pending',
       name              VARCHAR NOT NULL,
       short_description TEXT NOT NULL,
-      category          VARCHAR NOT NULL,
+      category_id       INT,
       tags              JSONB NOT NULL DEFAULT '[]',
       avatar_url        VARCHAR,
       prompt_content    TEXT NOT NULL,
@@ -254,6 +254,34 @@ async function ensureSchema(m: EntityManager): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS uidx_prompt_versions_package_version_no
     ON prompt_versions (prompt_package_id, version_no)
   `);
+  await m.query(`
+    CREATE TABLE IF NOT EXISTS ai_hub_categories (
+      id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL, type VARCHAR(20) NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TIMESTAMP WITHOUT TIME ZONE,
+      is_deleted BOOLEAN DEFAULT FALSE
+    )
+  `);
+  await m.query(`ALTER TABLE prompt_versions ADD COLUMN IF NOT EXISTS category_id INT NULL`);
+  await m.query(`ALTER TABLE prompt_versions DROP COLUMN IF EXISTS category`);
+}
+
+async function resolveCategoryId(m: EntityManager, name: string, type: 'skill' | 'prompt'): Promise<number> {
+  const existing = (await m.query(
+    `SELECT id FROM ai_hub_categories
+     WHERE type = $1 AND LOWER(BTRIM(name)) = LOWER(BTRIM($2)) AND COALESCE(is_deleted, false) = false
+     ORDER BY id ASC LIMIT 1`,
+    [type, name],
+  )) as Array<{ id: number }>;
+  if (existing[0]) return Number(existing[0].id);
+  const inserted = (await m.query(
+    `INSERT INTO ai_hub_categories (name, type, is_active, is_deleted)
+     VALUES ($1, $2, true, false) RETURNING id`,
+    [name, type],
+  )) as Array<{ id: number }>;
+  return Number(inserted[0].id);
 }
 
 // ---- helpers -------------------------------------------------------------------
@@ -273,9 +301,10 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
     let activeVersionId: number | null = null;
     for (const v of p.versions) {
       const isReviewed = v.state === 'approved' || v.state === 'rejected';
+      const categoryId = await resolveCategoryId(m, p.category, 'prompt');
       const verRows = (await m.query(
         `INSERT INTO prompt_versions
-           (prompt_package_id, version_no, state, name, short_description, category, tags,
+           (prompt_package_id, version_no, state, name, short_description, category_id, tags,
             prompt_content, changelog_note, submitted_by, reviewed_by, reviewed_at, reject_reason,
             avatar_url, is_deleted, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,false,
@@ -287,7 +316,7 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
           v.state,
           p.name,
           p.shortDescription,
-          p.category,
+          categoryId,
           JSON.stringify(p.tags),
           promptText(p, v),
           v.changelogNote ?? null,

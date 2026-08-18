@@ -5,7 +5,7 @@ import { PromptVersion } from '@modules/databases/prompt-version.entity';
 function makeVersion(overrides: Partial<PromptVersion> = {}): PromptVersion {
   return {
     name: 'Code Review Assistant',
-    category: 'engineering',
+    category_id: 7,
     version_no: 3,
     short_description: 'Reviews code for quality.',
     prompt_content: 'You are an expert code reviewer.',
@@ -25,7 +25,7 @@ function frontmatter(md: string): string {
 
 describe('buildPromptMarkdown', () => {
   it('emits YAML frontmatter with all metadata fields', () => {
-    const md = buildPromptMarkdown(makeVersion(), 'user@example.com');
+    const md = buildPromptMarkdown(makeVersion(), 'user@example.com', 'engineering');
     const fm = frontmatter(md);
     expect(fm).toContain('title: "Code Review Assistant"');
     expect(fm).toContain('category: "engineering"');

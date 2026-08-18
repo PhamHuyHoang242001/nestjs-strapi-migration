@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
-  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -11,19 +10,17 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { PromptCategory } from '../prompt-category.constant';
 
 // The prompt artifact is plain text sent inline in the JSON body — NO ZIP, NO Strapi fetch for
 // content. The optional avatar is a plain URL (mirroring the diagnostic report's `icon`), whose
 // origin is validated against the configured Strapi host at submit. Media ids are never accepted
 // from the client (IDOR guard).
 export class CreatePromptPackageDto {
-  @ApiProperty({ description: 'Active prompt category ID', required: false })
-  @IsOptional()
+  @ApiProperty({ description: 'Active prompt category ID' })
   @IsInt()
   @Min(1)
   @Type(() => Number)
-  readonly category_id?: number;
+  readonly category_id: number;
   // The prompt text — the reviewable/diffable artifact. Capped at 50k chars to bound storage.
   @ApiProperty({ description: 'Prompt text content', maxLength: 50000 })
   @IsNotEmpty()
@@ -50,11 +47,6 @@ export class CreatePromptPackageDto {
   @IsString()
   @MaxLength(1000)
   readonly short_description: string;
-
-  @ApiProperty({ description: 'Category (closed enum)', enum: PromptCategory })
-  @IsOptional()
-  @IsEnum(PromptCategory)
-  readonly category: PromptCategory;
 
   @ApiProperty({ description: 'Freeform tags array', type: [String], required: false })
   @IsOptional()

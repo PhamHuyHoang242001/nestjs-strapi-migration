@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
-  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -11,17 +10,15 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { PromptCategory } from '../prompt-category.constant';
 
 // DTO for creating a new version of an existing prompt package.
 // Prompt text is sent inline (no ZIP, no Strapi fetch for content). Media ids stay server-assigned.
 export class CreatePromptVersionDto {
-  @ApiProperty({ description: 'Active prompt category ID', required: false })
-  @IsOptional()
+  @ApiProperty({ description: 'Active prompt category ID' })
   @IsInt()
   @Min(1)
   @Type(() => Number)
-  readonly category_id?: number;
+  readonly category_id: number;
   // The prompt text — the reviewable/diffable artifact. Capped at 50k chars to bound storage.
   @ApiProperty({ description: 'Prompt text content', maxLength: 50000 })
   @IsNotEmpty()
@@ -48,11 +45,6 @@ export class CreatePromptVersionDto {
   @IsString()
   @MaxLength(1000)
   readonly short_description: string;
-
-  @ApiProperty({ description: 'Category (closed enum)', enum: PromptCategory })
-  @IsOptional()
-  @IsEnum(PromptCategory)
-  readonly category: PromptCategory;
 
   @ApiProperty({ description: 'Tags array', type: [String], required: false })
   @IsOptional()

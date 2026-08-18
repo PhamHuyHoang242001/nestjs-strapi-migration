@@ -37,6 +37,7 @@ describe('CategoryService', () => {
   it('rejects duplicate normalized names during create', async () => {
     const queryBuilder = {
       where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
       getOne: jest.fn().mockResolvedValue({ id: 1 }),
     };
     const managerRepo = { createQueryBuilder: () => queryBuilder, save: jest.fn() };

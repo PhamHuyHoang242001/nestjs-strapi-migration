@@ -31,6 +31,7 @@ export class CategoryService {
         .getRepository(Category)
         .createQueryBuilder('c')
         .where('c.type = :type AND lower(trim(c.name)) = lower(:name)', { type: dto.type, name })
+        .andWhere('COALESCE(c.is_deleted, false) = false')
         .getOne();
       if (existing) throw new ConflictException('A category with this name already exists');
       return manager.getRepository(Category).save({ name, type: dto.type, is_active: true });

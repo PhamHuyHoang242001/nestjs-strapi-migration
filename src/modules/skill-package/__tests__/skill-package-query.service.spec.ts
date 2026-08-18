@@ -840,7 +840,7 @@ describe('SkillPackageQueryService', () => {
       skill_md_content: '# incoming',
       version_no: 2,
       name: 'v2',
-      category: 'util',
+      category_id: 1,
       tags: [],
       changelog_note: null,
       created_at: new Date(),

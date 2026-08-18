@@ -29,13 +29,17 @@ function isoDate(value: Date | string | null | undefined): string {
   return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
 
-export function buildPromptMarkdown(version: PromptVersion, authorEmail: string | null): string {
+export function buildPromptMarkdown(
+  version: PromptVersion,
+  authorEmail: string | null,
+  categoryName?: string | null,
+): string {
   const created = isoDate(version.created_at);
 
   const lines: string[] = [
     '---',
     `title: ${yamlString(version.name)}`,
-    `category: ${yamlString(version.category)}`,
+    `category: ${yamlString(categoryName)}`,
     `version: ${version.version_no}`,
     `author: ${yamlString(authorEmail ?? 'unknown')}`,
     `created: ${yamlString(created)}`,

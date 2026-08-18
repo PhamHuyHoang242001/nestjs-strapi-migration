@@ -1,14 +1,14 @@
 import { IsBoolean, IsEnum, IsString } from 'class-validator';
 import { Column, Entity } from 'typeorm';
-import { BaseColumn } from '@configuration/base-entity';
+import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 
 export enum CategoryType {
   SKILL = 'skill',
   PROMPT = 'prompt',
 }
 
-@Entity('categories')
-export class Category extends BaseColumn {
+@Entity('ai_hub_categories')
+export class Category extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 200 })
   @IsString()
   public name: string;

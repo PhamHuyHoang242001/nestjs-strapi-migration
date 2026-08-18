@@ -752,7 +752,7 @@ describe('PromptLibraryQueryService', () => {
       prompt_content: '# incoming',
       version_no: 2,
       name: 'v2',
-      category: 'writing',
+      category_id: 1,
       tags: [],
       changelog_note: null,
       created_at: new Date(),

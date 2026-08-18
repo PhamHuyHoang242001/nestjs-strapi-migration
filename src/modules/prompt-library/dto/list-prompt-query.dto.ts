@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import { PromptCategory } from '../prompt-category.constant';
 import { PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 
 // Query DTO for GET /v1/prompt/items.
@@ -34,11 +33,6 @@ export class ListPromptQueryDto {
   @IsString()
   @MaxLength(200)
   readonly search?: string;
-
-  @ApiProperty({ required: false, description: 'Filter by category', enum: PromptCategory })
-  @IsOptional()
-  @IsEnum(PromptCategory)
-  readonly category?: PromptCategory;
 
   @ApiProperty({
     required: false,

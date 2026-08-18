@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import { SkillCategory } from '../skill-category.constant';
 import { SkillPackageStatus } from '@modules/databases/skill-package.entity';
 
 // Query DTO for GET /v1/skill/items.
@@ -34,11 +33,6 @@ export class ListSkillQueryDto {
   @IsString()
   @MaxLength(200)
   readonly search?: string;
-
-  @ApiProperty({ required: false, description: 'Filter by category', enum: SkillCategory })
-  @IsOptional()
-  @IsEnum(SkillCategory)
-  readonly category?: SkillCategory;
 
   @ApiProperty({
     required: false,

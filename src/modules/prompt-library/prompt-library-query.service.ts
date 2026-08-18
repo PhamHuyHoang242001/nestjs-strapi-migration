@@ -139,8 +139,6 @@ export class PromptLibraryQueryService {
 
     if (query.category_id) {
       qb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
-    } else if (query.category?.trim()) {
-      qb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
 
     // JSONB containment filter: @> bound as a JSON parameter (not interpolated).
@@ -174,8 +172,6 @@ export class PromptLibraryQueryService {
     }
     if (query.category_id) {
       countQb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
-    } else if (query.category?.trim()) {
-      countQb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
     if (query.tags?.length) {
       countQb.andWhere('av.tags @> :tags::jsonb', { tags: JSON.stringify(query.tags) });
@@ -537,7 +533,7 @@ export class PromptLibraryQueryService {
         old_version: version.old_version ?? null,
         state: version.state,
         name: version.name,
-        category: version.category,
+        category: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1)?.name ?? null,
         category_id: version.category_id,
         category_detail: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1) ?? null,
         tags: version.tags,
@@ -555,7 +551,7 @@ export class PromptLibraryQueryService {
   async resolveActiveForExport(
     packageId: number,
     userId: number,
-  ): Promise<{ version: PromptVersion; authorEmail: string | null }> {
+  ): Promise<{ version: PromptVersion; authorEmail: string | null; categoryName: string | null }> {
     const pkg = await this.packageRepo.findOne({
       where: { id: packageId, is_deleted: false },
       relations: ['active_version'],
@@ -577,6 +573,9 @@ export class PromptLibraryQueryService {
 
     const emailMap = await this.resolveEmails([pkg.active_version.submitted_by]);
     const authorEmail = emailMap.get(pkg.active_version.submitted_by) ?? null;
-    return { version: pkg.active_version, authorEmail };
+    const categoryName =
+      (await this.resolveCategories([pkg.active_version.category_id])).get(pkg.active_version.category_id ?? -1)
+        ?.name ?? null;
+    return { version: pkg.active_version, authorEmail, categoryName };
   }
 }

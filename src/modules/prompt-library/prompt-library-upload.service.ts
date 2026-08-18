@@ -44,9 +44,11 @@ export class PromptLibraryUploadService {
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
 
     return this.dataSource.transaction(async (manager) => {
-      const resolvedCategory = dto.category_id !== undefined
-        ? await this.categoryService?.validateActive(dto.category_id, CategoryType.PROMPT, manager)
-        : undefined;
+      const resolvedCategory = await this.categoryService?.validateActive(
+        dto.category_id,
+        CategoryType.PROMPT,
+        manager,
+      );
       const savedPkg = await manager.save(
         PromptPackage,
         manager.create(PromptPackage, {
@@ -71,8 +73,7 @@ export class PromptLibraryUploadService {
           state: PromptVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
-          category: resolvedCategory?.name ?? dto.category,
-          category_id: dto.category_id ?? null,
+          category_id: resolvedCategory?.id ?? dto.category_id,
           tags: dto.tags ?? [],
           avatar_url: dto.avatar_url ?? null,
           prompt_content: dto.prompt_content,
@@ -135,9 +136,11 @@ export class PromptLibraryUploadService {
         // rejected first version) — same shape as a fresh first pending (old_version NULL).
         const placeholderVersionNo = oldVersion ?? 1;
 
-        const resolvedCategory = dto.category_id !== undefined
-          ? await this.categoryService?.validateActive(dto.category_id, CategoryType.PROMPT, manager)
-          : undefined;
+        const resolvedCategory = await this.categoryService?.validateActive(
+          dto.category_id,
+          CategoryType.PROMPT,
+          manager,
+        );
         const version = manager.create(PromptVersion, {
           prompt_package_id: packageId,
           version_no: placeholderVersionNo,
@@ -145,8 +148,7 @@ export class PromptLibraryUploadService {
           state: PromptVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
-          category: resolvedCategory?.name ?? dto.category,
-          category_id: dto.category_id ?? null,
+          category_id: resolvedCategory?.id ?? dto.category_id,
           tags: dto.tags ?? [],
           avatar_url: dto.avatar_url ?? null,
           prompt_content: dto.prompt_content,

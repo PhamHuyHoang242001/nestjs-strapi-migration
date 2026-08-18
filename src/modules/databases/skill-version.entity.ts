@@ -45,10 +45,6 @@ export class SkillVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'text' })
   public short_description: string;
 
-  // Single category string; enum enforcement is application-level, kept per user decision.
-  @Column({ type: 'varchar' })
-  public category: string;
-
   @Column({ type: 'int', nullable: true })
   public category_id: number | null;
 

@@ -145,8 +145,6 @@ export class SkillPackageQueryService {
 
     if (query.category_id) {
       qb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
-    } else if (query.category?.trim()) {
-      qb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
 
     // JSONB containment filter: @> bound as a JSON parameter (not interpolated).
@@ -179,8 +177,6 @@ export class SkillPackageQueryService {
     }
     if (query.category_id) {
       countQb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
-    } else if (query.category?.trim()) {
-      countQb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
     if (query.tags?.length) {
       countQb.andWhere('av.tags @> :tags::jsonb', { tags: JSON.stringify(query.tags) });
@@ -567,7 +563,8 @@ export class SkillPackageQueryService {
         old_version: version.old_version ?? null,
         state: version.state,
         name: version.name,
-        category: version.category,
+        category: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1)?.name ?? null,
+        category_id: version.category_id,
         tags: version.tags,
         changelog_note: version.changelog_note,
         submitted_by: version.submitted_by,

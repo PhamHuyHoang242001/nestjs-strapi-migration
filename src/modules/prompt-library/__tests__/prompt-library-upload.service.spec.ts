@@ -58,7 +58,7 @@ describe('PromptLibraryUploadService', () => {
       avatar_url: '/uploads/avatar.png',
       name: 'My Prompt',
       short_description: 'desc',
-      category: 'writing',
+      category_id: 1,
       tags: [],
     };
 
@@ -286,7 +286,7 @@ describe('PromptLibraryUploadService', () => {
       prompt_content: 'v2 prompt body',
       name: 'v2',
       short_description: 'desc',
-      category: 'writing',
+      category_id: 1,
       tags: [],
     };
 

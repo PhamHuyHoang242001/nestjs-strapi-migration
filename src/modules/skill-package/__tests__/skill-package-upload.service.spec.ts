@@ -75,7 +75,7 @@ describe('SkillPackageUploadService', () => {
       avatar_url: '/uploads/avatar.png',
       name: 'My Skill',
       short_description: 'desc',
-      category: 'util',
+      category_id: 1,
       tags: [],
     };
 
@@ -328,7 +328,7 @@ describe('SkillPackageUploadService', () => {
       file: { fileUrl: 'http://strapi/uploads/skill.zip', name: 'skill.zip' },
       name: 'v2',
       short_description: 'desc',
-      category: 'util',
+      category_id: 1,
       tags: [],
     };
 

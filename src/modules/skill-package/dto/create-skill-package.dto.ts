@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
-  IsEnum,
   IsNotEmpty,
   IsObject,
   IsInt,
@@ -13,7 +12,6 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { SkillCategory } from '../skill-category.constant';
 import { SkillFileDto } from './skill-file.dto';
 
 // Pull-based upload: the client uploads the zip (and optional avatar) to Strapi
@@ -22,12 +20,11 @@ import { SkillFileDto } from './skill-file.dto';
 // time (SSRF guard), so relative or absolute Strapi URLs are both accepted here.
 // Media ids remain server-assigned — never accepted from the client (IDOR guard M2).
 export class CreateSkillPackageDto {
-  @ApiProperty({ description: 'Active skill category ID', required: false })
-  @IsOptional()
+  @ApiProperty({ description: 'Active skill category ID' })
   @IsInt()
   @Min(1)
   @Type(() => Number)
-  readonly category_id?: number;
+  readonly category_id: number;
   // The skill archive as a file object (fileUrl + optional name/type), mirroring the diagnostic
   // report's `file` input. The avatar below is a plain URL (mirroring diagnostic's `icon`).
   @ApiProperty({ description: 'Uploaded skill .zip descriptor', type: SkillFileDto })
@@ -56,11 +53,6 @@ export class CreateSkillPackageDto {
   @IsString()
   @MaxLength(1000)
   readonly short_description: string;
-
-  @ApiProperty({ description: 'Category (closed enum)', enum: SkillCategory })
-  @IsOptional()
-  @IsEnum(SkillCategory)
-  readonly category: SkillCategory;
 
   @ApiProperty({ description: 'Freeform tags array', type: [String], required: false })
   @IsOptional()

@@ -227,6 +227,34 @@ async function ensureSchema(m: EntityManager): Promise<void> {
   await m.query(`CREATE INDEX IF NOT EXISTS idx_skill_version_files_version ON skill_version_files (skill_version_id)`);
   // Drop the stale inline zip column so the schema matches the current entity (files own the zip).
   await m.query(`ALTER TABLE skill_versions DROP COLUMN IF EXISTS zip_url`);
+  await m.query(`
+    CREATE TABLE IF NOT EXISTS ai_hub_categories (
+      id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL, type VARCHAR(20) NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TIMESTAMP WITHOUT TIME ZONE,
+      is_deleted BOOLEAN DEFAULT FALSE
+    )
+  `);
+  await m.query(`ALTER TABLE skill_versions ADD COLUMN IF NOT EXISTS category_id INT NULL`);
+  await m.query(`ALTER TABLE skill_versions DROP COLUMN IF EXISTS category`);
+}
+
+async function resolveCategoryId(m: EntityManager, name: string, type: 'skill' | 'prompt'): Promise<number> {
+  const existing = (await m.query(
+    `SELECT id FROM ai_hub_categories
+     WHERE type = $1 AND LOWER(BTRIM(name)) = LOWER(BTRIM($2)) AND COALESCE(is_deleted, false) = false
+     ORDER BY id ASC LIMIT 1`,
+    [type, name],
+  )) as Array<{ id: number }>;
+  if (existing[0]) return Number(existing[0].id);
+  const inserted = (await m.query(
+    `INSERT INTO ai_hub_categories (name, type, is_active, is_deleted)
+     VALUES ($1, $2, true, false) RETURNING id`,
+    [name, type],
+  )) as Array<{ id: number }>;
+  return Number(inserted[0].id);
 }
 
 // ---- helpers -------------------------------------------------------------------
@@ -250,9 +278,10 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
     let activeVersionId: number | null = null;
     for (const v of p.versions) {
       const isReviewed = v.state === 'approved' || v.state === 'rejected';
+      const categoryId = await resolveCategoryId(m, p.category, 'skill');
       const verRows = (await m.query(
         `INSERT INTO skill_versions
-           (skill_package_id, version_no, state, name, short_description, category, tags,
+           (skill_package_id, version_no, state, name, short_description, category_id, tags,
             skill_md_content, changelog_note, submitted_by, reviewed_by, reviewed_at, reject_reason,
             avatar_url, is_deleted, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,false,
@@ -264,7 +293,7 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
           v.state,
           p.name,
           p.shortDescription,
-          p.category,
+          categoryId,
           JSON.stringify(p.tags),
           skillMd(p, v),
           v.changelogNote ?? null,
