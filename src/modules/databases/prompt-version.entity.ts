@@ -48,6 +48,9 @@ export class PromptVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar' })
   public category: string;
 
+  @Column({ type: 'int', nullable: true })
+  public category_id: number | null;
+
   // Freeform tag array stored as JSONB for flexible querying without a join table.
   @Column({ type: 'jsonb', default: '[]' })
   public tags: string[];

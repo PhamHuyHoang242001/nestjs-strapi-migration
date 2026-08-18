@@ -46,6 +46,7 @@ import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-o
 import { SkillPackageModule } from '@modules/skill-package/skill-package.module';
 import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.module';
 import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
+import { CategoryModule } from '@modules/category/category.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -115,6 +116,7 @@ import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifact
     SkillPackageModule,
     PromptLibraryModule,
     LatestArtifactsModule,
+    CategoryModule,
   ],
   controllers: [AppController],
   providers: [

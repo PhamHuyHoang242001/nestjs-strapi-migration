@@ -1,12 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { PromptCategory } from '../prompt-category.constant';
@@ -16,6 +18,12 @@ import { PromptCategory } from '../prompt-category.constant';
 // origin is validated against the configured Strapi host at submit. Media ids are never accepted
 // from the client (IDOR guard).
 export class CreatePromptPackageDto {
+  @ApiProperty({ description: 'Active prompt category ID', required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  readonly category_id?: number;
   // The prompt text — the reviewable/diffable artifact. Capped at 50k chars to bound storage.
   @ApiProperty({ description: 'Prompt text content', maxLength: 50000 })
   @IsNotEmpty()
@@ -44,7 +52,7 @@ export class CreatePromptPackageDto {
   readonly short_description: string;
 
   @ApiProperty({ description: 'Category (closed enum)', enum: PromptCategory })
-  @IsNotEmpty()
+  @IsOptional()
   @IsEnum(PromptCategory)
   readonly category: PromptCategory;
 

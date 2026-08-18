@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { SkillPackage, SkillPackageStatus } from '@modules/databases/skill-package.entity';
@@ -9,6 +9,8 @@ import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { formatVersion } from './skill-response.helper';
 import { SkillVersionFileKind } from '@modules/databases/skill-version-file.entity';
+import { CategoryService } from '@modules/category/category.service';
+import { CategoryType } from '@modules/databases/category.entity';
 
 @Injectable()
 export class SkillPackageQueryService {
@@ -18,7 +20,23 @@ export class SkillPackageQueryService {
     @InjectRepository(SkillVersion)
     private readonly versionRepo: Repository<SkillVersion>,
     private readonly permissionQuery: PermissionQueryService,
+    @Optional() private readonly categoryService?: CategoryService,
   ) {}
+
+  private async resolveCategories(ids: Array<number | null | undefined>) {
+    return this.categoryService?.resolve(ids.filter((id): id is number => typeof id === 'number')) ?? new Map();
+  }
+
+  private decorateCategory<T extends { category_id?: number | null }>(
+    version: T,
+    categories: Map<number, { id: number; name: string; type: CategoryType }>,
+  ) {
+    const category = version.category_id == null ? undefined : categories.get(version.category_id);
+    return {
+      ...version,
+      category_detail: category ? { id: category.id, name: category.name, type: category.type } : null,
+    };
+  }
 
   // Resolve a set of user ids → email for person-display fields (e.g. "Người đăng"). One batched
   // query, deduped, null-safe. Returns a Map(id → email); ids with no user row are simply absent.
@@ -122,7 +140,9 @@ export class SkillPackageQueryService {
       );
     }
 
-    if (query.category?.trim()) {
+    if (query.category_id) {
+      qb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
+    } else if (query.category?.trim()) {
       qb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
 
@@ -154,7 +174,9 @@ export class SkillPackageQueryService {
         { search: kw.toLowerCase() },
       );
     }
-    if (query.category?.trim()) {
+    if (query.category_id) {
+      countQb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
+    } else if (query.category?.trim()) {
       countQb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
     if (query.tags?.length) {
@@ -165,8 +187,11 @@ export class SkillPackageQueryService {
 
     // Fold each active_version's files[] down to the single `file` object (diagnostic-parity);
     // avatar_url stays an inline URL column. Packages always have an active_version here (innerJoin).
+    const categories = await this.resolveCategories(data.map((pkg) => pkg.active_version?.category_id));
     const shaped = data.map((pkg) =>
-      pkg.active_version ? { ...pkg, active_version: formatVersion(pkg.active_version) } : pkg,
+      pkg.active_version
+        ? { ...pkg, active_version: this.decorateCategory(formatVersion(pkg.active_version), categories) }
+        : pkg,
     );
     return {
       data: shaped,
@@ -250,13 +275,18 @@ export class SkillPackageQueryService {
           })
         : fv;
 
+    const categories = await this.resolveCategories([
+      pkg.active_version?.category_id,
+      ...versions.map((version) => version.category_id),
+    ]);
+
     // Fold files[] → single `file` object on the active_version and every history version
     // (diagnostic-parity); avatar_url stays an inline URL column. submitted_by_email is additive
     // (numeric submitted_by kept for any id-based client logic).
     return {
       ...pkg,
-      active_version: addSubmitterEmail(formatVersion(pkg.active_version)),
-      versions: versions.map((v) => addSubmitterEmail(formatVersion(scrub(v)))),
+      active_version: addSubmitterEmail(this.decorateCategory(formatVersion(pkg.active_version), categories)),
+      versions: versions.map((v) => addSubmitterEmail(this.decorateCategory(formatVersion(scrub(v)), categories))),
       isUpdate,
       hasPendingVersion,
     };
@@ -400,8 +430,12 @@ export class SkillPackageQueryService {
 
     // Fold each pending version's files[] → single `file` object (diagnostic-parity), then attach
     // the submitter email (additive; numeric submitted_by kept for the client-side creator filter).
+    const categories = await this.resolveCategories(data.map((version) => version.category_id));
     return {
-      data: data.map((v) => ({ ...formatVersion(v), submitted_by_email: emailMap.get(v.submitted_by) ?? null })),
+      data: data.map((v) => ({
+        ...this.decorateCategory(formatVersion(v), categories),
+        submitted_by_email: emailMap.get(v.submitted_by) ?? null,
+      })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
     };
   }
@@ -461,7 +495,8 @@ export class SkillPackageQueryService {
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
     if (version.files) version.files = version.files.filter((file) => !file.is_deleted);
 
-    const formattedVersion = formatVersion(version);
+    const categories = await this.resolveCategories([version.category_id]);
+    const formattedVersion = this.decorateCategory(formatVersion(version), categories);
     return {
       package: {
         id: pkg.id,

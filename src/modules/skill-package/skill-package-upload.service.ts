@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { SkillPackage, SkillPackageStatus } from '@modules/databases/skill-package.entity';
@@ -12,6 +12,8 @@ import { ToggleStatusDto } from './dto/toggle-status.dto';
 import { extractSkillMdFromZip } from './skill-zip.util';
 import { FetchedFile, SkillFileFetchService } from './skill-file-fetch.util';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
+import { CategoryService } from '@modules/category/category.service';
+import { CategoryType } from '@modules/databases/category.entity';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
 const PG_UNIQUE_VIOLATION = '23505';
@@ -34,6 +36,7 @@ export class SkillPackageUploadService {
     private readonly dataSource: DataSource,
     private readonly fileFetch: SkillFileFetchService,
     private readonly permissionQuery: PermissionQueryService,
+    @Optional() private readonly categoryService?: CategoryService,
   ) {}
 
   // Upload a new skill package (creates package row + v1 pending version) in one tx.
@@ -48,6 +51,9 @@ export class SkillPackageUploadService {
     if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
 
     return this.dataSource.transaction(async (manager) => {
+      const resolvedCategory = dto.category_id !== undefined
+        ? await this.categoryService?.validateActive(dto.category_id, CategoryType.SKILL, manager)
+        : undefined;
       const savedPkg = await manager.save(
         SkillPackage,
         manager.create(SkillPackage, {
@@ -72,7 +78,8 @@ export class SkillPackageUploadService {
           state: SkillVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
-          category: dto.category,
+          category: resolvedCategory?.name ?? dto.category,
+          category_id: dto.category_id ?? null,
           tags: dto.tags ?? [],
           avatar_url: dto.avatar_url ?? null,
           skill_md_content: skillMdContent,
@@ -144,6 +151,9 @@ export class SkillPackageUploadService {
         // rejected first version) — same shape as a fresh first pending (old_version NULL).
         const placeholderVersionNo = oldVersion ?? 1;
 
+        const resolvedCategory = dto.category_id !== undefined
+          ? await this.categoryService?.validateActive(dto.category_id, CategoryType.SKILL, manager)
+          : undefined;
         const version = manager.create(SkillVersion, {
           skill_package_id: packageId,
           version_no: placeholderVersionNo,
@@ -151,7 +161,8 @@ export class SkillPackageUploadService {
           state: SkillVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
-          category: dto.category,
+          category: resolvedCategory?.name ?? dto.category,
+          category_id: dto.category_id ?? null,
           tags: dto.tags ?? [],
           avatar_url: dto.avatar_url ?? null,
           skill_md_content: skillMdContent,

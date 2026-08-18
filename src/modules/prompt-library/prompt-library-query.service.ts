@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
@@ -7,6 +7,8 @@ import { ListPromptQueryDto } from './dto/list-prompt-query.dto';
 import { ListVersionsDto } from './dto/list-versions.dto';
 import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
+import { CategoryService } from '@modules/category/category.service';
+import { CategoryType } from '@modules/databases/category.entity';
 
 @Injectable()
 export class PromptLibraryQueryService {
@@ -16,7 +18,23 @@ export class PromptLibraryQueryService {
     @InjectRepository(PromptVersion)
     private readonly versionRepo: Repository<PromptVersion>,
     private readonly permissionQuery: PermissionQueryService,
+    @Optional() private readonly categoryService?: CategoryService,
   ) {}
+
+  private async resolveCategories(ids: Array<number | null | undefined>) {
+    return this.categoryService?.resolve(ids.filter((id): id is number => typeof id === 'number')) ?? new Map();
+  }
+
+  private decorateCategory<T extends { category_id?: number | null }>(
+    version: T,
+    categories: Map<number, { id: number; name: string; type: CategoryType }>,
+  ) {
+    const category = version.category_id == null ? undefined : categories.get(version.category_id);
+    return {
+      ...version,
+      category_detail: category ? { id: category.id, name: category.name, type: category.type } : null,
+    };
+  }
 
   // Resolve a set of user ids → email for person-display fields (e.g. "Người đăng"). One batched
   // query, deduped, null-safe. Returns a Map(id → email); ids with no user row are simply absent.
@@ -116,7 +134,9 @@ export class PromptLibraryQueryService {
       );
     }
 
-    if (query.category?.trim()) {
+    if (query.category_id) {
+      qb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
+    } else if (query.category?.trim()) {
       qb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
 
@@ -149,7 +169,9 @@ export class PromptLibraryQueryService {
         { search: kw.toLowerCase() },
       );
     }
-    if (query.category?.trim()) {
+    if (query.category_id) {
+      countQb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
+    } else if (query.category?.trim()) {
       countQb.andWhere('LOWER(av.category) = :category', { category: query.category.trim().toLowerCase() });
     }
     if (query.tags?.length) {
@@ -158,9 +180,13 @@ export class PromptLibraryQueryService {
 
     const [data, countRow] = await Promise.all([qb.getMany(), countQb.getRawOne<{ count: string }>()]);
 
+    const categories = await this.resolveCategories(data.map((pkg) => pkg.active_version?.category_id));
+    const shaped = data.map((pkg) =>
+      pkg.active_version ? { ...pkg, active_version: this.decorateCategory(pkg.active_version, categories) } : pkg,
+    );
     // The prompt artifact is an inline column on the active_version — returned as-is (no fold).
     return {
-      data,
+      data: shaped,
       meta: { total: Number(countRow?.count ?? 0), page, limit },
     };
   }
@@ -230,12 +256,17 @@ export class PromptLibraryQueryService {
           })
         : fv;
 
+    const categories = await this.resolveCategories([
+      pkg.active_version?.category_id,
+      ...versions.map((version) => version.category_id),
+    ]);
+
     // Prompt content is an inline column — versions are returned directly (no files fold).
     // submitted_by_email is additive (numeric submitted_by kept for any id-based client logic).
     return {
       ...pkg,
-      active_version: addSubmitterEmail(pkg.active_version),
-      versions: versions.map((v) => addSubmitterEmail(scrub(v))),
+      active_version: addSubmitterEmail(this.decorateCategory(pkg.active_version, categories)),
+      versions: versions.map((v) => addSubmitterEmail(this.decorateCategory(scrub(v), categories))),
       isUpdate,
       hasPendingVersion,
     };
@@ -376,8 +407,12 @@ export class PromptLibraryQueryService {
 
     // Versions returned directly (no files fold); attach the submitter email (additive; numeric
     // submitted_by kept for the client-side creator filter).
+    const categories = await this.resolveCategories(data.map((version) => version.category_id));
     return {
-      data: data.map((v) => ({ ...v, submitted_by_email: emailMap.get(v.submitted_by) ?? null })),
+      data: data.map((v) => ({
+        ...this.decorateCategory(v, categories),
+        submitted_by_email: emailMap.get(v.submitted_by) ?? null,
+      })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
     };
   }
@@ -433,6 +468,7 @@ export class PromptLibraryQueryService {
     }
 
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
+    const categories = await this.resolveCategories([version.category_id]);
     return {
       package: {
         id: pkg.id,
@@ -442,7 +478,7 @@ export class PromptLibraryQueryService {
         created_by: pkg.created_by,
       },
       version: {
-        ...version,
+        ...this.decorateCategory(version, categories),
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
         reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
       },
@@ -499,6 +535,8 @@ export class PromptLibraryQueryService {
         state: version.state,
         name: version.name,
         category: version.category,
+        category_id: version.category_id,
+        category_detail: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1) ?? null,
         tags: version.tags,
         changelog_note: version.changelog_note,
         submitted_by: version.submitted_by,

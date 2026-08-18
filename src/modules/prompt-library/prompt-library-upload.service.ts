@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
@@ -9,6 +9,8 @@ import { RejectPromptVersionDto } from './dto/reject-prompt-version.dto';
 import { ToggleStatusDto } from './dto/toggle-status.dto';
 import { PromptAvatarUrlService } from './prompt-avatar-url.util';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
+import { CategoryService } from '@modules/category/category.service';
+import { CategoryType } from '@modules/databases/category.entity';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
 const PG_UNIQUE_VIOLATION = '23505';
@@ -31,6 +33,7 @@ export class PromptLibraryUploadService {
     private readonly dataSource: DataSource,
     private readonly avatarUrl: PromptAvatarUrlService,
     private readonly permissionQuery: PermissionQueryService,
+    @Optional() private readonly categoryService?: CategoryService,
   ) {}
 
   // Upload a new prompt package (creates package row + v1 pending version) in one tx.
@@ -41,6 +44,9 @@ export class PromptLibraryUploadService {
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
 
     return this.dataSource.transaction(async (manager) => {
+      const resolvedCategory = dto.category_id !== undefined
+        ? await this.categoryService?.validateActive(dto.category_id, CategoryType.PROMPT, manager)
+        : undefined;
       const savedPkg = await manager.save(
         PromptPackage,
         manager.create(PromptPackage, {
@@ -65,7 +71,8 @@ export class PromptLibraryUploadService {
           state: PromptVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
-          category: dto.category,
+          category: resolvedCategory?.name ?? dto.category,
+          category_id: dto.category_id ?? null,
           tags: dto.tags ?? [],
           avatar_url: dto.avatar_url ?? null,
           prompt_content: dto.prompt_content,
@@ -128,6 +135,9 @@ export class PromptLibraryUploadService {
         // rejected first version) — same shape as a fresh first pending (old_version NULL).
         const placeholderVersionNo = oldVersion ?? 1;
 
+        const resolvedCategory = dto.category_id !== undefined
+          ? await this.categoryService?.validateActive(dto.category_id, CategoryType.PROMPT, manager)
+          : undefined;
         const version = manager.create(PromptVersion, {
           prompt_package_id: packageId,
           version_no: placeholderVersionNo,
@@ -135,7 +145,8 @@ export class PromptLibraryUploadService {
           state: PromptVersionState.PENDING,
           name: dto.name,
           short_description: dto.short_description,
-          category: dto.category,
+          category: resolvedCategory?.name ?? dto.category,
+          category_id: dto.category_id ?? null,
           tags: dto.tags ?? [],
           avatar_url: dto.avatar_url ?? null,
           prompt_content: dto.prompt_content,

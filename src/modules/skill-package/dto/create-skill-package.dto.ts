@@ -5,9 +5,11 @@ import {
   IsEnum,
   IsNotEmpty,
   IsObject,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -20,6 +22,12 @@ import { SkillFileDto } from './skill-file.dto';
 // time (SSRF guard), so relative or absolute Strapi URLs are both accepted here.
 // Media ids remain server-assigned — never accepted from the client (IDOR guard M2).
 export class CreateSkillPackageDto {
+  @ApiProperty({ description: 'Active skill category ID', required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  readonly category_id?: number;
   // The skill archive as a file object (fileUrl + optional name/type), mirroring the diagnostic
   // report's `file` input. The avatar below is a plain URL (mirroring diagnostic's `icon`).
   @ApiProperty({ description: 'Uploaded skill .zip descriptor', type: SkillFileDto })
@@ -50,7 +58,7 @@ export class CreateSkillPackageDto {
   readonly short_description: string;
 
   @ApiProperty({ description: 'Category (closed enum)', enum: SkillCategory })
-  @IsNotEmpty()
+  @IsOptional()
   @IsEnum(SkillCategory)
   readonly category: SkillCategory;
 
