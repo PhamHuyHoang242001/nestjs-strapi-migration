@@ -709,6 +709,38 @@ describe('SkillPackageQueryService', () => {
     });
   });
 
+  describe('listReviewSubmitters — same scope as listReviews', () => {
+    it('non-approver with scope=all still binds submitted_by = caller', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      versionRepo.manager.query.mockResolvedValue([{ id: USER_ID, email: 'me@x.com' }]);
+
+      const result = await service.listReviewSubmitters({ scope: ReviewScope.ALL }, USER_ID);
+
+      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM skill_versions'), [
+        USER_ID,
+      ]);
+      expect(result).toEqual({ data: [{ id: USER_ID, email: 'me@x.com' }] });
+    });
+
+    it('approver with scope=all lists every pending submitter (no user bind)', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+      versionRepo.manager.query.mockResolvedValue([
+        { id: 2, email: 'a@x.com' },
+        { id: 3, email: null },
+      ]);
+
+      const result = await service.listReviewSubmitters({ scope: ReviewScope.ALL }, USER_ID);
+
+      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM skill_versions'), [null]);
+      expect(result).toEqual({
+        data: [
+          { id: 2, email: 'a@x.com' },
+          { id: 3, email: null },
+        ],
+      });
+    });
+  });
+
   describe('versionDetail — submitter, package creator, or approver', () => {
     const makeVersion = (overrides: Record<string, unknown> = {}) => ({
       id: VERSION_ID,

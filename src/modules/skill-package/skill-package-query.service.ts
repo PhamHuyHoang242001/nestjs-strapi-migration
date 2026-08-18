@@ -439,6 +439,26 @@ export class SkillPackageQueryService {
     };
   }
 
+  // Distinct submitters of pending versions — feeds the review-queue "Người tạo" filter.
+  // Same scope rule as listReviews: non-approver / scope≠all → only the caller.
+  async listReviewSubmitters(query: ReviewQueryDto, userId: number) {
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    const ownOnly = !canApprove || query.scope !== ReviewScope.ALL;
+    const rows = (await this.versionRepo.manager.query(
+      `SELECT DISTINCT v.submitted_by AS id, u.email
+         FROM skill_versions v
+         LEFT JOIN users u ON u.id = v.submitted_by
+        WHERE v.state = 'pending'
+          AND v.deleted_at IS NULL
+          AND COALESCE(v.is_deleted, false) = false
+          AND ($1::int IS NULL OR v.submitted_by = $1)
+        ORDER BY u.email ASC NULLS LAST, v.submitted_by ASC`,
+      [ownOnly ? userId : null],
+    )) as Array<{ id: number; email: string | null }>;
+    return { data: rows.map((row) => ({ id: Number(row.id), email: row.email ?? null })) };
+  }
+
   // Version detail for both the review and "My Version" screens. Access deliberately mirrors the
   // union of those entry points: submitter, package creator, or approver. A pending version compares
   // against its immutable approved predecessor (old_version), never the package's current active

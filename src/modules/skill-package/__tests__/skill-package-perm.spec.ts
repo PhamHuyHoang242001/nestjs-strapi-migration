@@ -49,6 +49,10 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('listReviews')).toBeUndefined();
   });
 
+  it('listReviewSubmitters has no RequirePermission metadata (service-layer authz only)', () => {
+    expect(getPerm('listReviewSubmitters')).toBeUndefined();
+  });
+
   it('getDiff has no RequirePermission metadata (service-layer authz only)', () => {
     expect(getPerm('getDiff')).toBeUndefined();
   });
@@ -67,6 +71,7 @@ describe('SkillPackageController — perm mapping', () => {
     'stats',
     'getItem',
     'listReviews',
+    'listReviewSubmitters',
     'getVersion',
     'getDiff',
     'myPermissions',

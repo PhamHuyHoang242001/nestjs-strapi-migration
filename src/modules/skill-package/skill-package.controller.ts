@@ -126,6 +126,16 @@ export class SkillPackageController {
     stream.pipe(res);
   }
 
+  // GET /v1/skill/reviews/submitters — distinct pending-version creators for the queue filter.
+  // Static path before GET reviews so it is never captured as a param. Same scope as listReviews.
+  @ApiOperation({ summary: 'Distinct submitters of pending skill versions (same scope as reviews)' })
+  @Get('reviews/submitters')
+  listReviewSubmitters(@Query() q: ReviewQueryDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.queryService.listReviewSubmitters(q, userId);
+  }
+
   // GET /v1/skill/reviews — pending versions queue; service enforces scope authz (C3).
   @ApiOperation({ summary: 'Review queue (approver=all pending; else own only)' })
   @Get('reviews')
