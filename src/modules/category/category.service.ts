@@ -40,13 +40,39 @@ export class CategoryService {
   async update(id: number, dto: UpdateCategoryDto) {
     const category = await this.repo.findOne({ where: { id } });
     if (!category) throw new NotFoundException('Category not found');
-    if (dto.name !== undefined) {
-      const name = normalized(dto.name);
-      if (!name) throw new ConflictException('Category name cannot be empty');
-      category.name = name;
-    }
-    if (dto.is_active !== undefined) category.is_active = dto.is_active;
-    return this.repo.save(category);
+    return this.dataSource.transaction(async (manager) => {
+      if (dto.is_active === false && category.is_active) {
+        const usage = await manager.query(
+          `SELECT EXISTS (SELECT 1 FROM skill_versions WHERE category_id = $1)
+             OR EXISTS (SELECT 1 FROM prompt_versions WHERE category_id = $1) AS in_use`,
+          [id],
+        );
+        if (usage[0]?.in_use === true || usage[0]?.in_use === 'true') {
+          throw new ConflictException('Category is in use and cannot be deactivated');
+        }
+      }
+      if (dto.name !== undefined) {
+        const name = normalized(dto.name);
+        if (!name) throw new ConflictException('Category name cannot be empty');
+        await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `category:${category.type}:${name.toLowerCase()}`,
+        ]);
+        const duplicate = await manager
+          .getRepository(Category)
+          .createQueryBuilder('c')
+          .where('c.id <> :id AND c.type = :type AND lower(trim(c.name)) = lower(:name)', {
+            id,
+            type: category.type,
+            name,
+          })
+          .andWhere('COALESCE(c.is_deleted, false) = false')
+          .getOne();
+        if (duplicate) throw new ConflictException('A category with this name already exists');
+        category.name = name;
+      }
+      if (dto.is_active !== undefined) category.is_active = dto.is_active;
+      return manager.getRepository(Category).save(category);
+    });
   }
 
   async deactivate(id: number) {

@@ -27,12 +27,15 @@ export class PromptLibraryQueryService {
 
   private decorateCategory<T extends { category_id?: number | null }>(
     version: T,
-    categories: Map<number, { id: number; name: string; type: CategoryType }>,
+    categories: Map<number, { id: number; name: string; type: CategoryType; is_active?: boolean }>,
   ) {
     const category = version.category_id == null ? undefined : categories.get(version.category_id);
     return {
       ...version,
-      category_detail: category ? { id: category.id, name: category.name, type: category.type } : null,
+      category: category?.name ?? null,
+      category_detail: category
+        ? { id: category.id, name: category.name, type: category.type, is_active: category.is_active }
+        : null,
     };
   }
 
