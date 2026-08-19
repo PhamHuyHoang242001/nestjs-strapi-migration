@@ -45,12 +45,12 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('getItem')).toBeUndefined();
   });
 
-  it('listReviews has no RequirePermission metadata (service-layer authz only)', () => {
-    expect(getPerm('listReviews')).toBeUndefined();
+  it('listReviews carries skill_approve', () => {
+    expect(getPerm('listReviews')).toEqual(['skill_approve']);
   });
 
-  it('listReviewSubmitters has no RequirePermission metadata (service-layer authz only)', () => {
-    expect(getPerm('listReviewSubmitters')).toBeUndefined();
+  it('listReviewSubmitters carries skill_approve', () => {
+    expect(getPerm('listReviewSubmitters')).toEqual(['skill_approve']);
   });
 
   it('getDiff has no RequirePermission metadata (service-layer authz only)', () => {

@@ -1,11 +1,11 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 import { PromptVersion, PromptVersionState } from '@modules/databases/prompt-version.entity';
 import { ListPromptQueryDto } from './dto/list-prompt-query.dto';
 import { ListVersionsDto } from './dto/list-versions.dto';
-import { ReviewQueryDto, ReviewScope } from './dto/review-query.dto';
+import { ReviewQueryDto } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
@@ -37,6 +37,34 @@ export class PromptLibraryQueryService {
         ? { id: category.id, name: category.name, type: category.type, is_active: category.is_active }
         : null,
     };
+  }
+
+  // Display filters for the review queue. Caller is already an approver (controller PermissionGuard).
+  private applyReviewFilters<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    query: ReviewQueryDto,
+    alias: string,
+  ): void {
+    if (query.submitted_by) {
+      qb.andWhere(`${alias}.submitted_by = :submitted_by`, { submitted_by: query.submitted_by });
+    }
+    if (query.category_id) {
+      qb.andWhere(`${alias}.category_id = :category_id`, { category_id: query.category_id });
+    }
+  }
+
+  // newest/oldest use created_at with id as a stable tie-break; name is A→Z then id ASC.
+  private applyReviewSort<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    query: ReviewQueryDto,
+    alias: string,
+  ): void {
+    if (query.sort === 'name') {
+      qb.orderBy(`${alias}.name`, 'ASC').addOrderBy(`${alias}.id`, 'ASC');
+      return;
+    }
+    const dir = query.sort === 'oldest' ? 'ASC' : 'DESC';
+    qb.orderBy(`${alias}.created_at`, dir).addOrderBy(`${alias}.id`, dir);
   }
 
   // Resolve a set of user ids → email for person-display fields (e.g. "Người đăng"). One batched
@@ -329,7 +357,7 @@ export class PromptLibraryQueryService {
     const offsetIdx = rowParams.push((page - 1) * pageSize);
     const rows = (await this.versionRepo.manager.query(
       `SELECT p.id AS package_id, p.code, v.id AS version_id, v.name AS package_name,
-              v.old_version, v.version_no, v.state, v.submitted_by, v.created_at
+              v.old_version, v.version_no, v.state, v.submitted_by, v.created_at, v.avatar_url
        FROM prompt_versions v
        INNER JOIN prompt_packages p ON p.id = v.prompt_package_id
        WHERE ${whereSql}${stateSql}
@@ -346,6 +374,7 @@ export class PromptLibraryQueryService {
       state: PromptVersionState;
       submitted_by: number;
       created_at: Date | string;
+      avatar_url: string | null;
     }>;
 
     const emailMap = await this.resolveEmails(rows.map((r) => r.submitted_by));
@@ -359,6 +388,7 @@ export class PromptLibraryQueryService {
       state: r.state,
       submitted_by_email: emailMap.get(Number(r.submitted_by)) ?? null,
       created_at: r.created_at,
+      avatar_url: r.avatar_url ?? null,
       // "mới" badge signal: first-ever pending (never had an approved predecessor).
       is_first_pending: r.state === PromptVersionState.PENDING && r.old_version == null,
     }));
@@ -366,38 +396,26 @@ export class PromptLibraryQueryService {
     return { data, meta: { total, page, limit: pageSize } };
   }
 
-  // Review queue: approvers see all pending; non-approvers are forced to own-submitted only.
-  // scope=all from a non-approver is SILENTLY overridden — client intent is ignored.
-  async listReviews(query: ReviewQueryDto, userId: number) {
+  // Review queue: approver-only (controller PermissionGuard). Optional display filters below.
+  async listReviews(query: ReviewQueryDto) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100);
-
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('prompt_approve');
 
     const qb = this.versionRepo
       .createQueryBuilder('pv')
       .where('pv.deleted_at IS NULL')
       .andWhere('pv.state = :state', { state: PromptVersionState.PENDING });
 
-    // Scope enforcement: non-approver is forced to submitted_by = me regardless of scope param.
-    if (!canApprove || query.scope !== ReviewScope.ALL) {
-      qb.andWhere('pv.submitted_by = :userId', { userId });
-    }
-
-    qb.orderBy('pv.id', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+    this.applyReviewFilters(qb, query, 'pv');
+    this.applyReviewSort(qb, query, 'pv');
+    qb.skip((page - 1) * limit).take(limit);
 
     const countQb = this.versionRepo
       .createQueryBuilder('pv')
       .where('pv.deleted_at IS NULL')
       .andWhere('pv.state = :state', { state: PromptVersionState.PENDING })
       .select('COUNT(pv.id)', 'count');
-
-    if (!canApprove || query.scope !== ReviewScope.ALL) {
-      countQb.andWhere('pv.submitted_by = :userId', { userId });
-    }
+    this.applyReviewFilters(countQb, query, 'pv');
 
     const [data, countRow] = await Promise.all([qb.getMany(), countQb.getRawOne<{ count: string }>()]);
 
@@ -405,7 +423,7 @@ export class PromptLibraryQueryService {
     const emailMap = await this.resolveEmails(data.map((v) => v.submitted_by));
 
     // Versions returned directly (no files fold); attach the submitter email (additive; numeric
-    // submitted_by kept for the client-side creator filter).
+    // submitted_by kept for the creator filter).
     const categories = await this.resolveCategories(data.map((version) => version.category_id));
     return {
       data: data.map((v) => ({
@@ -417,11 +435,8 @@ export class PromptLibraryQueryService {
   }
 
   // Distinct submitters of pending versions — feeds the review-queue "Người tạo" filter.
-  // Same scope rule as listReviews: non-approver / scope≠all → only the caller.
-  async listReviewSubmitters(query: ReviewQueryDto, userId: number) {
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('prompt_approve');
-    const ownOnly = !canApprove || query.scope !== ReviewScope.ALL;
+  // Approver-only (controller PermissionGuard); lists every pending submitter.
+  async listReviewSubmitters() {
     const rows = (await this.versionRepo.manager.query(
       `SELECT DISTINCT v.submitted_by AS id, u.email
          FROM prompt_versions v
@@ -429,9 +444,7 @@ export class PromptLibraryQueryService {
         WHERE v.state = 'pending'
           AND v.deleted_at IS NULL
           AND COALESCE(v.is_deleted, false) = false
-          AND ($1::int IS NULL OR v.submitted_by = $1)
         ORDER BY u.email ASC NULLS LAST, v.submitted_by ASC`,
-      [ownOnly ? userId : null],
     )) as Array<{ id: number; email: string | null }>;
     return { data: rows.map((row) => ({ id: Number(row.id), email: row.email ?? null })) };
   }
@@ -553,6 +566,7 @@ export class PromptLibraryQueryService {
         old_version: version.old_version ?? null,
         state: version.state,
         name: version.name,
+        avatar_url: version.avatar_url ?? null,
         category: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1)?.name ?? null,
         category_id: version.category_id,
         category_detail: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1) ?? null,

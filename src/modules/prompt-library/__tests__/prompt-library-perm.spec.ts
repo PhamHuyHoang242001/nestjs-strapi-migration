@@ -45,12 +45,12 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('getItem')).toBeUndefined();
   });
 
-  it('listReviews has no RequirePermission metadata (service-layer authz only)', () => {
-    expect(getPerm('listReviews')).toBeUndefined();
+  it('listReviews carries prompt_approve', () => {
+    expect(getPerm('listReviews')).toEqual(['prompt_approve']);
   });
 
-  it('listReviewSubmitters has no RequirePermission metadata (service-layer authz only)', () => {
-    expect(getPerm('listReviewSubmitters')).toBeUndefined();
+  it('listReviewSubmitters carries prompt_approve', () => {
+    expect(getPerm('listReviewSubmitters')).toEqual(['prompt_approve']);
   });
 
   it('getDiff has no RequirePermission metadata (service-layer authz only)', () => {

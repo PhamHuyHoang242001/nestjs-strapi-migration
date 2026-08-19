@@ -127,22 +127,22 @@ export class SkillPackageController {
   }
 
   // GET /v1/skill/reviews/submitters — distinct pending-version creators for the queue filter.
-  // Static path before GET reviews so it is never captured as a param. Same scope as listReviews.
-  @ApiOperation({ summary: 'Distinct submitters of pending skill versions (same scope as reviews)' })
+  // Static path before GET reviews so it is never captured as a param. Approver-only.
+  @ApiOperation({ summary: 'Distinct submitters of pending skill versions (approver-only)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('skill_approve')
   @Get('reviews/submitters')
-  listReviewSubmitters(@Query() q: ReviewQueryDto, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number;
-    if (!userId) throw new ForbiddenException('User not authenticated');
-    return this.queryService.listReviewSubmitters(q, userId);
+  listReviewSubmitters() {
+    return this.queryService.listReviewSubmitters();
   }
 
-  // GET /v1/skill/reviews — pending versions queue; service enforces scope authz (C3).
-  @ApiOperation({ summary: 'Review queue (approver=all pending; else own only)' })
+  // GET /v1/skill/reviews — pending versions queue. Approver-only (PermissionGuard).
+  @ApiOperation({ summary: 'Review queue (approver-only pending versions)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('skill_approve')
   @Get('reviews')
-  listReviews(@Query() q: ReviewQueryDto, @Req() req: RequestWithInfo) {
-    const userId = req.info?.user?.id as number;
-    if (!userId) throw new ForbiddenException('User not authenticated');
-    return this.queryService.listReviews(q, userId);
+  listReviews(@Query() q: ReviewQueryDto) {
+    return this.queryService.listReviews(q);
   }
 
   // GET /v1/skill/versions — flat "My Version" list (all states) with code/state filters +

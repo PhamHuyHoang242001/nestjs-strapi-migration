@@ -2,7 +2,6 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import { PromptLibraryQueryService } from '../prompt-library-query.service';
 import { PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 import { PromptVersionState } from '@modules/databases/prompt-version.entity';
-import { ReviewScope } from '../dto/review-query.dto';
 
 const USER_ID = 10;
 const OTHER_USER_ID = 20;
@@ -15,6 +14,7 @@ const PACKAGE_ID = 1;
 function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
   const capturedWheres: string[] = [];
   const capturedParams: Record<string, unknown> = {};
+  const capturedOrders: Array<{ col: string; dir?: string }> = [];
   let currentCountValue = countValue;
   let currentResultRows = resultRows;
   const qb: any = {
@@ -31,7 +31,14 @@ function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
       if (p) Object.assign(capturedParams, p);
       return qb;
     }),
-    orderBy: jest.fn().mockReturnThis(),
+    orderBy: jest.fn((col: string, dir?: string) => {
+      capturedOrders.push({ col, dir });
+      return qb;
+    }),
+    addOrderBy: jest.fn((col: string, dir?: string) => {
+      capturedOrders.push({ col, dir });
+      return qb;
+    }),
     skip: jest.fn().mockReturnThis(),
     take: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
@@ -40,6 +47,7 @@ function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
     getRawOne: jest.fn().mockImplementation(() => Promise.resolve({ count: currentCountValue })),
     capturedWheres,
     capturedParams,
+    capturedOrders,
     _setResults: (rows: unknown[], count: string) => {
       currentResultRows = rows;
       currentCountValue = count;
@@ -571,81 +579,78 @@ describe('PromptLibraryQueryService', () => {
     });
   });
 
-  // ---- listReviews — scope enforcement ----
-  describe('listReviews — non-approver forced to own scope', () => {
-    it('non-approver with scope=all → forced submitted_by=me predicate', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']); // no prompt_approve
-
+  // ---- listReviews — approver-only; visibility is the PermissionGuard, not a service check ----
+  describe('listReviews — creator / category / sort filters', () => {
+    it('unfiltered list has no submitted_by predicate', async () => {
       const qb = makeQueryBuilder();
       versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.listReviews({ scope: ReviewScope.ALL, page: 1, limit: 20 }, USER_ID);
-
-      const joined = qb.capturedWheres.join(' | ');
-      expect(joined).toContain('pv.submitted_by = :userId');
-      expect(qb.capturedParams.userId).toBe(USER_ID);
-    });
-
-    it('non-approver with scope=mine → also has submitted_by predicate', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue([]);
-
-      const qb = makeQueryBuilder();
-      versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
-
-      await service.listReviews({ scope: ReviewScope.MINE, page: 1, limit: 10 }, USER_ID);
-
-      const joined = qb.capturedWheres.join(' | ');
-      expect(joined).toContain('pv.submitted_by = :userId');
-    });
-
-    it('approver with scope=all → NO submitted_by predicate (sees all pending)', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
-
-      const qb = makeQueryBuilder();
-      versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
-
-      await service.listReviews({ scope: ReviewScope.ALL, page: 1, limit: 20 }, USER_ID);
+      await service.listReviews({ page: 1, limit: 20 });
 
       const joined = qb.capturedWheres.join(' | ');
       expect(joined).not.toContain('pv.submitted_by');
     });
 
-    it('approver with scope=mine → submitted_by predicate still applied', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
-
+    it('applies submitted_by + category_id on page and count', async () => {
       const qb = makeQueryBuilder();
       versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.listReviews({ scope: ReviewScope.MINE, page: 1, limit: 20 }, USER_ID);
+      await service.listReviews({ page: 1, limit: 20, submitted_by: OTHER_USER_ID, category_id: 7 });
 
       const joined = qb.capturedWheres.join(' | ');
-      expect(joined).toContain('pv.submitted_by = :userId');
+      expect(joined).toContain('pv.submitted_by = :submitted_by');
+      expect(joined).toContain('pv.category_id = :category_id');
+      expect(qb.capturedParams.submitted_by).toBe(OTHER_USER_ID);
+      expect(qb.capturedParams.category_id).toBe(7);
+    });
+
+    it('sort=newest orders by created_at DESC, id DESC', async () => {
+      const qb = makeQueryBuilder();
+      versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.listReviews({ page: 1, limit: 20, sort: 'newest' });
+
+      expect(qb.capturedOrders).toEqual([
+        { col: 'pv.created_at', dir: 'DESC' },
+        { col: 'pv.id', dir: 'DESC' },
+      ]);
+    });
+
+    it('sort=oldest orders by created_at ASC, id ASC', async () => {
+      const qb = makeQueryBuilder();
+      versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.listReviews({ page: 1, limit: 20, sort: 'oldest' });
+
+      expect(qb.capturedOrders).toEqual([
+        { col: 'pv.created_at', dir: 'ASC' },
+        { col: 'pv.id', dir: 'ASC' },
+      ]);
+    });
+
+    it('sort=name orders by name ASC, id ASC', async () => {
+      const qb = makeQueryBuilder();
+      versionRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.listReviews({ page: 1, limit: 20, sort: 'name' });
+
+      expect(qb.capturedOrders).toEqual([
+        { col: 'pv.name', dir: 'ASC' },
+        { col: 'pv.id', dir: 'ASC' },
+      ]);
     });
   });
 
-  describe('listReviewSubmitters — same scope as listReviews', () => {
-    it('non-approver with scope=all still binds submitted_by = caller', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
-      versionRepo.manager.query.mockResolvedValue([{ id: USER_ID, email: 'me@x.com' }]);
-
-      const result = await service.listReviewSubmitters({ scope: ReviewScope.ALL }, USER_ID);
-
-      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM prompt_versions'), [
-        USER_ID,
-      ]);
-      expect(result).toEqual({ data: [{ id: USER_ID, email: 'me@x.com' }] });
-    });
-
-    it('approver with scope=all lists every pending submitter (no user bind)', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
+  describe('listReviewSubmitters — all pending submitters', () => {
+    it('lists every pending submitter with no user bind', async () => {
       versionRepo.manager.query.mockResolvedValue([
         { id: 2, email: 'a@x.com' },
         { id: 3, email: null },
       ]);
 
-      const result = await service.listReviewSubmitters({ scope: ReviewScope.ALL }, USER_ID);
+      const result = await service.listReviewSubmitters();
 
-      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM prompt_versions'), [null]);
+      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM prompt_versions'));
       expect(result).toEqual({
         data: [
           { id: 2, email: 'a@x.com' },
@@ -784,6 +789,7 @@ describe('PromptLibraryQueryService', () => {
       prompt_content: '# incoming',
       version_no: 2,
       name: 'v2',
+      avatar_url: '/uploads/icon.png',
       category_id: 1,
       tags: [],
       changelog_note: null,
@@ -844,7 +850,13 @@ describe('PromptLibraryQueryService', () => {
       const result = await service.getDiff(VERSION_ID, USER_ID);
       expect(result.base).toBe('# base');
       expect(result.incoming).toBe('# incoming');
-      expect(result.metadata).toMatchObject({ version_id: VERSION_ID, version_no: 2, name: 'v2', code: 'prompt_7' });
+      expect(result.metadata).toMatchObject({
+        version_id: VERSION_ID,
+        version_no: 2,
+        name: 'v2',
+        code: 'prompt_7',
+        avatar_url: '/uploads/icon.png',
+      });
     });
 
     it('metadata.code is null when the package row is missing', async () => {
@@ -882,6 +894,7 @@ describe('PromptLibraryQueryService', () => {
         state: PromptVersionState.PENDING,
         submitted_by: USER_ID,
         created_at: new Date(),
+        avatar_url: '/uploads/icon.png',
         ...over,
       };
     }
@@ -927,7 +940,13 @@ describe('PromptLibraryQueryService', () => {
       const row = result.data[0] as any;
       expect(row.prompt_content).toBeUndefined();
       expect(row.reject_reason).toBeUndefined();
-      expect(row).toMatchObject({ code: 'prompt_1', old_version: 1, version_no: 2, state: PromptVersionState.APPROVED });
+      expect(row).toMatchObject({
+        code: 'prompt_1',
+        old_version: 1,
+        version_no: 2,
+        state: PromptVersionState.APPROVED,
+        avatar_url: '/uploads/icon.png',
+      });
     });
 
     it('is_first_pending = true only for a first-ever pending (pending AND old_version=null)', async () => {
@@ -962,6 +981,7 @@ describe('PromptLibraryQueryService', () => {
       expect(sqls).toContain('p.id = ANY($2)');
       expect(sqls).toContain('v.state = $3');
       expect(sqls).toContain('ORDER BY v.created_at DESC');
+      expect(sqls).toContain('v.avatar_url');
       expect(result.meta).toEqual({ total: 5, page: 2, limit: 10 });
     });
 
