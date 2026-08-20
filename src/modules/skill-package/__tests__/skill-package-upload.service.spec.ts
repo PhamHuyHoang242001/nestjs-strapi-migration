@@ -13,6 +13,29 @@ const USER_ID = 100;
 const OTHER_USER_ID = 200;
 const PACKAGE_ID = 1;
 const VERSION_ID = 5;
+const PUBLISHER_ID = 7;
+const PIC_IDS = [11, 12];
+const TAG_IDS = [21, 22];
+
+// Metadata every write now carries: publishing unit, people in charge, usage guide, catalog tags.
+const META_FIELDS = {
+  publisher_id: PUBLISHER_ID,
+  responsible_user_ids: PIC_IDS,
+  usage_guide_html: '<p>Hướng dẫn</p>',
+  tag_ids: TAG_IDS,
+};
+
+// Stand-in for AssetHubItemMetaService: the asserts resolve by default (id validation is covered
+// by that service's own spec) and the replace calls are recorded so the write order can be checked.
+function makeItemMeta() {
+  return {
+    assertPublisher: jest.fn().mockResolvedValue(undefined),
+    assertUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    replaceResponsibles: jest.fn().mockResolvedValue(undefined),
+    replaceVersionTags: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 function makeDs(txResult?: unknown) {
   const ds: any = {
@@ -37,6 +60,7 @@ describe('SkillPackageUploadService', () => {
   let dataSource: any;
   let fileFetch: any;
   let permissionQuery: any;
+  let itemMeta: any;
 
   const fakeZipFile = {
     buffer: Buffer.from('zip'),
@@ -64,8 +88,9 @@ describe('SkillPackageUploadService', () => {
       assertStrapiUrl: jest.fn(),
     };
     permissionQuery = { getUserPermissions: jest.fn() };
+    itemMeta = makeItemMeta();
 
-    service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+    service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
   });
 
   // ---- createNew — zip file row + inline avatar_url ----
@@ -76,7 +101,7 @@ describe('SkillPackageUploadService', () => {
       name: 'My Skill',
       short_description: 'desc',
       category_id: 1,
-      tags: [],
+      ...META_FIELDS,
     };
 
     function captureDs(saved: any[], updates: any[] = []) {
@@ -101,7 +126,7 @@ describe('SkillPackageUploadService', () => {
     it('writes a zip file row (server-measured metadata) + stores avatar_url inline; no zip_url column; no Media', async () => {
       const saved: any[] = [];
       dataSource = captureDs(saved);
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       await service.createNew(dto as any, USER_ID);
 
@@ -133,7 +158,7 @@ describe('SkillPackageUploadService', () => {
       const saved: any[] = [];
       const updates: any[] = [];
       dataSource = captureDs(saved, updates);
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       await service.createNew(dto as any, USER_ID);
 
@@ -149,7 +174,7 @@ describe('SkillPackageUploadService', () => {
     it('falls back to the server-parsed filename when file.name is omitted; still writes the zip row', async () => {
       const saved: any[] = [];
       dataSource = captureDs(saved);
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       // No file.name provided → name falls back to the download's parsed filename ('hash.zip').
       await service.createNew(
@@ -329,7 +354,7 @@ describe('SkillPackageUploadService', () => {
       name: 'v2',
       short_description: 'desc',
       category_id: 1,
-      tags: [],
+      ...META_FIELDS,
     };
 
     it('sets old_version=latest approved, version_no=placeholder (=old_version) + zip file row in one tx', async () => {
@@ -342,6 +367,7 @@ describe('SkillPackageUploadService', () => {
           // First query = SELECT ... FOR UPDATE (result ignored); MAX(approved version_no) → 3.
           query: jest.fn().mockResolvedValue([{ max: '3' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             const row = { ...obj, id: 99 };
             saved.push({ entity: _E?.name, row });
@@ -350,7 +376,7 @@ describe('SkillPackageUploadService', () => {
         };
         return cb(manager);
       });
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       const dtoV2 = { ...dto, avatar_url: '/uploads/av.png', changelog_note: 'bump' };
       const result = await service.createVersion(PACKAGE_ID, dtoV2 as any, USER_ID);
@@ -458,6 +484,7 @@ describe('SkillPackageUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: '1' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -465,7 +492,7 @@ describe('SkillPackageUploadService', () => {
         };
         return cb(manager);
       });
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
@@ -482,6 +509,7 @@ describe('SkillPackageUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: '2' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -489,7 +517,7 @@ describe('SkillPackageUploadService', () => {
         };
         return cb(manager);
       });
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
@@ -506,6 +534,7 @@ describe('SkillPackageUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: '1' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -513,7 +542,7 @@ describe('SkillPackageUploadService', () => {
         };
         return cb(manager);
       });
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
@@ -531,6 +560,7 @@ describe('SkillPackageUploadService', () => {
           // MAX(approved version_no) → NULL (nothing approved yet).
           query: jest.fn().mockResolvedValue([{ max: null }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -538,7 +568,7 @@ describe('SkillPackageUploadService', () => {
         };
         return cb(manager);
       });
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery);
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version.version_no).toBe(1);

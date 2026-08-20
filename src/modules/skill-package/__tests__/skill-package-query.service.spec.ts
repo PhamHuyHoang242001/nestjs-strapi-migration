@@ -56,11 +56,23 @@ function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
   return qb;
 }
 
+// Stand-in for AssetHubItemMetaReadService. Returns empty maps by default so the existing shape
+// assertions stay focused; the tag/publisher/PIC decoration has its own specs.
+function makeMetaRead(overrides: Record<string, unknown> = {}) {
+  return {
+    getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
+    getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
+    getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
+    ...overrides,
+  };
+}
+
 describe('SkillPackageQueryService', () => {
   let service: SkillPackageQueryService;
   let packageRepo: any;
   let versionRepo: any;
   let permissionQuery: any;
+  let metaRead: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -82,43 +94,13 @@ describe('SkillPackageQueryService', () => {
       // submitted_by_email resolves to null. Tests needing real emails override manager.query.
       manager: { query: jest.fn().mockResolvedValue([]) },
     };
-    service = new SkillPackageQueryService(packageRepo, versionRepo, permissionQuery);
+    metaRead = makeMetaRead();
+    service = new SkillPackageQueryService(packageRepo, versionRepo, permissionQuery, metaRead);
   });
 
-  describe('stats — latest version per package + independent published count', () => {
-    it('maps PostgreSQL aggregate values to numeric workspace counters', async () => {
-      versionRepo.manager.query.mockResolvedValue([
-        { total: '7', pending: '2', approved: '4', rejected: '1', published: '5' },
-      ]);
-
-      await expect(service.stats()).resolves.toEqual({
-        data: { total: 7, pending: 2, approved: 4, rejected: 1, published: 5 },
-      });
-
-      const sql = versionRepo.manager.query.mock.calls[0][0] as string;
-      expect(sql).toContain('DISTINCT ON (v.skill_package_id)');
-      expect(sql).toContain('ORDER BY v.skill_package_id, v.id DESC');
-      expect(sql).toContain("FILTER (WHERE state = 'pending')");
-      expect(sql).toContain('av.id = p.active_version_id');
-      expect(sql).toContain('av.skill_package_id = p.id');
-      expect(sql).toContain("av.state = 'approved'");
-      expect(sql).toContain("p.status = 'active'");
-      expect(sql).toContain('v.deleted_at IS NULL AND v.is_deleted = false');
-      expect(sql).toContain('p.deleted_at IS NULL AND p.is_deleted = false');
-      expect(sql).toContain('av.deleted_at IS NULL');
-      expect(sql).toContain('av.is_deleted = false');
-      expect(versionRepo.manager.query.mock.calls[0][1]).toBeUndefined();
-      expect(sql).not.toContain('submitted_by');
-      expect(sql).not.toContain('created_by');
-    });
-
-    it('returns zero counters when the aggregate returns no row', async () => {
-      versionRepo.manager.query.mockResolvedValue([]);
-
-      await expect(service.stats()).resolves.toEqual({
-        data: { total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
-      });
-    });
+  // Workspace counters moved to LatestArtifactsService.listStats — see its spec.
+  it('no longer exposes a per-workspace stats method', () => {
+    expect((service as unknown as Record<string, unknown>).stats).toBeUndefined();
   });
 
   // ---- list ----
@@ -135,6 +117,7 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.status).toBe(SkillPackageStatus.ACTIVE);
       // active_version_id IS NOT NULL filter must be present.
       expect(joined).toContain('pkg.active_version_id IS NOT NULL');
+      expect(joined).toContain('COALESCE(pkg.is_deleted, false) = false');
       // sort
       expect(qb.orderBy).toHaveBeenCalledWith('pkg.id', 'DESC');
       // limit cap: even though 200 was requested, take(100) must be called.
@@ -185,20 +168,22 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.search).toContain('hello world');
     });
 
-    it('search also substring-matches the tags array as text (parameter-bound, no subquery)', async () => {
+    it('search also matches a catalog tag NAME, via a non-correlated subquery', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
       await service.list({ page: 1, limit: 10, search: 'happ' }, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
-      // Tags jsonb is cast to text and ILIKE'd so "happ" matches tag "happy".
-      expect(joined).toContain('av.tags::text ILIKE :search');
-      // Must NOT use a correlated subquery — that breaks TypeORM's skip/take DISTINCT rewrite.
-      expect(joined).not.toContain('jsonb_array_elements_text');
+      // Tag matching now goes through the join table, so a keyword hits the catalog name.
+      expect(joined).toContain('t.name ILIKE :search');
+      expect(joined).toContain('SELECT vt.skill_version_id FROM skill_version_tags vt');
+      // The jsonb column is gone from the read path entirely.
+      expect(joined).not.toContain('av.tags');
+      // The subquery must not reference an outer alias — that breaks TypeORM's skip/take rewrite.
       expect(joined).not.toContain('EXISTS');
       // Still ORed with name/short_description; reuses the single bound :search param.
-      expect(joined).toContain('LOWER(av.name) ILIKE :search');
+      expect(joined).toContain('av.name ILIKE :search');
       expect(qb.capturedParams.search).toContain('happ');
     });
 
@@ -210,22 +195,80 @@ describe('SkillPackageQueryService', () => {
 
       // Mock returns the same builder for page + count createQueryBuilder calls, so the tag
       // clause must appear twice — once per query — or pagination total would diverge.
-      const occurrences = qb.capturedWheres.filter((w: string) =>
-        w.includes('av.tags::text ILIKE :search'),
-      ).length;
+      const occurrences = qb.capturedWheres.filter((w: string) => w.includes('t.name ILIKE :search')).length;
       expect(occurrences).toBe(2);
     });
 
-    it('tags filter uses jsonb @> bound parameter', async () => {
+    it('count query joins active_version with both soft-delete markers (matches the page query)', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
-      await service.list({ page: 1, limit: 10, tags: ['nestjs', 'api'] }, USER_ID);
+      await service.list({ page: 1, limit: 10 }, USER_ID);
+
+      expect(qb.innerJoinAndSelect).toHaveBeenCalledWith(
+        'pkg.active_version',
+        'av',
+        'av.deleted_at IS NULL AND av.is_deleted = false',
+      );
+      expect(qb.innerJoin).toHaveBeenCalledWith(
+        'pkg.active_version',
+        'av',
+        'av.deleted_at IS NULL AND av.is_deleted = false',
+      );
+    });
+
+    it('list ignores leftover tag_ids / kind — tag matching is search-only', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.list({ page: 1, limit: 10, tag_ids: [3, 4], kind: 'enterprise' } as never, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
-      expect(joined).toContain('av.tags @> :tags::jsonb');
-      const parsed = JSON.parse(qb.capturedParams.tags as string);
-      expect(parsed).toEqual(['nestjs', 'api']);
+      expect(joined).not.toContain('HAVING COUNT(DISTINCT vt.tag_id)');
+      expect(joined).not.toContain('t.kind = :kind');
+      expect(qb.capturedParams.tag_ids).toBeUndefined();
+      expect(qb.capturedParams.kind).toBeUndefined();
+    });
+
+    it('publisher_id filter binds against the package column', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      await service.list({ page: 1, limit: 10, publisher_id: 4 }, USER_ID);
+
+      expect(qb.capturedWheres.join(' | ')).toContain('pkg.publisher_id = :publisher_id');
+      expect(qb.capturedParams.publisher_id).toBe(4);
+    });
+
+    it('decorates rows with publisher, people in charge and tags — one batched query each', async () => {
+      const qb = makeQueryBuilder([{ id: PACKAGE_ID, publisher_id: 9, active_version_id: 7, active_version: { id: 7 } }], '1');
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      metaRead.getPublishersByIds.mockResolvedValue(new Map([[9, { id: 9, name: 'Khối CNTT' }]]));
+      metaRead.getResponsiblesByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: 2, email: 'a@x.vn' }]]]));
+      metaRead.getTagsByVersionIds.mockResolvedValue(new Map([[7, [{ id: 3, name: 'Báo cáo', kind: 'enterprise' }]]]));
+
+      const result = await service.list({ page: 1, limit: 10 }, USER_ID);
+
+      const row = result.data[0] as Record<string, any>;
+      expect(row.publisher).toEqual({ id: 9, name: 'Khối CNTT' });
+      expect(row.responsible_users).toEqual([{ id: 2, email: 'a@x.vn' }]);
+      expect(row.active_version.tags).toEqual([{ id: 3, name: 'Báo cáo', kind: 'enterprise' }]);
+      // One call per dimension for the whole page — never per row.
+      expect(metaRead.getPublishersByIds).toHaveBeenCalledTimes(1);
+      expect(metaRead.getResponsiblesByPackageIds).toHaveBeenCalledTimes(1);
+      expect(metaRead.getTagsByVersionIds).toHaveBeenCalledTimes(1);
+    });
+
+    it('never puts the usage guide on a list row', async () => {
+      const qb = makeQueryBuilder(
+        [{ id: PACKAGE_ID, publisher_id: 9, active_version_id: 7, active_version: { id: 7, usage_guide_html: '<p>x</p>' } }],
+        '1',
+      );
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      const result = await service.list({ page: 1, limit: 10 }, USER_ID);
+
+      expect((result.data[0] as Record<string, any>).active_version).not.toHaveProperty('usage_guide_html');
     });
 
     it('returns {data, meta:{total, page, limit}} shape', async () => {
@@ -673,6 +716,7 @@ describe('SkillPackageQueryService', () => {
       await service.listReviews({ page: 1, limit: 20 });
 
       const joined = qb.capturedWheres.join(' | ');
+      expect(joined).toContain('COALESCE(sv.is_deleted, false) = false');
       expect(joined).not.toContain('sv.submitted_by');
     });
 
@@ -792,6 +836,9 @@ describe('SkillPackageQueryService', () => {
         status: SkillPackageStatus.ACTIVE,
         active_version_id: 8,
         created_by: creator,
+        // Package metadata rides every read surface; empty here because the mock resolves no rows.
+        publisher: null,
+        responsible_users: [],
       });
       expect(versionRepo.findOne).toHaveBeenLastCalledWith({
         where: {

@@ -1,5 +1,7 @@
 import { buildPromptMarkdown } from '../prompt-markdown.util';
 import { PromptVersion } from '@modules/databases/prompt-version.entity';
+import { AssetHubTagKind } from '@modules/databases/asset-hub-tag.entity';
+import type { TagRef } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
 
 // Build a PromptVersion-shaped object for the pure builder (only the fields it reads matter).
 function makeVersion(overrides: Partial<PromptVersion> = {}): PromptVersion {
@@ -9,13 +11,18 @@ function makeVersion(overrides: Partial<PromptVersion> = {}): PromptVersion {
     version_no: 3,
     short_description: 'Reviews code for quality.',
     prompt_content: 'You are an expert code reviewer.',
-    tags: ['review', 'quality'],
     changelog_note: null,
     created_at: new Date('2026-08-12T10:00:00Z'),
     submitted_by: 42,
     ...overrides,
   } as PromptVersion;
 }
+
+// Tags are catalog rows now and travel as a separate argument, not on the version.
+const TAGS: TagRef[] = [
+  { id: 1, name: 'review', kind: AssetHubTagKind.ENTERPRISE },
+  { id: 2, name: 'quality', kind: AssetHubTagKind.PERSONAL },
+];
 
 // Extract the frontmatter block (between the first two '---' fences).
 function frontmatter(md: string): string {
@@ -25,7 +32,7 @@ function frontmatter(md: string): string {
 
 describe('buildPromptMarkdown', () => {
   it('emits YAML frontmatter with all metadata fields', () => {
-    const md = buildPromptMarkdown(makeVersion(), 'user@example.com', 'engineering');
+    const md = buildPromptMarkdown(makeVersion(), 'user@example.com', 'engineering', TAGS);
     const fm = frontmatter(md);
     expect(fm).toContain('title: "Code Review Assistant"');
     expect(fm).toContain('category: "engineering"');
@@ -55,13 +62,25 @@ describe('buildPromptMarkdown', () => {
     expect(fm.split('\n').some((l) => l.trim() === 'owned: yes')).toBe(false);
   });
 
-  it('serializes empty tags as [] and coerces a null tags field', () => {
-    expect(frontmatter(buildPromptMarkdown(makeVersion({ tags: [] }), 'a@b.c'))).toContain(
-      'tags: []',
+  it('renders tag NAMES, so the exported file stays readable outside this system', () => {
+    expect(frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, TAGS))).toContain(
+      'tags: ["review", "quality"]',
     );
-    expect(
-      frontmatter(buildPromptMarkdown(makeVersion({ tags: null as unknown as string[] }), 'a@b.c')),
-    ).toContain('tags: []');
+  });
+
+  it('escapes a hostile tag name so it cannot break out of the YAML flow array', () => {
+    const hostile: TagRef[] = [{ id: 9, name: 'evil", owned: yes', kind: AssetHubTagKind.PERSONAL }];
+
+    const fm = frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, hostile));
+
+    expect(fm).toContain('tags: ["evil\\", owned: yes"]');
+    expect(fm.split('\n').some((l) => l.trim() === 'owned: yes')).toBe(false);
+  });
+
+  it('serializes empty tags as [] and coerces a missing or null tag list', () => {
+    expect(frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, []))).toContain('tags: []');
+    expect(frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, null))).toContain('tags: []');
+    expect(frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c'))).toContain('tags: []');
   });
 
   it('omits the Changelog section when changelog_note is empty/whitespace', () => {

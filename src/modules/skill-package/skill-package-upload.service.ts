@@ -1,4 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { SkillPackage, SkillPackageStatus } from '@modules/databases/skill-package.entity';
@@ -14,6 +21,8 @@ import { FetchedFile, SkillFileFetchService } from './skill-file-fetch.util';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
+import { AssetHubItemMetaService } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
+import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
 const PG_UNIQUE_VIOLATION = '23505';
@@ -36,8 +45,20 @@ export class SkillPackageUploadService {
     private readonly dataSource: DataSource,
     private readonly fileFetch: SkillFileFetchService,
     private readonly permissionQuery: PermissionQueryService,
+    private readonly itemMeta: AssetHubItemMetaService,
     @Optional() private readonly categoryService?: CategoryService,
   ) {}
+
+  // Sanitize the submitted guide once, before any transaction is opened. `requireContent` is on for
+  // a create (a new artifact must document itself) and off for a bump, where an author revising an
+  // artifact that predates the guide may legitimately leave it blank.
+  private prepareUsageGuide(html: string, requireContent: boolean): string {
+    const sanitized = sanitizeUsageGuideHtml(html ?? '');
+    if (requireContent && isUsageGuideEmpty(sanitized)) {
+      throw new BadRequestException('INVALID_USAGE_GUIDE: usage guide is required');
+    }
+    return sanitized;
+  }
 
   // Upload a new skill package (creates package row + v1 pending version) in one tx.
   // Self-approve is allowed by design — governance is an organisational concern, not enforced here.
@@ -49,6 +70,7 @@ export class SkillPackageUploadService {
     const skillMdContent = extractSkillMdFromZip(zipFile.buffer);
     // Avatar is stored as-sent (not downloaded); still enforce the Strapi-origin SSRF guard.
     if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
+    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, true);
 
     return this.dataSource.transaction(async (manager) => {
       const resolvedCategory = await this.categoryService?.validateActive(
@@ -56,16 +78,24 @@ export class SkillPackageUploadService {
         CategoryType.SKILL,
         manager,
       );
+      // Reject unknown publisher / user / tag ids before writing anything.
+      await this.itemMeta.assertPublisher(manager, dto.publisher_id);
+      const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
+      const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
+
       const savedPkg = await manager.save(
         SkillPackage,
         manager.create(SkillPackage, {
           status: SkillPackageStatus.ACTIVE,
           active_version_id: null,
           created_by: userId,
+          publisher_id: dto.publisher_id,
           // Placeholder; the real code needs the generated id and is set immediately below.
           code: '',
         }),
       );
+
+      await this.itemMeta.replaceResponsibles(manager, 'skill', savedPkg.id, responsibleUserIds);
 
       // code = 'skill_<id>' — set post-insert (id known only now) in the SAME tx.
       await manager.update(SkillPackage, savedPkg.id, { code: `skill_${savedPkg.id}` });
@@ -81,13 +111,15 @@ export class SkillPackageUploadService {
           name: dto.name,
           short_description: dto.short_description,
           category_id: resolvedCategory?.id ?? dto.category_id,
-          tags: dto.tags ?? [],
+          usage_guide_html: usageGuideHtml,
           avatar_url: dto.avatar_url ?? null,
           skill_md_content: skillMdContent,
           changelog_note: null,
           submitted_by: userId,
         }),
       );
+
+      await this.itemMeta.replaceVersionTags(manager, 'skill', savedVersion.id, tagIds);
 
       // Persist the zip file row (with metadata) in the same tx. Avatar is inline above.
       await this.saveZipFile(manager, savedVersion.id, dto.file, zipFile);
@@ -132,6 +164,8 @@ export class SkillPackageUploadService {
     const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
     const skillMdContent = extractSkillMdFromZip(zipFile.buffer);
     if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
+    // A bump may leave the guide blank — artifacts created before guides existed keep working.
+    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
@@ -157,6 +191,17 @@ export class SkillPackageUploadService {
           CategoryType.SKILL,
           manager,
         );
+
+        // A bump is also the only edit surface, so the package-level metadata travels with it and
+        // is applied in this same transaction — publisher and people in charge first, then the
+        // version row, then its tags.
+        await this.itemMeta.assertPublisher(manager, dto.publisher_id);
+        const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
+        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
+
+        await manager.update(SkillPackage, packageId, { publisher_id: dto.publisher_id });
+        await this.itemMeta.replaceResponsibles(manager, 'skill', packageId, responsibleUserIds);
+
         const version = manager.create(SkillVersion, {
           skill_package_id: packageId,
           version_no: placeholderVersionNo,
@@ -165,13 +210,15 @@ export class SkillPackageUploadService {
           name: dto.name,
           short_description: dto.short_description,
           category_id: resolvedCategory?.id ?? dto.category_id,
-          tags: dto.tags ?? [],
+          usage_guide_html: usageGuideHtml,
           avatar_url: dto.avatar_url ?? null,
           skill_md_content: skillMdContent,
           changelog_note: dto.changelog_note ?? null,
           submitted_by: userId,
         });
         const saved = await manager.save(SkillVersion, version);
+
+        await this.itemMeta.replaceVersionTags(manager, 'skill', saved.id, tagIds);
 
         // Persist the zip file row (with metadata) in the same tx. Avatar is inline above.
         await this.saveZipFile(manager, saved.id, dto.file, zipFile);

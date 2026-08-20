@@ -36,7 +36,13 @@ describe('PromptLibraryQueryService.resolveActiveForExport', () => {
     versionRepo = {
       manager: { query: jest.fn().mockResolvedValue([{ id: 42, email: 'author@example.com' }]) },
     };
-    service = new PromptLibraryQueryService(packageRepo, versionRepo, permissionQuery);
+    // Metadata batch loader — the export path only needs the version's tags for the frontmatter.
+    const metaRead = {
+      getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
+      getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
+      getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
+    };
+    service = new PromptLibraryQueryService(packageRepo, versionRepo, permissionQuery, metaRead as never);
   });
 
   it('returns the active version + resolved author email for an active package', async () => {

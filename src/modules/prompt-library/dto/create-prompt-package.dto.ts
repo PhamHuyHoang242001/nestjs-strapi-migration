@@ -1,21 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
-import {
-  IsArray,
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-  Min,
-  MinLength,
-} from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { AssetHubItemMetaFieldsDto } from '@modules/asset-hub-catalog/dto';
 
 // The prompt artifact is plain text sent inline in the JSON body — NO ZIP, NO Strapi fetch for
 // content. The optional avatar is a plain URL (mirroring the diagnostic report's `icon`), whose
 // origin is validated against the configured Strapi host at submit. Media ids are never accepted
 // from the client (IDOR guard).
-export class CreatePromptPackageDto {
+//
+// Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, usage_guide_html and
+// tag_ids travel with the create request, because there is no separate metadata endpoint.
+export class CreatePromptPackageDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active prompt category ID' })
   @IsInt()
   @Min(1)
@@ -47,15 +42,4 @@ export class CreatePromptPackageDto {
   @IsString()
   @MaxLength(1000)
   readonly short_description: string;
-
-  @ApiProperty({ description: 'Freeform tags array', type: [String], required: false })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @Transform(({ value }) => {
-    if (!Array.isArray(value)) return [];
-    // Cap each tag at 100 chars and allow at most 20 tags to bound storage.
-    return (value as string[]).slice(0, 20).map((t) => String(t).substring(0, 100));
-  })
-  readonly tags?: string[];
 }

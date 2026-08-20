@@ -1,17 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
-import {
-  IsArray,
-  IsNotEmpty,
-  IsObject,
-  IsInt,
-  IsOptional,
-  IsString,
-  MaxLength,
-  Min,
-  MinLength,
-  ValidateNested,
-} from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsNotEmpty, IsObject, IsInt, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { AssetHubItemMetaFieldsDto } from '@modules/asset-hub-catalog/dto';
 import { SkillFileDto } from './skill-file.dto';
 
 // Pull-based upload: the client uploads the zip (and optional avatar) to Strapi
@@ -19,7 +9,10 @@ import { SkillFileDto } from './skill-file.dto';
 // unzip/validate. URLs are validated against the configured Strapi origin at fetch
 // time (SSRF guard), so relative or absolute Strapi URLs are both accepted here.
 // Media ids remain server-assigned — never accepted from the client (IDOR guard M2).
-export class CreateSkillPackageDto {
+//
+// Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, usage_guide_html and
+// tag_ids travel with the create request, because there is no separate metadata endpoint.
+export class CreateSkillPackageDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active skill category ID' })
   @IsInt()
   @Min(1)
@@ -53,15 +46,4 @@ export class CreateSkillPackageDto {
   @IsString()
   @MaxLength(1000)
   readonly short_description: string;
-
-  @ApiProperty({ description: 'Freeform tags array', type: [String], required: false })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @Transform(({ value }) => {
-    if (!Array.isArray(value)) return [];
-    // Cap each tag at 100 chars and allow at most 20 tags to bound storage.
-    return (value as string[]).slice(0, 20).map((t) => String(t).substring(0, 100));
-  })
-  readonly tags?: string[];
 }

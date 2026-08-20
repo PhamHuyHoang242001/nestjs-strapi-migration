@@ -9,6 +9,14 @@ import { ReviewQueryDto } from './dto/review-query.dto';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
+import {
+  AssetHubItemMetaReadService,
+  PublisherRef,
+  ResponsibleUserRef,
+  TagRef,
+} from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
+import { stripGuide } from '@modules/asset-hub-catalog/asset-hub-response.helper';
+import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hub-list-filters';
 
 @Injectable()
 export class PromptLibraryQueryService {
@@ -18,8 +26,30 @@ export class PromptLibraryQueryService {
     @InjectRepository(PromptVersion)
     private readonly versionRepo: Repository<PromptVersion>,
     private readonly permissionQuery: PermissionQueryService,
+    private readonly metaRead: AssetHubItemMetaReadService,
     @Optional() private readonly categoryService?: CategoryService,
   ) {}
+
+  // Attach publisher / people in charge / tags to a set of packages, using one batched query per
+  // dimension for the whole page (no N+1). Returns lookup maps the callers fold into their payloads.
+  private async loadPackageMeta(
+    packages: Array<{ id: number; publisher_id?: number | null }>,
+    versionIds: Array<number | null | undefined>,
+  ): Promise<{
+    publishers: Map<number, PublisherRef>;
+    responsibles: Map<number, ResponsibleUserRef[]>;
+    tags: Map<number, TagRef[]>;
+  }> {
+    const [publishers, responsibles, tags] = await Promise.all([
+      this.metaRead.getPublishersByIds(packages.map((p) => p.publisher_id)),
+      this.metaRead.getResponsiblesByPackageIds(
+        'prompt',
+        packages.map((p) => p.id),
+      ),
+      this.metaRead.getTagsByVersionIds('prompt', versionIds),
+    ]);
+    return { publishers, responsibles, tags };
+  }
 
   private async resolveCategories(ids: Array<number | null | undefined>) {
     return this.categoryService?.resolve(ids.filter((id): id is number => typeof id === 'number')) ?? new Map();
@@ -78,51 +108,8 @@ export class PromptLibraryQueryService {
     return new Map(rows.map((r) => [Number(r.id), r.email]));
   }
 
-  // Dashboard counters for the whole Prompt workspace. Each live package contributes exactly once
-  // to the lifecycle counters via its greatest live version id. Published is intentionally separate:
-  // a package may remain published while a newer update is pending or rejected.
-  async stats() {
-    const rows = (await this.versionRepo.manager.query(`
-      WITH latest AS (
-        SELECT DISTINCT ON (v.prompt_package_id) v.state
-        FROM prompt_versions v
-        INNER JOIN prompt_packages p ON p.id = v.prompt_package_id
-        WHERE v.deleted_at IS NULL AND v.is_deleted = false
-          AND p.deleted_at IS NULL AND p.is_deleted = false
-        ORDER BY v.prompt_package_id, v.id DESC
-      )
-      SELECT
-        COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE state = 'pending')::int AS pending,
-        COUNT(*) FILTER (WHERE state = 'approved')::int AS approved,
-        COUNT(*) FILTER (WHERE state = 'rejected')::int AS rejected,
-        (
-          SELECT COUNT(*)::int
-          FROM prompt_packages p
-          INNER JOIN prompt_versions av
-            ON av.id = p.active_version_id
-           AND av.prompt_package_id = p.id
-           AND av.state = 'approved'
-           AND av.deleted_at IS NULL
-           AND av.is_deleted = false
-          WHERE p.status = 'active'
-            AND p.active_version_id IS NOT NULL
-            AND p.deleted_at IS NULL
-            AND p.is_deleted = false
-        ) AS published
-      FROM latest
-    `)) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published', number | string>>;
-    const row = rows[0];
-    return {
-      data: {
-        total: Number(row?.total ?? 0),
-        pending: Number(row?.pending ?? 0),
-        approved: Number(row?.approved ?? 0),
-        rejected: Number(row?.rejected ?? 0),
-        published: Number(row?.published ?? 0),
-      },
-    };
-  }
+  // Workspace counters used to live here as stats(); they now come from GET /v1/asset-hub/stats,
+  // which reports skill and prompt in one array so the dashboard makes a single request.
 
   // List active packages, joining the active version's fields.
   // Sort: id DESC (deterministic — prevents page drift). Limit capped at 100 via DTO.
@@ -146,33 +133,13 @@ export class PromptLibraryQueryService {
       .createQueryBuilder('pkg')
       .innerJoinAndSelect('pkg.active_version', 'av', 'av.deleted_at IS NULL AND av.is_deleted = false')
       .where('pkg.deleted_at IS NULL')
+      .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
       .andWhere('pkg.active_version_id IS NOT NULL');
 
-    // Keyword filter: ILIKE against version name, short_description, and the tags array
-    // (parameter-bound). Tags are a jsonb string array; casting to text lets the keyword
-    // substring-match a tag as plain text (e.g. "happ" matches tag "happy"). A scalar cast is
-    // used instead of a jsonb_array_elements_text subquery because this query paginates with
-    // skip/take + joins — TypeORM rewrites that into a DISTINCT subquery and a correlated
-    // subquery in the WHERE breaks the generated SQL.
-    if (query.search?.trim()) {
-      const kw = `%${query.search.trim()}%`;
-      qb.andWhere(
-        `(LOWER(av.name) ILIKE :search
-          OR LOWER(av.short_description) ILIKE :search
-          OR av.tags::text ILIKE :search)`,
-        { search: kw.toLowerCase() },
-      );
-    }
-
-    if (query.category_id) {
-      qb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
-    }
-
-    // JSONB containment filter: @> bound as a JSON parameter (not interpolated).
-    if (query.tags?.length) {
-      qb.andWhere('av.tags @> :tags::jsonb', { tags: JSON.stringify(query.tags) });
-    }
+    // Keyword + catalog filters (search includes tag name; category; publisher) — applied through
+    // one helper so the data query and the count query below carry byte-identical predicates.
+    applyAssetHubCatalogFilters(qb, 'prompt', query);
 
     // Deterministic sort prevents page drift on concurrent inserts (id DESC is stable).
     qb.orderBy('pkg.id', 'DESC')
@@ -185,32 +152,33 @@ export class PromptLibraryQueryService {
       // Match the data query's soft-delete filter exactly (both markers) so total never overcounts.
       .innerJoin('pkg.active_version', 'av', 'av.deleted_at IS NULL AND av.is_deleted = false')
       .where('pkg.deleted_at IS NULL')
+      .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
       .andWhere('pkg.active_version_id IS NOT NULL')
       .select('COUNT(pkg.id)', 'count');
 
-    if (query.search?.trim()) {
-      const kw = `%${query.search.trim()}%`;
-      countQb.andWhere(
-        `(LOWER(av.name) ILIKE :search
-          OR LOWER(av.short_description) ILIKE :search
-          OR av.tags::text ILIKE :search)`,
-        { search: kw.toLowerCase() },
-      );
-    }
-    if (query.category_id) {
-      countQb.andWhere('av.category_id = :category_id', { category_id: query.category_id });
-    }
-    if (query.tags?.length) {
-      countQb.andWhere('av.tags @> :tags::jsonb', { tags: JSON.stringify(query.tags) });
-    }
+    applyAssetHubCatalogFilters(countQb, 'prompt', query);
 
     const [data, countRow] = await Promise.all([qb.getMany(), countQb.getRawOne<{ count: string }>()]);
 
     const categories = await this.resolveCategories(data.map((pkg) => pkg.active_version?.category_id));
-    const shaped = data.map((pkg) =>
-      pkg.active_version ? { ...pkg, active_version: this.decorateCategory(pkg.active_version, categories) } : pkg,
+    const meta = await this.loadPackageMeta(
+      data,
+      data.map((pkg) => pkg.active_version_id),
     );
+
+    // The usage guide is stripped here: it can run to 200k characters, so it never rides a list.
+    const shaped = data.map((pkg) => ({
+      ...pkg,
+      publisher: meta.publishers.get(pkg.publisher_id) ?? null,
+      responsible_users: meta.responsibles.get(pkg.id) ?? [],
+      active_version: pkg.active_version
+        ? {
+            ...this.decorateCategory(stripGuide(pkg.active_version), categories),
+            tags: meta.tags.get(pkg.active_version.id) ?? [],
+          }
+        : pkg.active_version,
+    }));
     // The prompt artifact is an inline column on the active_version — returned as-is (no fold).
     return {
       data: shaped,
@@ -268,7 +236,13 @@ export class PromptLibraryQueryService {
       if (canSeeAllContent || v.state === PromptVersionState.APPROVED) return v;
       // Hide the author's unapproved draft artefacts (prompt body, reject reason, release note)
       // from callers who are neither the owner nor an approver.
-      return { ...v, prompt_content: '', reject_reason: null, changelog_note: null } as PromptVersion;
+      return {
+        ...v,
+        prompt_content: '',
+        usage_guide_html: '',
+        reject_reason: null,
+        changelog_note: null,
+      } as PromptVersion;
     };
 
     // Resolve submitter ids → email so the client shows "Người đăng" as an email, not a raw id.
@@ -288,12 +262,20 @@ export class PromptLibraryQueryService {
       ...versions.map((version) => version.category_id),
     ]);
 
+    // Detail is one of the two surfaces that carry usage_guide_html in full (the other is version
+    // detail); scrub() has already blanked it on any non-approved version the caller may not read.
+    const meta = await this.loadPackageMeta([pkg], [pkg.active_version_id, ...versions.map((v) => v.id)]);
+    const withTags = <T extends { id: number }>(version: T | null | undefined) =>
+      version ? { ...version, tags: meta.tags.get(version.id) ?? [] } : version;
+
     // Prompt content is an inline column — versions are returned directly (no files fold).
     // submitted_by_email is additive (numeric submitted_by kept for any id-based client logic).
     return {
       ...pkg,
-      active_version: addSubmitterEmail(this.decorateCategory(pkg.active_version, categories)),
-      versions: versions.map((v) => addSubmitterEmail(this.decorateCategory(scrub(v), categories))),
+      publisher: meta.publishers.get(pkg.publisher_id) ?? null,
+      responsible_users: meta.responsibles.get(pkg.id) ?? [],
+      active_version: withTags(addSubmitterEmail(this.decorateCategory(pkg.active_version, categories))),
+      versions: versions.map((v) => withTags(addSubmitterEmail(this.decorateCategory(scrub(v), categories)))),
       isUpdate,
       hasPendingVersion,
     };
@@ -378,11 +360,18 @@ export class PromptLibraryQueryService {
     }>;
 
     const emailMap = await this.resolveEmails(rows.map((r) => r.submitted_by));
+    // This projection is raw SQL, so tags are attached explicitly — one batched query for the whole
+    // page. The usage guide is deliberately absent from the SELECT above.
+    const tagMap = await this.metaRead.getTagsByVersionIds(
+      'prompt',
+      rows.map((r) => Number(r.version_id)),
+    );
     const data = rows.map((r) => ({
       package_id: Number(r.package_id),
       code: r.code,
       package_name: r.package_name,
       version_id: Number(r.version_id),
+      tags: tagMap.get(Number(r.version_id)) ?? [],
       old_version: r.old_version == null ? null : Number(r.old_version),
       version_no: Number(r.version_no),
       state: r.state,
@@ -404,6 +393,7 @@ export class PromptLibraryQueryService {
     const qb = this.versionRepo
       .createQueryBuilder('pv')
       .where('pv.deleted_at IS NULL')
+      .andWhere('COALESCE(pv.is_deleted, false) = false')
       .andWhere('pv.state = :state', { state: PromptVersionState.PENDING });
 
     this.applyReviewFilters(qb, query, 'pv');
@@ -413,6 +403,7 @@ export class PromptLibraryQueryService {
     const countQb = this.versionRepo
       .createQueryBuilder('pv')
       .where('pv.deleted_at IS NULL')
+      .andWhere('COALESCE(pv.is_deleted, false) = false')
       .andWhere('pv.state = :state', { state: PromptVersionState.PENDING })
       .select('COUNT(pv.id)', 'count');
     this.applyReviewFilters(countQb, query, 'pv');
@@ -425,9 +416,16 @@ export class PromptLibraryQueryService {
     // Versions returned directly (no files fold); attach the submitter email (additive; numeric
     // submitted_by kept for the creator filter).
     const categories = await this.resolveCategories(data.map((version) => version.category_id));
+    // The review queue is a list surface: it carries tags but not the usage guide. A reviewer opens
+    // the version detail to read the guide.
+    const tagMap = await this.metaRead.getTagsByVersionIds(
+      'prompt',
+      data.map((v) => v.id),
+    );
     return {
       data: data.map((v) => ({
-        ...this.decorateCategory(v, categories),
+        ...this.decorateCategory(stripGuide(v), categories),
+        tags: tagMap.get(v.id) ?? [],
         submitted_by_email: emailMap.get(v.submitted_by) ?? null,
       })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
@@ -501,6 +499,9 @@ export class PromptLibraryQueryService {
 
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
     const categories = await this.resolveCategories([version.category_id]);
+    // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
+    // submitter, the package creator, or an approver, so no extra scrub is needed here.
+    const meta = await this.loadPackageMeta([pkg], [version.id]);
     return {
       package: {
         id: pkg.id,
@@ -508,9 +509,12 @@ export class PromptLibraryQueryService {
         status: pkg.status,
         active_version_id: pkg.active_version_id,
         created_by: pkg.created_by,
+        publisher: meta.publishers.get(pkg.publisher_id) ?? null,
+        responsible_users: meta.responsibles.get(pkg.id) ?? [],
       },
       version: {
         ...this.decorateCategory(version, categories),
+        tags: meta.tags.get(version.id) ?? [],
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
         reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
       },
@@ -570,7 +574,10 @@ export class PromptLibraryQueryService {
         category: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1)?.name ?? null,
         category_id: version.category_id,
         category_detail: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1) ?? null,
-        tags: version.tags,
+        tags: (await this.metaRead.getTagsByVersionIds('prompt', [version.id])).get(version.id) ?? [],
+        // Single-version surface, and this method already 403s anyone who is not the submitter or
+        // an approver — so the guide rides along and the review screen needs no second request.
+        usage_guide_html: version.usage_guide_html ?? '',
         changelog_note: version.changelog_note,
         submitted_by: version.submitted_by,
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
@@ -585,7 +592,7 @@ export class PromptLibraryQueryService {
   async resolveActiveForExport(
     packageId: number,
     userId: number,
-  ): Promise<{ version: PromptVersion; authorEmail: string | null; categoryName: string | null }> {
+  ): Promise<{ version: PromptVersion; authorEmail: string | null; categoryName: string | null; tags: TagRef[] }> {
     const pkg = await this.packageRepo.findOne({
       where: { id: packageId, is_deleted: false },
       relations: ['active_version'],
@@ -610,6 +617,10 @@ export class PromptLibraryQueryService {
     const categoryName =
       (await this.resolveCategories([pkg.active_version.category_id])).get(pkg.active_version.category_id ?? -1)
         ?.name ?? null;
-    return { version: pkg.active_version, authorEmail, categoryName };
+    // Tags travel separately so the exported frontmatter can render their names.
+    const tags = (await this.metaRead.getTagsByVersionIds('prompt', [pkg.active_version.id])).get(
+      pkg.active_version.id,
+    );
+    return { version: pkg.active_version, authorEmail, categoryName, tags: tags ?? [] };
   }
 }

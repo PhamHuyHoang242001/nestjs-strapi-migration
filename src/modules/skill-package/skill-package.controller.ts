@@ -69,12 +69,8 @@ export class SkillPackageController {
     return this.queryService.list(q, userId);
   }
 
-  // GET /v1/skill/stats — whole-workspace latest-state + actual-published counters.
-  @ApiOperation({ summary: 'Get Skill workspace dashboard counters' })
-  @Get('stats')
-  stats() {
-    return this.queryService.stats();
-  }
+  // Workspace counters moved to GET /v1/asset-hub/stats, which reports skill and prompt together
+  // so the dashboard makes one request instead of two.
 
   // GET /v1/skill/items/:id — detail with versions[] folded in (M7) + caller-scoped flags.
   // All callers are authenticated (BearerGuard); userId drives isUpdate / inactive access / scrubbing.

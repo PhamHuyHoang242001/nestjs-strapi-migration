@@ -25,4 +25,12 @@ export class LatestArtifactsController {
   listLatest(@Query() q: LatestArtifactsQueryDto) {
     return this.service.listLatest(q.limit);
   }
+
+  // GET /v1/asset-hub/stats — dashboard counters for both workspaces in one array, each row tagged
+  // with its `type`. Replaces the per-workspace stats endpoints so the dashboard makes one request.
+  @ApiOperation({ summary: 'Get dashboard counters for the Skill and Prompt workspaces' })
+  @Get('stats')
+  listStats() {
+    return this.service.listStats();
+  }
 }

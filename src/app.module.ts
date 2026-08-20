@@ -46,6 +46,7 @@ import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-o
 import { SkillPackageModule } from '@modules/skill-package/skill-package.module';
 import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.module';
 import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
+import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { CategoryModule } from '@modules/category/category.module';
 @Module({
   imports: [
@@ -116,6 +117,7 @@ import { CategoryModule } from '@modules/category/category.module';
     SkillPackageModule,
     PromptLibraryModule,
     LatestArtifactsModule,
+    AssetHubCatalogModule,
     CategoryModule,
   ],
   controllers: [AppController],

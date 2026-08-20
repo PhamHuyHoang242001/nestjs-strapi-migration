@@ -47,9 +47,14 @@ export class PromptVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: true })
   public category_id: number | null;
 
-  // Freeform tag array stored as JSONB for flexible querying without a join table.
-  @Column({ type: 'jsonb', default: '[]' })
-  public tags: string[];
+  // Tags live in ai_hub_tags and are linked through prompt_version_tags — the read services batch
+  // them onto the response. Deliberately not a TypeORM relation, matching category_id.
+
+  // Rich-text usage guide (sanitized HTML from the editor). Version-scoped so a bump can
+  // revise the instructions alongside the artifact, and so a reviewer diffs guide + content
+  // together. Empty string means "no guide" — required on create, allowed empty on bump.
+  @Column({ type: 'text', default: '' })
+  public usage_guide_html: string;
 
   // Strapi URL of the uploaded avatar image, stored directly (nullable, URL only — no metadata).
   // Served back to the client verbatim; origin is validated against the Strapi host at submit.

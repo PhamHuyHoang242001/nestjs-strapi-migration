@@ -23,6 +23,17 @@ export interface LatestArtifactItem {
   created_by: string | null;
 }
 
+// One workspace's dashboard counters. `type` is the discriminator the client switches on, so both
+// workspaces can be rendered from a single response.
+export interface WorkspaceStatRow {
+  type: ArtifactType;
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  published: number;
+}
+
 // Internal row shape returned by the per-type SQL before email resolution + reshaping.
 interface LatestVersionRow {
   code: string;
@@ -83,6 +94,70 @@ export class LatestArtifactsService {
       [limit],
     );
     return rows;
+  }
+
+  // Dashboard counters for one workspace. Each live package contributes exactly once to the
+  // lifecycle counters via its greatest live version id. Published is intentionally separate: a
+  // package may remain published while a newer update is pending or rejected.
+  // The table/column names are hardcoded internal identifiers (never user input).
+  private async fetchWorkspaceStats(
+    type: ArtifactType,
+    versionTable: string,
+    packageTable: string,
+    fkColumn: string,
+  ): Promise<WorkspaceStatRow> {
+    const rows = (await this.versionRepo.manager.query(`
+      WITH latest AS (
+        SELECT DISTINCT ON (v.${fkColumn}) v.state
+        FROM ${versionTable} v
+        INNER JOIN ${packageTable} p ON p.id = v.${fkColumn}
+        WHERE v.deleted_at IS NULL AND v.is_deleted = false
+          AND p.deleted_at IS NULL AND p.is_deleted = false
+        ORDER BY v.${fkColumn}, v.id DESC
+      )
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE state = 'pending')::int AS pending,
+        COUNT(*) FILTER (WHERE state = 'approved')::int AS approved,
+        COUNT(*) FILTER (WHERE state = 'rejected')::int AS rejected,
+        (
+          SELECT COUNT(*)::int
+          FROM ${packageTable} p
+          INNER JOIN ${versionTable} av
+            ON av.id = p.active_version_id
+           AND av.${fkColumn} = p.id
+           AND av.state = 'approved'
+           AND av.deleted_at IS NULL
+           AND av.is_deleted = false
+          WHERE p.status = 'active'
+            AND p.active_version_id IS NOT NULL
+            AND p.deleted_at IS NULL
+            AND p.is_deleted = false
+        ) AS published
+      FROM latest
+    `)) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published', number | string>>;
+
+    const row = rows[0];
+    return {
+      type,
+      total: Number(row?.total ?? 0),
+      pending: Number(row?.pending ?? 0),
+      approved: Number(row?.approved ?? 0),
+      rejected: Number(row?.rejected ?? 0),
+      published: Number(row?.published ?? 0),
+    };
+  }
+
+  // GET /v1/asset-hub/stats — both workspaces' counters in one array, so the dashboard makes a
+  // single request. This replaces the per-workspace GET /v1/skill/stats and GET /v1/prompt/stats;
+  // the SQL was moved here rather than injected, because neither library module exports its query
+  // service. The classification is unchanged — only the transport and the response shape differ.
+  async listStats(): Promise<{ data: WorkspaceStatRow[] }> {
+    const [skills, prompts] = await Promise.all([
+      this.fetchWorkspaceStats('skill', 'skill_versions', 'skill_packages', 'skill_package_id'),
+      this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id'),
+    ]);
+    return { data: [skills, prompts] };
   }
 
   // GET /v1/asset-hub/latest — the N newest skills + N newest prompts, each carrying its latest

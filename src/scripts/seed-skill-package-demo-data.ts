@@ -42,6 +42,18 @@ interface PackageSpec {
 }
 
 // ---- skill.md generator --------------------------------------------------------
+// Deterministic guide HTML so the "Hướng dẫn" tab has real content to render. Uses only tags the
+// backend sanitizer keeps; no images, since a demo has no uploaded Strapi media to point at.
+function usageGuideHtml(p: PackageSpec): string {
+  return [
+    `<h2>Hướng dẫn sử dụng ${p.name}</h2>`,
+    `<p>${p.shortDescription}</p>`,
+    '<h3>Các bước</h3>',
+    '<ol><li>Cấu hình tham số đầu vào.</li><li>Chạy skill và chờ kết quả.</li><li>Xuất kết quả ra CSV/JSON/PDF.</li></ol>',
+    '<blockquote>Liên hệ người chịu trách nhiệm nếu kết quả không như mong đợi.</blockquote>',
+  ].join('');
+}
+
 // Deterministic, human-readable markdown so DiffView / SkillDetail render real content.
 function skillMd(p: PackageSpec, v: VersionSpec): string {
   const base = `# ${p.name}
@@ -239,6 +251,75 @@ async function ensureSchema(m: EntityManager): Promise<void> {
   `);
   await m.query(`ALTER TABLE skill_versions ADD COLUMN IF NOT EXISTS category_id INT NULL`);
   await m.query(`ALTER TABLE skill_versions DROP COLUMN IF EXISTS category`);
+
+  // Asset-hub taxonomy: catalogs + join tables + the two owned columns. Mirrors migration
+  // 2608191600 so a fresh database can be seeded without running migrations first, and
+  // 2608191700 (the jsonb tags drop) so a re-seed never resurrects the retired column.
+  await m.query(`
+    CREATE TABLE IF NOT EXISTS ai_hub_publishers (
+      id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TIMESTAMP WITHOUT TIME ZONE, is_deleted BOOLEAN DEFAULT FALSE
+    )
+  `);
+  await m.query(`
+    CREATE TABLE IF NOT EXISTS ai_hub_tags (
+      id SERIAL PRIMARY KEY, name VARCHAR(200) NOT NULL,
+      kind VARCHAR(20) NOT NULL, artifact_type VARCHAR(20) NOT NULL,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TIMESTAMP WITHOUT TIME ZONE, is_deleted BOOLEAN DEFAULT FALSE
+    )
+  `);
+  await m.query(`
+    CREATE TABLE IF NOT EXISTS skill_package_responsibles (
+      id SERIAL PRIMARY KEY, skill_package_id INT NOT NULL, user_id INT NOT NULL,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TIMESTAMP WITHOUT TIME ZONE, is_deleted BOOLEAN DEFAULT FALSE
+    )
+  `);
+  await m.query(`
+    CREATE TABLE IF NOT EXISTS skill_version_tags (
+      id SERIAL PRIMARY KEY, skill_version_id INT NOT NULL, tag_id INT NOT NULL,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TIMESTAMP WITHOUT TIME ZONE, is_deleted BOOLEAN DEFAULT FALSE
+    )
+  `);
+  await m.query(`ALTER TABLE skill_versions ADD COLUMN IF NOT EXISTS usage_guide_html TEXT NOT NULL DEFAULT ''`);
+  await m.query(`ALTER TABLE skill_packages ADD COLUMN IF NOT EXISTS publisher_id INT NULL`);
+  // Tags are catalog rows now; the freeform jsonb array is gone.
+  await m.query(`ALTER TABLE skill_versions DROP COLUMN IF EXISTS tags`);
+}
+
+// Resolve a demo publisher/tag by name, creating it when absent so the seeder works on a database
+// whose catalogs were never seeded. Deterministic: the same name always maps to the same row.
+async function resolvePublisherId(m: EntityManager, name: string): Promise<number> {
+  const existing = (await m.query(
+    `SELECT id FROM ai_hub_publishers WHERE name = $1 AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+    [name],
+  )) as Array<{ id: number }>;
+  if (existing[0]) return Number(existing[0].id);
+  const inserted = (await m.query(`INSERT INTO ai_hub_publishers (name) VALUES ($1) RETURNING id`, [name])) as Array<{
+    id: number;
+  }>;
+  return Number(inserted[0].id);
+}
+
+async function resolveTagId(m: EntityManager, name: string, kind: 'enterprise' | 'personal'): Promise<number> {
+  const existing = (await m.query(
+    `SELECT id FROM ai_hub_tags
+     WHERE name = $1 AND artifact_type = 'skill' AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+    [name],
+  )) as Array<{ id: number }>;
+  if (existing[0]) return Number(existing[0].id);
+  const inserted = (await m.query(
+    `INSERT INTO ai_hub_tags (name, kind, artifact_type) VALUES ($1, $2, 'skill') RETURNING id`,
+    [name, kind],
+  )) as Array<{ id: number }>;
+  return Number(inserted[0].id);
 }
 
 async function resolveCategoryId(m: EntityManager, name: string, type: 'skill' | 'prompt'): Promise<number> {
@@ -267,13 +348,36 @@ const zipSize = (slug: string, v: number) => 200_000 + ((slug.length * 37 + v * 
 async function seed(m: EntityManager, uploaderId: number, approverId: number): Promise<void> {
   const pkgs = allPackages();
   let vCount = 0;
-  for (const p of pkgs) {
+  // Spread the demo packages across a few publishing units so the publisher filter has something
+  // to separate; the mapping is deterministic (by index), not random.
+  const publisherNames = ['Khác', 'Khối Công nghệ thông tin', 'Khối Ngân hàng số', 'Khối Vận hành'];
+  // Sequential, not Promise.all: every query here shares one transaction's connection, and pg
+  // rejects concurrent statements on a single client.
+  const publisherIds: number[] = [];
+  for (const name of publisherNames) publisherIds.push(await resolvePublisherId(m, name));
+
+  for (const [index, p] of pkgs.entries()) {
+    const publisherId = publisherIds[index % publisherIds.length];
     const pkgRows = (await m.query(
-      `INSERT INTO skill_packages (status, created_by, is_deleted, created_at, updated_at)
-       VALUES ($1, $2, false, NOW(), NOW()) RETURNING id`,
-      [p.status, uploaderId],
+      `INSERT INTO skill_packages (status, created_by, publisher_id, code, is_deleted, created_at, updated_at)
+       VALUES ($1, $2, $3, '', false, NOW(), NOW()) RETURNING id`,
+      [p.status, uploaderId, publisherId],
     )) as Array<{ id: number }>;
     const packageId = Number(pkgRows[0].id);
+    // code is a bijection of the primary key, so it can only be set once the id exists — same
+    // post-insert step the upload service performs inside its create transaction.
+    await m.query(`UPDATE skill_packages SET code = $1 WHERE id = $2`, [`skill_${packageId}`, packageId]);
+
+    // Every package needs at least one person in charge; the uploader plays that role, and every
+    // third package also lists the approver so the multi-PIC rendering is exercised.
+    const responsibleIds = index % 3 === 0 ? [uploaderId, approverId] : [uploaderId];
+    for (const userId of responsibleIds) {
+      await m.query(
+        `INSERT INTO skill_package_responsibles (skill_package_id, user_id, is_deleted, created_at, updated_at)
+         VALUES ($1, $2, false, NOW(), NOW())`,
+        [packageId, userId],
+      );
+    }
 
     let activeVersionId: number | null = null;
     for (const v of p.versions) {
@@ -281,10 +385,10 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
       const categoryId = await resolveCategoryId(m, p.category, 'skill');
       const verRows = (await m.query(
         `INSERT INTO skill_versions
-           (skill_package_id, version_no, state, name, short_description, category_id, tags,
+           (skill_package_id, version_no, state, name, short_description, category_id, usage_guide_html,
             skill_md_content, changelog_note, submitted_by, reviewed_by, reviewed_at, reject_reason,
             avatar_url, is_deleted, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,false,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,false,
                  NOW() - ($15 || ' days')::interval, NOW() - ($15 || ' days')::interval)
          RETURNING id`,
         [
@@ -294,7 +398,7 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
           p.name,
           p.shortDescription,
           categoryId,
-          JSON.stringify(p.tags),
+          usageGuideHtml(p),
           skillMd(p, v),
           v.changelogNote ?? null,
           uploaderId,
@@ -307,6 +411,16 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
       )) as Array<{ id: number }>;
       const versionId = Number(verRows[0].id);
       vCount++;
+
+      // Catalog tag links. Kind alternates by position so both chip colours appear in the demo.
+      for (const [tagIndex, tagName] of p.tags.entries()) {
+        const tagId = await resolveTagId(m, tagName, tagIndex % 2 === 0 ? 'enterprise' : 'personal');
+        await m.query(
+          `INSERT INTO skill_version_tags (skill_version_id, tag_id, is_deleted, created_at, updated_at)
+           VALUES ($1, $2, false, NOW(), NOW())`,
+          [versionId, tagId],
+        );
+      }
 
       // reviewed_at: stamp a plausible review time (a bit after submission) for reviewed states.
       if (isReviewed) {
@@ -373,6 +487,8 @@ async function main(): Promise<void> {
 
       // Idempotent wipe: clear circular FK first, then children → parents. skill_* only.
       await m.query(`UPDATE skill_packages SET active_version_id = NULL`);
+      await m.query(`DELETE FROM skill_version_tags`);
+      await m.query(`DELETE FROM skill_package_responsibles`);
       await m.query(`DELETE FROM skill_version_files`);
       await m.query(`DELETE FROM skill_versions`);
       await m.query(`DELETE FROM skill_packages`);

@@ -39,7 +39,13 @@ describe('SkillPackageQueryService.resolveActiveZip', () => {
     permissionQuery = { getUserPermissions: jest.fn().mockResolvedValue([]) };
     packageRepo = { findOne: jest.fn() };
     versionRepo = { manager: { query: jest.fn().mockResolvedValue([]) } };
-    service = new SkillPackageQueryService(packageRepo, versionRepo, permissionQuery);
+    // Metadata batch loader — the download path does not decorate, so empty maps suffice.
+    const metaRead = {
+      getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
+      getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
+      getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
+    };
+    service = new SkillPackageQueryService(packageRepo, versionRepo, permissionQuery, metaRead as never);
   });
 
   it('returns the zip descriptor for an active package (any authenticated user)', async () => {

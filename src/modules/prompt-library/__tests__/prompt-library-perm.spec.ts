@@ -37,8 +37,9 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('listItems')).toBeUndefined();
   });
 
-  it('stats has no RequirePermission metadata (auth-only, whole database)', () => {
-    expect(getPerm('stats')).toBeUndefined();
+  // Workspace counters moved to GET /v1/asset-hub/stats — this controller no longer serves them.
+  it('no longer registers a stats route', () => {
+    expect((PromptLibraryController.prototype as unknown as Record<string, unknown>).stats).toBeUndefined();
   });
 
   it('getItem has no RequirePermission metadata', () => {
@@ -68,7 +69,6 @@ describe('PromptLibraryController — perm mapping', () => {
   // Verify no DataAccess metadata on any prompt route (no owner-scope on prompt routes).
   const allMethods = [
     'listItems',
-    'stats',
     'getItem',
     'listReviews',
     'listReviewSubmitters',

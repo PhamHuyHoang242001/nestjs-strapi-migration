@@ -29,6 +29,12 @@ export class PromptPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public created_by: number;
 
+  // Publishing unit → ai_hub_publishers.id. Plain int with no FK/relation, matching category_id:
+  // the write services validate the id exists, the read services resolve the name by batch join.
+  // Package-scoped (not version-scoped) because ownership of an artifact does not change per version.
+  @Column({ type: 'int' })
+  public publisher_id: number;
+
   // Eager relation to the active version (read-only navigation property).
   // lazy import avoids circular dependency between PromptPackage ↔ PromptVersion.
   @OneToOne('PromptVersion', { nullable: true, eager: false })

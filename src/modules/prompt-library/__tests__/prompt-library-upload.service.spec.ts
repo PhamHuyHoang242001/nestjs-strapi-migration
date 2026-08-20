@@ -8,6 +8,29 @@ const USER_ID = 100;
 const OTHER_USER_ID = 200;
 const PACKAGE_ID = 1;
 const VERSION_ID = 5;
+const PUBLISHER_ID = 7;
+const PIC_IDS = [11, 12];
+const TAG_IDS = [21, 22];
+
+// Metadata every write now carries: publishing unit, people in charge, usage guide, catalog tags.
+const META_FIELDS = {
+  publisher_id: PUBLISHER_ID,
+  responsible_user_ids: PIC_IDS,
+  usage_guide_html: '<p>Hướng dẫn</p>',
+  tag_ids: TAG_IDS,
+};
+
+// Stand-in for AssetHubItemMetaService: the asserts resolve by default (id validation is covered
+// by that service's own spec) and the replace calls are recorded so the write order can be checked.
+function makeItemMeta() {
+  return {
+    assertPublisher: jest.fn().mockResolvedValue(undefined),
+    assertUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    replaceResponsibles: jest.fn().mockResolvedValue(undefined),
+    replaceVersionTags: jest.fn().mockResolvedValue(undefined),
+  };
+}
 
 function makeDs(txResult?: unknown) {
   const ds: any = {
@@ -32,6 +55,7 @@ describe('PromptLibraryUploadService', () => {
   let dataSource: any;
   let avatarUrl: any;
   let permissionQuery: any;
+  let itemMeta: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -47,8 +71,9 @@ describe('PromptLibraryUploadService', () => {
     dataSource = makeDs();
     avatarUrl = { assertStrapiUrl: jest.fn() };
     permissionQuery = { getUserPermissions: jest.fn() };
+    itemMeta = makeItemMeta();
 
-    service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+    service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
   });
 
   // ---- createNew — inline prompt_content + inline avatar_url, NO file rows ----
@@ -59,7 +84,7 @@ describe('PromptLibraryUploadService', () => {
       name: 'My Prompt',
       short_description: 'desc',
       category_id: 1,
-      tags: [],
+      ...META_FIELDS,
     };
 
     function captureDs(saved: any[], updates: any[] = []) {
@@ -85,7 +110,7 @@ describe('PromptLibraryUploadService', () => {
       const saved: any[] = [];
       const updates: any[] = [];
       dataSource = captureDs(saved, updates);
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       await service.createNew(dto as any, USER_ID);
 
@@ -100,7 +125,7 @@ describe('PromptLibraryUploadService', () => {
     it('stores prompt_content + avatar_url inline on the v1 version; no file entity saved', async () => {
       const saved: any[] = [];
       dataSource = captureDs(saved);
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       await service.createNew(dto as any, USER_ID);
 
@@ -117,7 +142,7 @@ describe('PromptLibraryUploadService', () => {
     it('avatar_url null and SSRF guard skipped when avatar omitted', async () => {
       const saved: any[] = [];
       dataSource = captureDs(saved);
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       await service.createNew({ ...dto, avatar_url: undefined } as any, USER_ID);
 
@@ -287,7 +312,7 @@ describe('PromptLibraryUploadService', () => {
       name: 'v2',
       short_description: 'desc',
       category_id: 1,
-      tags: [],
+      ...META_FIELDS,
     };
 
     it('sets old_version=latest approved, version_no=placeholder (=old_version) inline in one tx', async () => {
@@ -300,6 +325,7 @@ describe('PromptLibraryUploadService', () => {
           // First query = SELECT ... FOR UPDATE (result ignored); MAX(approved version_no) → 3.
           query: jest.fn().mockResolvedValue([{ max: '3' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             const row = { ...obj, id: 99 };
             saved.push({ entity: _E?.name, row });
@@ -308,7 +334,7 @@ describe('PromptLibraryUploadService', () => {
         };
         return cb(manager);
       });
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       const dtoV2 = { ...dto, avatar_url: '/uploads/av.png', changelog_note: 'bump' };
       const result = await service.createVersion(PACKAGE_ID, dtoV2 as any, USER_ID);
@@ -408,6 +434,7 @@ describe('PromptLibraryUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: '1' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -415,7 +442,7 @@ describe('PromptLibraryUploadService', () => {
         };
         return cb(manager);
       });
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
@@ -432,6 +459,7 @@ describe('PromptLibraryUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: null }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -439,7 +467,7 @@ describe('PromptLibraryUploadService', () => {
         };
         return cb(manager);
       });
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version.version_no).toBe(1);
@@ -457,6 +485,7 @@ describe('PromptLibraryUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: '2' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -464,7 +493,7 @@ describe('PromptLibraryUploadService', () => {
         };
         return cb(manager);
       });
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
@@ -481,6 +510,7 @@ describe('PromptLibraryUploadService', () => {
         const manager = {
           query: jest.fn().mockResolvedValue([{ max: '1' }]),
           create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
           save: jest.fn(async (_E: any, obj: any) => {
             saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
             return { ...obj, id: 99 };
@@ -488,7 +518,7 @@ describe('PromptLibraryUploadService', () => {
         };
         return cb(manager);
       });
-      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery);
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();

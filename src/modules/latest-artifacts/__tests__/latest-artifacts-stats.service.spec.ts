@@ -1,0 +1,90 @@
+import 'reflect-metadata';
+import { LatestArtifactsService } from '../latest-artifacts.service';
+import { LatestArtifactsController } from '../latest-artifacts.controller';
+import { PERMISSION_META_KEY } from '@common/authorization/constants/authorization.constant';
+
+// DB-mocked composition spec (module convention: no real DB). listStats issues one aggregate per
+// workspace; Promise.all invokes the two thunks in array order, so skill is call 0, prompt call 1.
+function makeService() {
+  const query = jest.fn();
+  const versionRepo = { manager: { query } } as never;
+  return { service: new LatestArtifactsService(versionRepo), query };
+}
+
+const SKILL_AGGREGATE = { total: '7', pending: '2', approved: '4', rejected: '1', published: '5' };
+const PROMPT_AGGREGATE = { total: '9', pending: '3', approved: '5', rejected: '1', published: '6' };
+
+describe('LatestArtifactsService.listStats', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns one row per workspace, tagged with its type', async () => {
+    const { service, query } = makeService();
+    query.mockResolvedValueOnce([SKILL_AGGREGATE]).mockResolvedValueOnce([PROMPT_AGGREGATE]);
+
+    await expect(service.listStats()).resolves.toEqual({
+      data: [
+        { type: 'skill', total: 7, pending: 2, approved: 4, rejected: 1, published: 5 },
+        { type: 'prompt', total: 9, pending: 3, approved: 5, rejected: 1, published: 6 },
+      ],
+    });
+  });
+
+  it('reports zeros for a workspace whose aggregate returns no row', async () => {
+    const { service, query } = makeService();
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const result = await service.listStats();
+
+    expect(result.data).toEqual([
+      { type: 'skill', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
+      { type: 'prompt', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
+    ]);
+  });
+
+  // The counting rules are unchanged from the per-workspace endpoints this replaced; only the
+  // transport and the response shape differ.
+  it.each([
+    ['skill', 0, 'skill_package_id', 'skill_versions', 'skill_packages'],
+    ['prompt', 1, 'prompt_package_id', 'prompt_versions', 'prompt_packages'],
+  ])('classifies %s by latest live version per package', async (_type, callIndex, fk, versionTable, packageTable) => {
+    const { service, query } = makeService();
+    query.mockResolvedValue([SKILL_AGGREGATE]);
+
+    await service.listStats();
+
+    const sql = query.mock.calls[callIndex as number][0] as string;
+    expect(sql).toContain(`DISTINCT ON (v.${fk as string})`);
+    expect(sql).toContain(`ORDER BY v.${fk as string}, v.id DESC`);
+    expect(sql).toContain(`FROM ${versionTable as string} v`);
+    expect(sql).toContain(`INNER JOIN ${packageTable as string} p`);
+    expect(sql).toContain("FILTER (WHERE state = 'pending')");
+    expect(sql).toContain("FILTER (WHERE state = 'rejected')");
+    // Published is counted independently: a package stays published while a newer version is pending.
+    expect(sql).toContain('av.id = p.active_version_id');
+    expect(sql).toContain("av.state = 'approved'");
+    expect(sql).toContain("p.status = 'active'");
+    // Soft-deleted rows never contribute on either side of the join.
+    expect(sql).toContain('v.deleted_at IS NULL AND v.is_deleted = false');
+    expect(sql).toContain('p.deleted_at IS NULL AND p.is_deleted = false');
+  });
+
+  it('takes no caller-supplied parameters — the aggregate is whole-workspace', async () => {
+    const { service, query } = makeService();
+    query.mockResolvedValue([SKILL_AGGREGATE]);
+
+    await service.listStats();
+
+    expect(query.mock.calls[0][1]).toBeUndefined();
+    expect(query.mock.calls[1][1]).toBeUndefined();
+  });
+});
+
+describe('LatestArtifactsController', () => {
+  it('exposes the stats route', () => {
+    expect(typeof LatestArtifactsController.prototype.listStats).toBe('function');
+  });
+
+  it('leaves stats Bearer-only, like the rest of the hub', () => {
+    expect(Reflect.getMetadata(PERMISSION_META_KEY, LatestArtifactsController.prototype.listStats)).toBeUndefined();
+  });
+});

@@ -65,12 +65,8 @@ export class PromptLibraryController {
     return this.queryService.list(q, userId);
   }
 
-  // GET /v1/prompt/stats — whole-workspace latest-state + actual-published counters.
-  @ApiOperation({ summary: 'Get Prompt workspace dashboard counters' })
-  @Get('stats')
-  stats() {
-    return this.queryService.stats();
-  }
+  // Workspace counters moved to GET /v1/asset-hub/stats, which reports skill and prompt together
+  // so the dashboard makes one request instead of two.
 
   // GET /v1/prompt/items/:id — detail with versions[] folded in + caller-scoped flags.
   // All callers are authenticated (BearerGuard); userId drives isUpdate / inactive access / scrubbing.
@@ -91,8 +87,8 @@ export class PromptLibraryController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
 
-    const { version, authorEmail, categoryName } = await this.queryService.resolveActiveForExport(id, userId);
-    const md = buildPromptMarkdown(version, authorEmail, categoryName);
+    const { version, authorEmail, categoryName, tags } = await this.queryService.resolveActiveForExport(id, userId);
+    const md = buildPromptMarkdown(version, authorEmail, categoryName, tags);
     // Filename is already a safe slug ([a-z0-9-] + -v<n> + ext) — quote directly, no percent-encode.
     const filename = buildDownloadFilename(version.name, version.version_no, 'md', 'prompt');
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
