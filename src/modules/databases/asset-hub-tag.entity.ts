@@ -1,5 +1,5 @@
 import { IsEnum, IsString } from 'class-validator';
-import { Column, Entity, Index } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 
 // Ownership axis of a tag: an enterprise-wide artifact vs a personally maintained one.
@@ -18,8 +18,6 @@ export enum AssetHubTagArtifactType {
 // Seeded catalog of selectable tags. Deliberately has no is_active flag (unlike ai_hub_categories):
 // retirement is expressed by soft delete, since there is no admin CRUD surface this round.
 @Entity('ai_hub_tags')
-@Index(['artifact_type'])
-@Index(['kind'])
 export class AssetHubTag extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 200 })
   @IsString()

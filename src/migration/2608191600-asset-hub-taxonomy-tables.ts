@@ -36,8 +36,6 @@ export class AssetHubTaxonomyTables2608191600 implements MigrationInterface {
       CONSTRAINT chk_ai_hub_tags_kind CHECK (kind IN ('enterprise', 'personal')),
       CONSTRAINT chk_ai_hub_tags_artifact_type CHECK (artifact_type IN ('skill', 'prompt'))
     )`);
-    await q.query('CREATE INDEX IF NOT EXISTS idx_ai_hub_tags_artifact_type ON ai_hub_tags (artifact_type)');
-    await q.query('CREATE INDEX IF NOT EXISTS idx_ai_hub_tags_kind ON ai_hub_tags (kind)');
   }
 
   private async createJoinTables(q: QueryRunner): Promise<void> {
@@ -58,8 +56,6 @@ export class AssetHubTaxonomyTables2608191600 implements MigrationInterface {
         deleted_at TIMESTAMP WITHOUT TIME ZONE,
         is_deleted BOOLEAN DEFAULT FALSE
       )`);
-      await q.query(`CREATE INDEX IF NOT EXISTS idx_${table}_${ownerColumn} ON ${table} (${ownerColumn})`);
-      await q.query(`CREATE INDEX IF NOT EXISTS idx_${table}_${peerColumn} ON ${table} (${peerColumn})`);
     }
   }
 

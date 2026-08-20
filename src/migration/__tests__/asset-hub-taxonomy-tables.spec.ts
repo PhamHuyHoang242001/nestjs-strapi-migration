@@ -1,6 +1,7 @@
 import type { QueryRunner } from 'typeorm';
 import { AssetHubTaxonomyTables2608191600 } from '../2608191600-asset-hub-taxonomy-tables';
 import { DropVersionTagsJsonb2608191700 } from '../2608191700-drop-version-tags-jsonb';
+import { DropAssetHubTaxonomySecondaryIndexes2608200900 } from '../2608200900-drop-asset-hub-taxonomy-secondary-indexes';
 import { AssetHubTag, AssetHubTagArtifactType, AssetHubTagKind } from '../../modules/databases/asset-hub-tag.entity';
 import { AssetHubPublisher } from '../../modules/databases/asset-hub-publisher.entity';
 import { SkillVersionTag } from '../../modules/databases/skill-version-tag.entity';
@@ -110,6 +111,10 @@ describe('asset hub taxonomy migration', () => {
     it('leaves the legacy jsonb tags column alone — the drop ships with the reader swap', () => {
       expect(statements.some((sql) => sql.includes('DROP COLUMN') && sql.includes('tags'))).toBe(false);
     });
+
+    it('does not create secondary indexes — tables keep only the serial PK', () => {
+      expect(statements.some((sql) => sql.includes('CREATE INDEX'))).toBe(false);
+    });
   });
 
   describe('down', () => {
@@ -186,6 +191,25 @@ describe('drop version tags jsonb migration', () => {
 
   it('runs after the additive migration — its filename sorts later', () => {
     expect('2608191700' > '2608191600').toBe(true);
+  });
+});
+
+describe('drop asset hub taxonomy secondary indexes', () => {
+  it('drops the ten named btrees and leaves PK indexes alone', async () => {
+    const { runner, statements } = makeQueryRunner();
+
+    await new DropAssetHubTaxonomySecondaryIndexes2608200900().up(runner);
+
+    const normalized = statements.map(normalize);
+    expect(normalized).toHaveLength(10);
+    for (const sql of normalized) {
+      expect(sql.startsWith('DROP INDEX IF EXISTS idx_')).toBe(true);
+      expect(sql).not.toContain('_pkey');
+    }
+  });
+
+  it('sorts after both taxonomy migrations so already-applied 2608191600 still gets cleaned', () => {
+    expect('2608200900' > '2608191700').toBe(true);
   });
 });
 
