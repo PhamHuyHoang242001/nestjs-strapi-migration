@@ -4,9 +4,12 @@ import { SkillPackageUploadService } from '../skill-package-upload.service';
 import { SkillVersionState } from '@modules/databases/skill-version.entity';
 import { SkillPackageStatus } from '@modules/databases/skill-package.entity';
 
-// We mock extractSkillMdFromZip so zip-parsing is not exercised in these unit tests.
+// We mock extractSkillZip so zip-parsing is not exercised in these unit tests.
 jest.mock('../skill-zip.util', () => ({
-  extractSkillMdFromZip: jest.fn().mockReturnValue('# mock skill.md'),
+  extractSkillZip: jest.fn().mockReturnValue({
+    skillMd: '# mock skill.md',
+    zipTree: [{ path: 'skill.md', isDir: false, size: 16 }],
+  }),
 }));
 
 const USER_ID = 100;
@@ -135,6 +138,7 @@ describe('SkillPackageUploadService', () => {
       expect(versionRow.avatar_url).toBe('/uploads/avatar.png');
       expect(versionRow.zip_url).toBeUndefined();
       expect(versionRow.skill_md_content).toBe('# mock skill.md');
+      expect(versionRow.zip_tree).toEqual([{ path: 'skill.md', isDir: false, size: 16 }]);
 
       const files = saved.filter((s) => s.entity === 'SkillVersionFile').map((s) => s.row);
       // Only the zip is a file row — the avatar is NOT modelled as a file row.

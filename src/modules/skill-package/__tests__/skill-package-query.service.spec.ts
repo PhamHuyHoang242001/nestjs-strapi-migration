@@ -271,6 +271,25 @@ describe('SkillPackageQueryService', () => {
       expect((result.data[0] as Record<string, any>).active_version).not.toHaveProperty('usage_guide_html');
     });
 
+    it('never puts zip_tree on a list row', async () => {
+      const qb = makeQueryBuilder(
+        [
+          {
+            id: PACKAGE_ID,
+            publisher_id: 9,
+            active_version_id: 7,
+            active_version: { id: 7, zip_tree: [{ path: 'skill.md', isDir: false, size: 4 }] },
+          },
+        ],
+        '1',
+      );
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+      const result = await service.list({ page: 1, limit: 10 }, USER_ID);
+
+      expect((result.data[0] as Record<string, any>).active_version).not.toHaveProperty('zip_tree');
+    });
+
     it('returns {data, meta:{total, page, limit}} shape', async () => {
       const qb = makeQueryBuilder([{ id: 1 }], '5');
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
@@ -636,7 +655,13 @@ describe('SkillPackageQueryService', () => {
         id: 1,
         status: SkillPackageStatus.ACTIVE,
         created_by: OTHER_USER_ID,
-        active_version: { id: 10, files: [], state: SkillVersionState.APPROVED, skill_md_content: '# active' },
+        active_version: {
+          id: 10,
+          files: [],
+          state: SkillVersionState.APPROVED,
+          skill_md_content: '# active',
+          zip_tree: [{ path: 'skill.md', isDir: false, size: 8 }],
+        },
       });
       versionRepo.find = jest.fn().mockResolvedValue([
         {
@@ -645,6 +670,7 @@ describe('SkillPackageQueryService', () => {
           state: SkillVersionState.PENDING,
           files: [],
           skill_md_content: '# pending',
+          zip_tree: [{ path: 'draft.md', isDir: false, size: 1 }],
           reject_reason: null,
         },
       ]);
@@ -653,7 +679,9 @@ describe('SkillPackageQueryService', () => {
       const result = await service.detail(1, USER_ID);
       const pending = result.versions[0] as any;
       expect(pending.skill_md_content).toBe('');
+      expect(pending.zip_tree).toBeNull();
       expect(pending.reject_reason).toBeNull();
+      expect((result.active_version as any).zip_tree).toEqual([{ path: 'skill.md', isDir: false, size: 8 }]);
     });
 
     it('non-owner non-approver receives scrubbed content on rejected versions', async () => {

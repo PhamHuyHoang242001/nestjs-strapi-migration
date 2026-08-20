@@ -16,7 +16,7 @@ import { CreateSkillVersionDto } from './dto/create-skill-version.dto';
 import { SkillFileDto } from './dto/skill-file.dto';
 import { RejectSkillVersionDto } from './dto/reject-skill-version.dto';
 import { ToggleStatusDto } from './dto/toggle-status.dto';
-import { extractSkillMdFromZip } from './skill-zip.util';
+import { extractSkillZip } from './skill-zip.util';
 import { FetchedFile, SkillFileFetchService } from './skill-file-fetch.util';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { CategoryService } from '@modules/category/category.service';
@@ -67,7 +67,7 @@ export class SkillPackageUploadService {
     // DB tx — disk I/O must not hold a tx lock. skill.md is validated/extracted from the bytes,
     // but only the URL is persisted (diagnostic-style storage — no media row).
     const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
-    const skillMdContent = extractSkillMdFromZip(zipFile.buffer);
+    const { skillMd: skillMdContent, zipTree } = extractSkillZip(zipFile.buffer);
     // Avatar is stored as-sent (not downloaded); still enforce the Strapi-origin SSRF guard.
     if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
     const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, true);
@@ -114,6 +114,7 @@ export class SkillPackageUploadService {
           usage_guide_html: usageGuideHtml,
           avatar_url: dto.avatar_url ?? null,
           skill_md_content: skillMdContent,
+          zip_tree: zipTree,
           changelog_note: null,
           submitted_by: userId,
         }),
@@ -162,7 +163,7 @@ export class SkillPackageUploadService {
     // Read + validate the zip from local disk before opening the tx (no I/O under a tx lock).
     // Only the URL is persisted (diagnostic-style); the bytes are used solely for skill.md.
     const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
-    const skillMdContent = extractSkillMdFromZip(zipFile.buffer);
+    const { skillMd: skillMdContent, zipTree } = extractSkillZip(zipFile.buffer);
     if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
     // A bump may leave the guide blank — artifacts created before guides existed keep working.
     const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
@@ -213,6 +214,7 @@ export class SkillPackageUploadService {
           usage_guide_html: usageGuideHtml,
           avatar_url: dto.avatar_url ?? null,
           skill_md_content: skillMdContent,
+          zip_tree: zipTree,
           changelog_note: dto.changelog_note ?? null,
           submitted_by: userId,
         });

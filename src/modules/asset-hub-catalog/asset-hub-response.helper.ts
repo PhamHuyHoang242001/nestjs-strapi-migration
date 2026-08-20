@@ -1,14 +1,12 @@
-// Remove the usage guide from a version payload. The skill path spreads whole entities through
-// formatVersion, and the prompt path returns them directly, so in both workspaces the guide —
-// which can run to 200k characters — would otherwise ride along on every row of every list.
-// It belongs only on the two single-item surfaces (item detail and version detail); every list,
-// review queue and version-management page drops it here.
-export function stripGuide<T extends { usage_guide_html?: string }>(
+// Strip fields that belong only on item/version detail. The skill path spreads whole entities
+// through formatVersion, so usage_guide_html (up to ~200k) and zip_tree would otherwise ride
+// every list/review/version-management row. Prompt versions have no zip_tree — delete is a no-op.
+export function stripGuide<T extends { usage_guide_html?: string; zip_tree?: unknown }>(
   version: T | null | undefined,
-): Omit<T, 'usage_guide_html'> | null | undefined {
+): Omit<T, 'usage_guide_html' | 'zip_tree'> | null | undefined {
   if (!version) return version as null | undefined;
-  // Copy-then-delete rather than a discarded destructuring binding, which lint reads as dead code.
-  const rest = { ...(version as T & { usage_guide_html?: string }) };
+  const rest = { ...(version as T & { usage_guide_html?: string; zip_tree?: unknown }) };
   delete rest.usage_guide_html;
-  return rest as Omit<T, 'usage_guide_html'>;
+  delete rest.zip_tree;
+  return rest as Omit<T, 'usage_guide_html' | 'zip_tree'>;
 }

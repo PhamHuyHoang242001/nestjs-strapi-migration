@@ -8,7 +8,10 @@ import { CreateSkillPackageDto } from '../dto/create-skill-package.dto';
 import { CreateSkillVersionDto } from '../dto/create-skill-version.dto';
 
 jest.mock('../skill-zip.util', () => ({
-  extractSkillMdFromZip: jest.fn().mockReturnValue('# mock skill.md'),
+  extractSkillZip: jest.fn().mockReturnValue({
+    skillMd: '# mock skill.md',
+    zipTree: [{ path: 'skill.md', isDir: false, size: 16 }],
+  }),
 }));
 
 const USER_ID = 100;

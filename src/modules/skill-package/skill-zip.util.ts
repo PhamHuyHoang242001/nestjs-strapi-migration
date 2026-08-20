@@ -4,6 +4,9 @@
 import AdmZip = require('adm-zip');
 import { UnprocessableEntityException } from '@nestjs/common';
 import { validateSkillMd } from './skill-md-validation.util';
+import type { ZipTreeNode } from '@modules/databases/skill-version.entity';
+
+export type { ZipTreeNode };
 
 // Hard caps to prevent zip-bomb attacks. Values chosen to bound memory usage
 // per upload request: 200 entries × 5MB per entry = 1GB theoretical max, capped
@@ -12,22 +15,19 @@ const MAX_ENTRIES = 200;
 const MAX_ENTRY_UNCOMPRESSED_BYTES = 5 * 1024 * 1024; // 5 MB per entry
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB total
 const MAX_COMPRESSION_RATIO = 100; // 100:1 ratio guard against zip bombs
+// Files + synthesized parent dirs. 200 unique 3-level paths ≈ 800 nodes; 1024 leaves headroom.
+const MAX_TREE_NODES = 1024;
+
+export interface ExtractedSkillZip {
+  skillMd: string;
+  zipTree: ZipTreeNode[];
+}
 
 /**
- * Extract and return the text content of `skill.md` from an in-memory zip buffer.
- *
- * Security guards enforced before any decompression:
- *  - Entry count cap (zip-bomb width)
- *  - Per-entry and total uncompressed size caps (zip-bomb depth)
- *  - Compression-ratio cap per entry (zip-bomb ratio)
- *  - Path-traversal check on every entry name (zip-slip)
- *
- * After extraction the content is validated against the Agent Skills standard
- * (frontmatter, name, description, line-count cap) — see validateSkillMd.
- *
- * Throws 422 if skill.md is absent or fails standard validation.
+ * Parse a skill zip once: security-scan every entry, extract skill.md, build the folder tree.
+ * Throws 422 if skill.md is absent or fails Agent Skills validation.
  */
-export function extractSkillMdFromZip(buffer: Buffer): string {
+export function extractSkillZip(buffer: Buffer): ExtractedSkillZip {
   let zip: AdmZip;
   try {
     zip = new AdmZip(buffer);
@@ -37,7 +37,6 @@ export function extractSkillMdFromZip(buffer: Buffer): string {
 
   const entries = zip.getEntries();
 
-  // Guard: entry count — a zip with thousands of tiny files can saturate the FS.
   if (entries.length > MAX_ENTRIES) {
     throw new UnprocessableEntityException(
       `ZIP_TOO_MANY_ENTRIES: archive has ${entries.length} entries (max ${MAX_ENTRIES})`,
@@ -46,32 +45,32 @@ export function extractSkillMdFromZip(buffer: Buffer): string {
 
   let totalUncompressed = 0;
   let skillMdEntry: AdmZip.IZipEntry | null = null;
+  const nodes = new Map<string, ZipTreeNode>();
 
   for (const entry of entries) {
-    // Guard: zip-slip — normalize the entry name and ensure it does not escape
-    // the virtual root. Entries like "../secret" or "a/../../etc/passwd" are rejected.
     const rawName = entry.entryName.replace(/\\/g, '/');
-    // Remove leading slashes then check for path traversal segments.
-    const normalized = rawName.replace(/^\/+/, '');
+    const normalized = rawName.replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!normalized) continue;
     if (normalized.split('/').some((seg) => seg === '..')) {
       throw new UnprocessableEntityException(
         `ZIP_SLIP: entry "${rawName}" contains a path traversal segment`,
       );
     }
 
-    if (entry.isDirectory) continue;
+    if (entry.isDirectory) {
+      nodes.set(normalized, { path: normalized, isDir: true, size: null });
+      continue;
+    }
 
     const compressedSize = entry.header.compressedSize;
     const uncompressedSize = entry.header.size;
 
-    // Guard: per-entry ratio (protects against a single deeply-compressed entry).
     if (compressedSize > 0 && uncompressedSize / compressedSize > MAX_COMPRESSION_RATIO) {
       throw new UnprocessableEntityException(
         `ZIP_BOMB_RATIO: entry "${normalized}" compression ratio exceeds ${MAX_COMPRESSION_RATIO}:1`,
       );
     }
 
-    // Guard: per-entry uncompressed size.
     if (uncompressedSize > MAX_ENTRY_UNCOMPRESSED_BYTES) {
       throw new UnprocessableEntityException(
         `ZIP_ENTRY_TOO_LARGE: entry "${normalized}" uncompressed size ${uncompressedSize} bytes exceeds ${MAX_ENTRY_UNCOMPRESSED_BYTES}`,
@@ -79,15 +78,14 @@ export function extractSkillMdFromZip(buffer: Buffer): string {
     }
 
     totalUncompressed += uncompressedSize;
-
-    // Guard: total uncompressed size across all entries.
     if (totalUncompressed > MAX_TOTAL_UNCOMPRESSED_BYTES) {
       throw new UnprocessableEntityException(
         `ZIP_TOTAL_TOO_LARGE: total uncompressed size exceeds ${MAX_TOTAL_UNCOMPRESSED_BYTES} bytes`,
       );
     }
 
-    // Locate skill.md: accept at root or any subdirectory (first found wins).
+    nodes.set(normalized, { path: normalized, isDir: false, size: uncompressedSize });
+
     const basename = normalized.split('/').pop() ?? '';
     if (basename.toLowerCase() === 'skill.md' && !skillMdEntry) {
       skillMdEntry = entry;
@@ -100,9 +98,32 @@ export function extractSkillMdFromZip(buffer: Buffer): string {
     );
   }
 
-  // Decompress only the skill.md entry — no other content is read.
+  synthesizeParents(nodes);
+  if (nodes.size > MAX_TREE_NODES) {
+    throw new UnprocessableEntityException(
+      `ZIP_TREE_TOO_WIDE: tree has ${nodes.size} nodes (max ${MAX_TREE_NODES})`,
+    );
+  }
+
   const content = zip.readAsText(skillMdEntry);
-  // Enforce the Agent Skills standard on the extracted content (throws 422 on violation).
   validateSkillMd(content);
-  return content;
+  return { skillMd: content, zipTree: Array.from(nodes.values()) };
+}
+
+/** @deprecated Prefer extractSkillZip. Kept so e2e helpers that only need skill.md still compile. */
+export function extractSkillMdFromZip(buffer: Buffer): string {
+  return extractSkillZip(buffer).skillMd;
+}
+
+function synthesizeParents(nodes: Map<string, ZipTreeNode>): void {
+  for (const path of Array.from(nodes.keys())) {
+    const parts = path.split('/');
+    let acc = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      acc = acc ? `${acc}/${parts[i]}` : parts[i];
+      if (!nodes.has(acc)) {
+        nodes.set(acc, { path: acc, isDir: true, size: null });
+      }
+    }
+  }
 }

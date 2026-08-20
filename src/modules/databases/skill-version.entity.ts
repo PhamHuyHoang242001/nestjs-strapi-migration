@@ -3,6 +3,12 @@ import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { SkillPackage } from './skill-package.entity';
 import type { SkillVersionFile } from './skill-version-file.entity';
 
+export interface ZipTreeNode {
+  path: string;
+  isDir: boolean;
+  size: number | null;
+}
+
 // Lifecycle: pending → approved | rejected. No 'archived' state; liveness is determined
 // by skill_packages.active_version_id pointing to this row (M7 decision).
 export enum SkillVersionState {
@@ -73,6 +79,10 @@ export class SkillVersion extends BaseSoftDeleteEntity {
   // Extracted text content of skill.md from the zip; used for diff rendering on review.
   @Column({ type: 'text' })
   public skill_md_content: string;
+
+  // Flat ZIP folder tree captured at upload/bump. Null on versions created before this column.
+  @Column({ type: 'jsonb', nullable: true })
+  public zip_tree: ZipTreeNode[] | null;
 
   // Optional release note; required only when bumping an existing package (not first upload).
   @Column({ type: 'text', nullable: true })

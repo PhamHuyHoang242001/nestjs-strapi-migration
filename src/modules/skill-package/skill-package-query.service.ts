@@ -258,6 +258,7 @@ export class SkillPackageQueryService {
         ...v,
         skill_md_content: '',
         usage_guide_html: '',
+        zip_tree: null,
         reject_reason: null,
         changelog_note: null,
       } as SkillVersion;
