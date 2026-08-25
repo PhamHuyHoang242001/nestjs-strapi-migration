@@ -45,6 +45,7 @@ import { DataSelfServeModule } from '@modules/data-self-serve/data-self-serve.mo
 import { SbvRptCvtOutputModule } from '@modules/sbv-rpt-cvt-output/sbv-rpt-cvt-output.module';
 import { SkillPackageModule } from '@modules/skill-package/skill-package.module';
 import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.module';
+import { ApiCatalogModule } from '@modules/api-catalog/api-catalog.module';
 import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
 import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { CategoryModule } from '@modules/category/category.module';
@@ -116,6 +117,7 @@ import { CategoryModule } from '@modules/category/category.module';
     ServiceTokenModule,
     SkillPackageModule,
     PromptLibraryModule,
+    ApiCatalogModule,
     LatestArtifactsModule,
     AssetHubCatalogModule,
     CategoryModule,

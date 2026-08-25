@@ -72,6 +72,24 @@ describe('sanitizeUsageGuideHtml', () => {
   it('returns empty string for empty input', () => {
     expect(sanitizeUsageGuideHtml('')).toBe('');
   });
+
+  it('keeps a numbered sequence list', () => {
+    const html = '<h3>Sequence diagram</h3><ol start="1"><li>Upload</li><li>OCR</li></ol>';
+    const out = sanitizeUsageGuideHtml(html);
+    expect(out).toContain('<ol');
+    expect(out).toContain('<li>');
+    expect(out).toContain('OCR');
+  });
+
+  it('keeps a parameter/error table and colspan', () => {
+    const html =
+      '<table><thead><tr><th>Tên</th><th colspan="2">Mô tả</th></tr></thead><tbody><tr><td>id</td><td colspan="2">CIF</td></tr></tbody></table>';
+    const out = sanitizeUsageGuideHtml(html);
+    expect(out).toContain('<table>');
+    expect(out).toContain('<th>');
+    expect(out).toContain('colspan="2"');
+    expect(out).toContain('CIF');
+  });
 });
 
 describe('isUsageGuideEmpty', () => {

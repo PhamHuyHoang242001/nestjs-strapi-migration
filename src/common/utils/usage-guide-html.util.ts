@@ -29,11 +29,24 @@ const ALLOWED_TAGS = [
   'img',
   'br',
   'hr',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'colgroup',
+  'col',
 ];
 
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
   a: ['href'],
   img: ['src', 'alt'],
+  td: ['colspan', 'rowspan'],
+  th: ['colspan', 'rowspan'],
+  col: ['span'],
+  ol: ['start', 'class'],
+  li: ['class'],
 };
 
 // Only these link schemes survive; `javascript:` and `data:` are absent by construction.

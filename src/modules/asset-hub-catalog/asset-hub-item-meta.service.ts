@@ -4,8 +4,10 @@ import { AssetHubPublisher } from '@modules/databases/asset-hub-publisher.entity
 import { AssetHubTag, AssetHubTagArtifactType } from '@modules/databases/asset-hub-tag.entity';
 import { SkillPackageResponsible } from '@modules/databases/skill-package-responsible.entity';
 import { PromptPackageResponsible } from '@modules/databases/prompt-package-responsible.entity';
+import { ApiPackageResponsible } from '@modules/databases/api-catalog-package-responsible.entity';
 import { SkillVersionTag } from '@modules/databases/skill-version-tag.entity';
 import { PromptVersionTag } from '@modules/databases/prompt-version-tag.entity';
+import { ApiVersionTag } from '@modules/databases/api-catalog-version-tag.entity';
 
 // Upper bounds shared by the create and bump DTOs; re-asserted here so a caller that bypasses
 // the DTO layer (a seeder, a future internal caller) cannot write an unbounded fan-out.
@@ -13,21 +15,36 @@ export const MAX_RESPONSIBLE_USERS = 20;
 export const MAX_VERSION_TAGS = 20;
 
 // Which workspace a write belongs to. Picks the join entities and the tag artifact_type.
-export type AssetHubWorkspace = 'skill' | 'prompt';
+export type AssetHubWorkspace = 'skill' | 'prompt' | 'api-catalog';
 
 const RESPONSIBLE_ENTITY = {
   skill: SkillPackageResponsible,
   prompt: PromptPackageResponsible,
+  'api-catalog': ApiPackageResponsible,
 } as const;
 
 const VERSION_TAG_ENTITY = {
   skill: SkillVersionTag,
   prompt: PromptVersionTag,
+  'api-catalog': ApiVersionTag,
 } as const;
 
 const ARTIFACT_TYPE: Record<AssetHubWorkspace, AssetHubTagArtifactType> = {
   skill: AssetHubTagArtifactType.SKILL,
   prompt: AssetHubTagArtifactType.PROMPT,
+  'api-catalog': AssetHubTagArtifactType.API_CATALOG,
+};
+
+const PACKAGE_OWNER: Record<AssetHubWorkspace, string> = {
+  skill: 'skill_package_id',
+  prompt: 'prompt_package_id',
+  'api-catalog': 'api_catalog_package_id',
+};
+
+const VERSION_OWNER: Record<AssetHubWorkspace, string> = {
+  skill: 'skill_version_id',
+  prompt: 'prompt_version_id',
+  'api-catalog': 'api_catalog_version_id',
 };
 
 const unique = (ids: number[]): number[] => [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
@@ -105,7 +122,7 @@ export class AssetHubItemMetaService {
     userIds: number[],
   ): Promise<void> {
     const entity = RESPONSIBLE_ENTITY[workspace];
-    const ownerColumn = workspace === 'skill' ? 'skill_package_id' : 'prompt_package_id';
+    const ownerColumn = PACKAGE_OWNER[workspace];
 
     await manager.delete(entity, { [ownerColumn]: packageId });
     const ids = unique(userIds);
@@ -122,7 +139,7 @@ export class AssetHubItemMetaService {
     tagIds: number[],
   ): Promise<void> {
     const entity = VERSION_TAG_ENTITY[workspace];
-    const ownerColumn = workspace === 'skill' ? 'skill_version_id' : 'prompt_version_id';
+    const ownerColumn = VERSION_OWNER[workspace];
 
     await manager.delete(entity, { [ownerColumn]: versionId });
     const ids = unique(tagIds);

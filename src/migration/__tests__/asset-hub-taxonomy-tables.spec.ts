@@ -149,7 +149,7 @@ describe('asset hub taxonomy entities', () => {
 
   it('exposes the tag enums the write path validates against', () => {
     expect(Object.values(AssetHubTagKind)).toEqual(['enterprise', 'personal']);
-    expect(Object.values(AssetHubTagArtifactType)).toEqual(['skill', 'prompt']);
+    expect(Object.values(AssetHubTagArtifactType)).toEqual(['skill', 'prompt', 'api-catalog']);
   });
 
   it('declares the new columns on the packages and versions', () => {

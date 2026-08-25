@@ -13,6 +13,7 @@ export enum AssetHubTagKind {
 export enum AssetHubTagArtifactType {
   SKILL = 'skill',
   PROMPT = 'prompt',
+  API_CATALOG = 'api-catalog',
 }
 
 // Seeded catalog of selectable tags. Deliberately has no is_active flag (unlike ai_hub_categories):

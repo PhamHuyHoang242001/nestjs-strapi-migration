@@ -45,7 +45,14 @@ export class AssetHubCatalogController {
   @ApiOperation({ summary: 'List users for the person-in-charge picker' })
   @Get('users')
   @UseGuards(PermissionGuard)
-  @RequirePermission('skill_upload', 'prompt_upload', 'skill_approve', 'prompt_approve')
+  @RequirePermission(
+    'skill_upload',
+    'prompt_upload',
+    'skill_approve',
+    'prompt_approve',
+    'api_upload',
+    'api_approve',
+  )
   listUsers(@Query() q: ListUsersQueryDto) {
     return this.userDirectoryService.list({ page: q.page, limit: q.limit, search: q.search });
   }

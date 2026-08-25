@@ -9,6 +9,7 @@ export const LIVE_TAG = 't.deleted_at IS NULL AND COALESCE(t.is_deleted, false) 
 const VERSION_TAG_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
   skill: { table: 'skill_version_tags', fk: 'skill_version_id' },
   prompt: { table: 'prompt_version_tags', fk: 'prompt_version_id' },
+  'api-catalog': { table: 'api_catalog_version_tags', fk: 'api_catalog_version_id' },
 };
 
 export interface AssetHubCatalogListQuery {

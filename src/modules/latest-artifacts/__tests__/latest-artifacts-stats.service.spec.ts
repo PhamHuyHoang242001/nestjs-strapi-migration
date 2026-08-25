@@ -13,31 +13,37 @@ function makeService() {
 
 const SKILL_AGGREGATE = { total: '7', pending: '2', approved: '4', rejected: '1', published: '5' };
 const PROMPT_AGGREGATE = { total: '9', pending: '3', approved: '5', rejected: '1', published: '6' };
+const API_AGGREGATE = { total: '4', pending: '1', approved: '2', rejected: '1', published: '3' };
 
 describe('LatestArtifactsService.listStats', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('returns one row per workspace, tagged with its type', async () => {
     const { service, query } = makeService();
-    query.mockResolvedValueOnce([SKILL_AGGREGATE]).mockResolvedValueOnce([PROMPT_AGGREGATE]);
+    query
+      .mockResolvedValueOnce([SKILL_AGGREGATE])
+      .mockResolvedValueOnce([PROMPT_AGGREGATE])
+      .mockResolvedValueOnce([API_AGGREGATE]);
 
     await expect(service.listStats()).resolves.toEqual({
       data: [
         { type: 'skill', total: 7, pending: 2, approved: 4, rejected: 1, published: 5 },
         { type: 'prompt', total: 9, pending: 3, approved: 5, rejected: 1, published: 6 },
+        { type: 'api-catalog', total: 4, pending: 1, approved: 2, rejected: 1, published: 3 },
       ],
     });
   });
 
   it('reports zeros for a workspace whose aggregate returns no row', async () => {
     const { service, query } = makeService();
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const result = await service.listStats();
 
     expect(result.data).toEqual([
       { type: 'skill', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
       { type: 'prompt', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
+      { type: 'api-catalog', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
     ]);
   });
 
@@ -46,6 +52,7 @@ describe('LatestArtifactsService.listStats', () => {
   it.each([
     ['skill', 0, 'skill_package_id', 'skill_versions', 'skill_packages'],
     ['prompt', 1, 'prompt_package_id', 'prompt_versions', 'prompt_packages'],
+    ['api-catalog', 2, 'api_catalog_package_id', 'api_catalog_versions', 'api_catalog_packages'],
   ])('classifies %s by latest live version per package', async (_type, callIndex, fk, versionTable, packageTable) => {
     const { service, query } = makeService();
     query.mockResolvedValue([SKILL_AGGREGATE]);

@@ -55,6 +55,20 @@ function usageGuideHtml(p: PackageSpec): string {
 }
 
 // Deterministic, human-readable markdown so DiffView / SkillDetail render real content.
+function demoZipTree(slug: string, versionNo: number): Array<{ path: string; isDir: boolean; size: number | null }> {
+  const root = slug;
+  return [
+    { path: root, isDir: true, size: null },
+    { path: `${root}/skill.md`, isDir: false, size: 1800 + versionNo * 40 },
+    { path: `${root}/scripts`, isDir: true, size: null },
+    { path: `${root}/scripts/run.sh`, isDir: false, size: 256 + versionNo * 8 },
+    { path: `${root}/references`, isDir: true, size: null },
+    { path: `${root}/references/notes.md`, isDir: false, size: 640 },
+    { path: `${root}/assets`, isDir: true, size: null },
+    { path: `${root}/assets/icon.png`, isDir: false, size: 4096 },
+  ];
+}
+
 function skillMd(p: PackageSpec, v: VersionSpec): string {
   const base = `# ${p.name}
 
@@ -292,6 +306,8 @@ async function ensureSchema(m: EntityManager): Promise<void> {
   await m.query(`ALTER TABLE skill_packages ADD COLUMN IF NOT EXISTS publisher_id INT NULL`);
   // Tags are catalog rows now; the freeform jsonb array is gone.
   await m.query(`ALTER TABLE skill_versions DROP COLUMN IF EXISTS tags`);
+  // ZIP folder listing captured at submit. Missing column 500s every list/detail (TypeORM selects av.*).
+  await m.query(`ALTER TABLE skill_versions ADD COLUMN IF NOT EXISTS zip_tree jsonb NULL`);
 }
 
 // Resolve a demo publisher/tag by name, creating it when absent so the seeder works on a database
@@ -386,10 +402,10 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
       const verRows = (await m.query(
         `INSERT INTO skill_versions
            (skill_package_id, version_no, state, name, short_description, category_id, usage_guide_html,
-            skill_md_content, changelog_note, submitted_by, reviewed_by, reviewed_at, reject_reason,
+            skill_md_content, zip_tree, changelog_note, submitted_by, reviewed_by, reviewed_at, reject_reason,
             avatar_url, is_deleted, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,false,
-                 NOW() - ($15 || ' days')::interval, NOW() - ($15 || ' days')::interval)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,false,
+                 NOW() - ($16 || ' days')::interval, NOW() - ($16 || ' days')::interval)
          RETURNING id`,
         [
           packageId,
@@ -400,6 +416,7 @@ async function seed(m: EntityManager, uploaderId: number, approverId: number): P
           categoryId,
           usageGuideHtml(p),
           skillMd(p, v),
+          JSON.stringify(demoZipTree(p.slug, v.versionNo)),
           v.changelogNote ?? null,
           uploaderId,
           isReviewed ? approverId : null,

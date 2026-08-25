@@ -37,12 +37,13 @@ describe('LatestArtifactsService', () => {
   it('defaults to the configured LATEST_ARTIFACTS_LIMIT when no override is passed', async () => {
     const { service, query } = makeService();
     query
-      .mockResolvedValueOnce([SKILL_ROW]) // skill_versions fetch
-      .mockResolvedValueOnce([PROMPT_ROW]) // prompt_versions fetch
+      .mockResolvedValueOnce([SKILL_ROW])
+      .mockResolvedValueOnce([PROMPT_ROW])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 85, email: 'skill.uploader@vpbank.com.vn' },
         { id: 218, email: 'prompt.uploader@vpbank.com.vn' },
-      ]); // users email lookup
+      ]);
 
     const res = await service.listLatest();
 
@@ -57,7 +58,7 @@ describe('LatestArtifactsService', () => {
 
   it('honours a per-request limit override', async () => {
     const { service, query } = makeService();
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const res = await service.listLatest(5);
 
@@ -71,6 +72,7 @@ describe('LatestArtifactsService', () => {
     query
       .mockResolvedValueOnce([SKILL_ROW])
       .mockResolvedValueOnce([PROMPT_ROW])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 85, email: 'skill.uploader@vpbank.com.vn' },
         { id: 218, email: 'prompt.uploader@vpbank.com.vn' },
@@ -109,7 +111,8 @@ describe('LatestArtifactsService', () => {
     query
       .mockResolvedValueOnce([SKILL_ROW])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]); // no users resolved
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const res = await service.listLatest();
 

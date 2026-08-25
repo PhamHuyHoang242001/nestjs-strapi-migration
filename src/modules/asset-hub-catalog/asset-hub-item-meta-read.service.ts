@@ -27,11 +27,13 @@ export interface PublisherRef {
 const VERSION_TAG_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
   skill: { table: 'skill_version_tags', fk: 'skill_version_id' },
   prompt: { table: 'prompt_version_tags', fk: 'prompt_version_id' },
+  'api-catalog': { table: 'api_catalog_version_tags', fk: 'api_catalog_version_id' },
 };
 
 const RESPONSIBLE_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
   skill: { table: 'skill_package_responsibles', fk: 'skill_package_id' },
   prompt: { table: 'prompt_package_responsibles', fk: 'prompt_package_id' },
+  'api-catalog': { table: 'api_catalog_package_responsibles', fk: 'api_catalog_package_id' },
 };
 
 const liveIds = (ids: Array<number | null | undefined>): number[] =>

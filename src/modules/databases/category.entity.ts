@@ -5,6 +5,7 @@ import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 export enum CategoryType {
   SKILL = 'skill',
   PROMPT = 'prompt',
+  API_CATALOG = 'api-catalog',
 }
 
 @Entity('ai_hub_categories')
