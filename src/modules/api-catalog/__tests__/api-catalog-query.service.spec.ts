@@ -250,6 +250,8 @@ describe('ApiCatalogQueryService', () => {
       const result = await service.list({ page: 1, limit: 10 }, USER_ID);
 
       expect((result.data[0] as Record<string, any>).active_version).not.toHaveProperty('usage_guide_html');
+      expect((result.data[0] as Record<string, any>).active_version).not.toHaveProperty('mock_req');
+      expect((result.data[0] as Record<string, any>).active_version).not.toHaveProperty('mock_res');
     });
 
     it('returns {data, meta:{total, page, limit}} shape', async () => {
@@ -825,8 +827,21 @@ describe('ApiCatalogQueryService', () => {
     it('non-owner non-approver → ForbiddenException', async () => {
       versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID }));
       permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']); // no approve
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID });
 
       await expect(service.getDiff(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('package creator without submitter/approver → allowed', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID }));
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        created_by: USER_ID,
+        active_version_id: null,
+      });
+
+      await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
     });
 
     it('owner (submitted_by = me) without approver code → allowed', async () => {

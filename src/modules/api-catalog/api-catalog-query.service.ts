@@ -19,6 +19,15 @@ import { stripGuide } from '@modules/asset-hub-catalog/asset-hub-response.helper
 import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hub-list-filters';
 import { stringifyApiSpec } from './api-spec.util';
 
+function stripCatalogListVersion<T extends { usage_guide_html?: string; mock_req?: unknown; mock_res?: unknown }>(
+  version: T,
+): Omit<T, 'usage_guide_html' | 'zip_tree' | 'mock_req' | 'mock_res'> {
+  const row = { ...(stripGuide(version) as T & { mock_req?: unknown; mock_res?: unknown }) };
+  delete row.mock_req;
+  delete row.mock_res;
+  return row as Omit<T, 'usage_guide_html' | 'zip_tree' | 'mock_req' | 'mock_res'>;
+}
+
 @Injectable()
 export class ApiCatalogQueryService {
   constructor(
@@ -181,7 +190,7 @@ export class ApiCatalogQueryService {
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
       active_version: pkg.active_version
         ? {
-            ...this.decorateCategory(stripGuide(pkg.active_version), categories),
+            ...this.decorateCategory(stripCatalogListVersion(pkg.active_version), categories),
             tags: meta.tags.get(pkg.active_version.id) ?? [],
           }
         : pkg.active_version,
@@ -428,7 +437,7 @@ export class ApiCatalogQueryService {
     );
     return {
       data: data.map((v) => ({
-        ...this.decorateCategory(stripGuide(v), categories),
+        ...this.decorateCategory(stripCatalogListVersion(v), categories),
         tags: tagMap.get(v.id) ?? [],
         submitted_by_email: emailMap.get(v.submitted_by) ?? null,
       })),
@@ -458,7 +467,7 @@ export class ApiCatalogQueryService {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
     });
-    if (!version) throw new NotFoundException('Prompt version not found');
+    if (!version) throw new NotFoundException('API version not found');
 
     const pkg = await this.packageRepo.findOne({
       where: { id: version.api_catalog_package_id, is_deleted: false, deleted_at: IsNull() },
@@ -468,7 +477,7 @@ export class ApiCatalogQueryService {
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('api_approve');
     const canAccess = version.submitted_by === userId || pkg.created_by === userId || canApprove;
-    if (!canAccess) throw new ForbiddenException('You do not have access to this prompt version');
+    if (!canAccess) throw new ForbiddenException('You do not have access to this API version');
 
     let comparison: {
       base_version_id: number | null;
@@ -490,7 +499,7 @@ export class ApiCatalogQueryService {
           },
         });
         if (!predecessor) {
-          throw new ConflictException('Approved predecessor for this prompt version was not found');
+          throw new ConflictException('Approved predecessor for this API version was not found');
         }
       }
       comparison = {
@@ -528,26 +537,22 @@ export class ApiCatalogQueryService {
   }
 
   // Diff: return base (active version spec or null) and incoming (target version content).
-  // Access: caller must be the submitter OR hold api_approve (row-ownership check).
+  // Access matches versionDetail: submitter, package creator, or api_approve.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
     });
-    if (!version) throw new NotFoundException('Prompt version not found');
+    if (!version) throw new NotFoundException('API version not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('api_approve');
-    const isOwner = version.submitted_by === userId;
-
-    // Only the submitter or an approver may view the diff.
-    if (!canApprove && !isOwner) {
-      throw new ForbiddenException('You do not have access to this version diff');
-    }
-
-    // Base: the currently active version's spec (null if no active version yet).
     const pkg = await this.packageRepo.findOne({
       where: { id: version.api_catalog_package_id },
     });
+    const canAccess = version.submitted_by === userId || pkg?.created_by === userId || canApprove;
+    if (!canAccess) {
+      throw new ForbiddenException('You do not have access to this version diff');
+    }
 
     let baseContent: string | null = null;
     if (pkg?.active_version_id && pkg.active_version_id !== versionId) {

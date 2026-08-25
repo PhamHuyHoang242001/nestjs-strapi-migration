@@ -231,7 +231,7 @@ export class ApiCatalogUploadService {
           where: { id: versionId, is_deleted: false },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!version) throw new NotFoundException('Prompt version not found');
+        if (!version) throw new NotFoundException('API version not found');
         if (version.state !== ApiVersionState.PENDING) {
           throw new ForbiddenException('Only pending versions can be approved');
         }
@@ -269,7 +269,7 @@ export class ApiCatalogUploadService {
   // Reject requires a non-empty reason; the DTO's @IsNotEmpty handles the 400 case.
   async reject(versionId: number, dto: RejectApiVersionDto, userId: number) {
     const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
-    if (!version) throw new NotFoundException('Prompt version not found');
+    if (!version) throw new NotFoundException('API version not found');
     if (version.state !== ApiVersionState.PENDING) {
       throw new ForbiddenException('Only pending versions can be rejected');
     }

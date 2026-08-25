@@ -43,6 +43,18 @@ describe('validateAndNormalizeSpec — call_mode + sync_timeout', () => {
     ).toThrow(/INVALID_SYNC_TIMEOUT/);
   });
 
+  it('keeps only the call_mode key on mock_req and mock_res', () => {
+    const spec = validateAndNormalizeSpec({
+      ...base,
+      call_mode: ApiCallMode.SYNC,
+      sync_timeout: '30s',
+      mock_req: { sync: { a: 1 }, async: { leftover: true } },
+      mock_res: { sync: { ok: true }, async: { leftover: true } },
+    });
+    expect(spec.mock_req).toEqual({ sync: { a: 1 } });
+    expect(spec.mock_res).toEqual({ sync: { ok: true } });
+  });
+
   it('requires mock key matching call_mode', () => {
     expect(() =>
       validateAndNormalizeSpec({

@@ -63,7 +63,12 @@ export class CreateApiCatalogTables1784990000000 implements MigrationInterface {
         CONSTRAINT chk_api_catalog_versions_http_method
           CHECK (http_method IN ('GET', 'POST', 'PUT', 'DELETE')),
         CONSTRAINT chk_api_catalog_versions_call_mode
-          CHECK (call_mode IN ('sync', 'async'))
+          CHECK (call_mode IN ('sync', 'async')),
+        CONSTRAINT chk_api_catalog_versions_sync_timeout
+          CHECK (
+            (call_mode = 'async' AND sync_timeout IS NULL)
+            OR (call_mode = 'sync' AND sync_timeout IS NOT NULL AND btrim(sync_timeout) <> '')
+          )
       )
     `);
 

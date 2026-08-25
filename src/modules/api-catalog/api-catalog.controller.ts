@@ -75,7 +75,7 @@ export class ApiCatalogController {
 
   // GET /v1/api-catalog/reviews/submitters — distinct pending-version creators for the queue filter.
   // Static path before GET reviews so it is never captured as a param. Approver-only.
-  @ApiOperation({ summary: 'Distinct submitters of pending prompt versions (approver-only)' })
+  @ApiOperation({ summary: 'Distinct submitters of pending API versions (approver-only)' })
   @UseGuards(PermissionGuard)
   @RequirePermission('api_approve')
   @Get('reviews/submitters')
@@ -106,7 +106,7 @@ export class ApiCatalogController {
 
   // GET /v1/api-catalog/versions/:vid — full caller-authorized version detail. Service permits the
   // submitter, package creator, or an approver and builds predecessor comparison for pending rows.
-  @ApiOperation({ summary: 'Get prompt version detail' })
+  @ApiOperation({ summary: 'Get API version detail' })
   @Get('versions/:vid')
   getVersion(@Param('vid', ParseIntPipe) vid: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
@@ -115,7 +115,7 @@ export class ApiCatalogController {
   }
 
   // GET /v1/api-catalog/versions/:vid/diff — service enforces owner-or-approver.
-  @ApiOperation({ summary: 'Get prompt diff for a version (owner or approver only)' })
+  @ApiOperation({ summary: 'Get API version diff (submitter, package creator, or approver)' })
   @Get('versions/:vid/diff')
   getDiff(@Param('vid', ParseIntPipe) vid: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
@@ -124,7 +124,7 @@ export class ApiCatalogController {
   }
 
   // GET /v1/api-catalog/my-permissions — caller's prompt permission flags.
-  @ApiOperation({ summary: 'Get caller prompt permission flags' })
+  @ApiOperation({ summary: 'Get caller API catalog permission flags' })
   @Get('my-permissions')
   myPermissions(@Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
@@ -161,7 +161,7 @@ export class ApiCatalogController {
   }
 
   // POST /v1/api-catalog/versions/:vid/approve — requires api_approve.
-  @ApiOperation({ summary: 'Approve a pending prompt version (promotes to active)' })
+  @ApiOperation({ summary: 'Approve a pending API version (promotes to active)' })
   @Post('versions/:vid/approve')
   @UseGuards(PermissionGuard)
   @RequirePermission('api_approve')
@@ -172,7 +172,7 @@ export class ApiCatalogController {
   }
 
   // POST /v1/api-catalog/versions/:vid/reject — requires api_approve; reason required in body.
-  @ApiOperation({ summary: 'Reject a pending prompt version (reason required)' })
+  @ApiOperation({ summary: 'Reject a pending API version (reason required)' })
   @Post('versions/:vid/reject')
   @UseGuards(PermissionGuard)
   @RequirePermission('api_approve')

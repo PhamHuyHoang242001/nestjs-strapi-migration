@@ -69,8 +69,8 @@ export function validateAndNormalizeSpec(dto: ApiSpecInput): ApiSpecInput {
     ...dto,
     call_mode,
     sync_timeout: call_mode === ApiCallMode.ASYNC ? undefined : timeout,
-    mock_req,
-    mock_res,
+    mock_req: { [mode]: mock_req[mode] },
+    mock_res: { [mode]: mock_res[mode] },
   };
 }
 

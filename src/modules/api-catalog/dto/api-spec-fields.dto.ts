@@ -77,7 +77,7 @@ export class ApiSpecFieldsDto {
   @ApiProperty({
     required: true,
     description:
-      'Request input JSON duy nhất. Key sync và/hoặc async. body/query: object. upload_file: { fields, files[] }, mỗi file.url bắt buộc. Docs (tham số, mã lỗi, sequence) ghi vào usage_guide_html.',
+      'Request JSON: đúng một key trùng call_mode (sync hoặc async). body/query: object. upload_file: { fields, files[] }, mỗi file.url bắt buộc.',
     example: {
       sync: {
         account_id: '123',
@@ -116,7 +116,7 @@ export class ApiSpecFieldsDto {
 
   @ApiProperty({
     required: true,
-    description: 'Keyed by the same call mode(s) as mock_req. Each value is a JSON object.',
+    description: 'Sample response: đúng một key trùng call_mode. Value phải là object.',
     example: { sync: { ok: true } },
   })
   @IsObject()

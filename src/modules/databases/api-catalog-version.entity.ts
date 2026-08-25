@@ -99,7 +99,7 @@ export class ApiVersion extends BaseSoftDeleteEntity {
     type: 'jsonb',
     default: {},
     comment:
-      'JSON duy nhất cho request input. Key sync/async. body/query = object; upload_file = { fields, files[] } (mỗi file.url bắt buộc).',
+      'JSON request: đúng một key trùng call_mode. body/query = object; upload_file = { fields, files[] } (mỗi file.url bắt buộc).',
   })
   public mock_req: Record<string, unknown>;
 
