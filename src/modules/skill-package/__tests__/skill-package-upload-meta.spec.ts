@@ -26,6 +26,7 @@ const baseCreateDto = {
   publisher_id: PUBLISHER_ID,
   responsible_user_ids: [11, 12],
   usage_guide_html: '<p>Chạy lệnh</p>',
+  kind: 'personal',
   tag_ids: [21],
 };
 
@@ -146,6 +147,7 @@ describe('SkillPackageUploadService — asset-hub metadata on create', () => {
     expect(guide).toBe('<p>ok</p>');
     expect(guide).not.toContain('script');
     expect(guide).not.toContain('onclick');
+    expect(versionRow(h.saved)?.kind).toBe('personal');
   });
 
   it('rejects a create whose guide has no text and no image', async () => {
@@ -270,6 +272,17 @@ describe('skill write DTOs', () => {
     );
 
     expect(errors.map((e) => e.property)).toContain('usage_guide_html');
+  });
+
+  it('accepts omitted tag_ids', async () => {
+    const { tag_ids: _omit, ...withoutTags } = validCreate;
+    const errors = await validate(plainToInstance(CreateSkillPackageDto, withoutTags));
+    expect(errors).toHaveLength(0);
+  });
+
+  it('rejects a missing kind', async () => {
+    const errors = await validate(plainToInstance(CreateSkillPackageDto, { ...validCreate, kind: undefined }));
+    expect(errors.map((e) => e.property)).toContain('kind');
   });
 
   it('rejects more than twenty tags', async () => {

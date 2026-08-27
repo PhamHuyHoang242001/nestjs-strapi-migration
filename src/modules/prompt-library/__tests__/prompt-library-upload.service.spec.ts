@@ -17,6 +17,7 @@ const META_FIELDS = {
   publisher_id: PUBLISHER_ID,
   responsible_user_ids: PIC_IDS,
   usage_guide_html: '<p>Hướng dẫn</p>',
+  kind: 'personal',
   tag_ids: TAG_IDS,
 };
 

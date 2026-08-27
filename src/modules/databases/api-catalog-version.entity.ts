@@ -1,6 +1,7 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 import { ApiPackage } from './api-catalog-package.entity';
+import { AssetHubTagKind } from './asset-hub-tag.entity';
 
 export enum ApiVersionState {
   PENDING = 'pending',
@@ -52,6 +53,9 @@ export class ApiVersion extends BaseSoftDeleteEntity {
 
   @Column({ type: 'int', nullable: true })
   public category_id: number | null;
+
+  @Column({ type: 'varchar', length: 20, default: AssetHubTagKind.PERSONAL })
+  public kind: AssetHubTagKind;
 
   @Column({ type: 'text', default: '' })
   public usage_guide_html: string;

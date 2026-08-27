@@ -2,6 +2,7 @@ import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { SkillPackage } from './skill-package.entity';
 import type { SkillVersionFile } from './skill-version-file.entity';
+import { AssetHubTagKind } from './asset-hub-tag.entity';
 
 export interface ZipTreeNode {
   path: string;
@@ -60,6 +61,9 @@ export class SkillVersion extends BaseSoftDeleteEntity {
   // Rich-text usage guide (sanitized HTML from the editor). Version-scoped so a bump can
   // revise the instructions alongside the artifact, and so a reviewer diffs guide + content
   // together. Empty string means "no guide" — required on create, allowed empty on bump.
+  @Column({ type: 'varchar', length: 20, default: AssetHubTagKind.PERSONAL })
+  public kind: AssetHubTagKind;
+
   @Column({ type: 'text', default: '' })
   public usage_guide_html: string;
 

@@ -19,6 +19,7 @@ const baseCreateDto = {
   publisher_id: PUBLISHER_ID,
   responsible_user_ids: [11, 12],
   usage_guide_html: '<p>Cách dùng</p>',
+  kind: 'personal',
   tag_ids: [21],
 };
 

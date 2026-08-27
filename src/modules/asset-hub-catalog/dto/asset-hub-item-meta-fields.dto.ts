@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,7 @@ import {
   Min,
 } from 'class-validator';
 import { USAGE_GUIDE_MAX_LENGTH } from '@common/utils/usage-guide-html.util';
+import { AssetHubTagKind } from '@modules/databases/asset-hub-tag.entity';
 import { MAX_RESPONSIBLE_USERS, MAX_VERSION_TAGS } from '../asset-hub-item-meta.service';
 
 // Metadata every asset-hub write carries, shared by the skill and prompt create/bump DTOs.
@@ -47,8 +49,12 @@ export abstract class AssetHubItemMetaFieldsDto {
   @MaxLength(USAGE_GUIDE_MAX_LENGTH)
   readonly usage_guide_html: string;
 
+  @ApiProperty({ enum: AssetHubTagKind, description: 'personal or enterprise (stored on the version row)' })
+  @IsEnum(AssetHubTagKind)
+  readonly kind: AssetHubTagKind;
+
   @ApiProperty({
-    description: 'Catalog tag IDs from /v1/asset-hub/tags (must match this workspace)',
+    description: 'Catalog tag IDs from /v1/asset-hub/tags (must match this workspace). Optional.',
     type: [Number],
     required: false,
     maxItems: MAX_VERSION_TAGS,
