@@ -212,11 +212,11 @@ export class PromptLibraryQueryService {
       throw new NotFoundException('Prompt package not found or inactive');
     }
 
-    // History is APPROVED-only for every role (the timeline shows the published lineage). Order by
-    // id DESC — recency by surrogate id, a locked label-agnostic decision (see method doc).
+    // History is APPROVED-only for every caller. Thin projection: version number + approval date.
     const versions = await this.versionRepo.find({
       where: { prompt_package_id: packageId, is_deleted: false, state: PromptVersionState.APPROVED },
       order: { id: 'DESC' },
+      select: ['id', 'version_no', 'reviewed_at'],
     });
 
     // Edit gate: approver may edit any package; an uploader may edit only their own.
@@ -228,28 +228,7 @@ export class PromptLibraryQueryService {
         where: { prompt_package_id: packageId, is_deleted: false, state: PromptVersionState.PENDING },
       })) > 0;
 
-    // Content scrubbing: a caller who is neither owner nor approver must not read the draft
-    // prompt_content / reject reason of non-approved (pending/rejected) versions. The approved
-    // active_version content stays visible to all. Mirrors the per-version gate in getDiff().
-    const canSeeAllContent = isOwner || canApprove;
-    const scrub = (v: PromptVersion): PromptVersion => {
-      if (canSeeAllContent || v.state === PromptVersionState.APPROVED) return v;
-      // Hide the author's unapproved draft artefacts (prompt body, reject reason, release note)
-      // from callers who are neither the owner nor an approver.
-      return {
-        ...v,
-        prompt_content: '',
-        usage_guide_html: '',
-        reject_reason: null,
-        changelog_note: null,
-      } as PromptVersion;
-    };
-
-    // Resolve submitter ids → email so the client shows "Người đăng" as an email, not a raw id.
-    const emailMap = await this.resolveEmails([
-      pkg.active_version?.submitted_by,
-      ...versions.map((v) => v.submitted_by),
-    ]);
+    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by]);
     const addSubmitterEmail = <T extends { submitted_by: number }>(fv: T | null | undefined) =>
       fv
         ? ({ ...fv, submitted_by_email: emailMap.get(fv.submitted_by) ?? null } as T & {
@@ -257,25 +236,23 @@ export class PromptLibraryQueryService {
           })
         : fv;
 
-    const categories = await this.resolveCategories([
-      pkg.active_version?.category_id,
-      ...versions.map((version) => version.category_id),
-    ]);
-
-    // Detail is one of the two surfaces that carry usage_guide_html in full (the other is version
-    // detail); scrub() has already blanked it on any non-approved version the caller may not read.
-    const meta = await this.loadPackageMeta([pkg], [pkg.active_version_id, ...versions.map((v) => v.id)]);
+    const categories = await this.resolveCategories([pkg.active_version?.category_id]);
+    const meta = await this.loadPackageMeta([pkg], [pkg.active_version_id]);
     const withTags = <T extends { id: number }>(version: T | null | undefined) =>
       version ? { ...version, tags: meta.tags.get(version.id) ?? [] } : version;
 
-    // Prompt content is an inline column — versions are returned directly (no files fold).
-    // submitted_by_email is additive (numeric submitted_by kept for any id-based client logic).
+    const formattedActive = withTags(addSubmitterEmail(this.decorateCategory(pkg.active_version, categories)));
+    const activeId = pkg.active_version_id ?? pkg.active_version?.id;
     return {
       ...pkg,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
-      active_version: withTags(addSubmitterEmail(this.decorateCategory(pkg.active_version, categories))),
-      versions: versions.map((v) => withTags(addSubmitterEmail(this.decorateCategory(scrub(v), categories)))),
+      active_version: formattedActive,
+      versions: versions.map((v) =>
+        activeId != null && v.id === activeId
+          ? formattedActive
+          : { version_no: v.version_no, reviewed_at: v.reviewed_at ?? null },
+      ),
       isUpdate,
       hasPendingVersion,
     };
@@ -524,7 +501,8 @@ export class PromptLibraryQueryService {
   }
 
   // Diff: return base (active version prompt_content or null) and incoming (target version content).
-  // Access: caller must be the submitter OR hold prompt_approve (row-ownership check).
+  // Controller already requires prompt_upload OR prompt_approve. This method only applies
+  // row-ownership: upload-only → submitter or package creator; approver → any version.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
@@ -533,17 +511,13 @@ export class PromptLibraryQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('prompt_approve');
-    const isOwner = version.submitted_by === userId;
-
-    // Only the submitter or an approver may view the diff.
-    if (!canApprove && !isOwner) {
-      throw new ForbiddenException('You do not have access to this version diff');
-    }
-
-    // Base: the currently active version's prompt_content (null if no active version yet).
     const pkg = await this.packageRepo.findOne({
       where: { id: version.prompt_package_id },
     });
+    const canAccess = version.submitted_by === userId || pkg?.created_by === userId || canApprove;
+    if (!canAccess) {
+      throw new ForbiddenException('You do not have access to this version diff');
+    }
 
     let baseContent: string | null = null;
     if (pkg?.active_version_id && pkg.active_version_id !== versionId) {

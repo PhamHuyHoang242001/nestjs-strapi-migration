@@ -163,8 +163,11 @@ export class SkillPackageController {
     return this.queryService.versionDetail(vid, userId);
   }
 
-  // GET /v1/skill/versions/:vid/diff — service enforces owner-or-approver (C4).
-  @ApiOperation({ summary: 'Get skill.md diff for a version (owner or approver only)' })
+  // GET /v1/skill/versions/:vid/diff — capability: upload OR approve. Service then restricts
+  // upload-only callers to submitter / package creator; approvers see any version.
+  @ApiOperation({ summary: 'Get skill.md diff (upload or approve; row-ownership in service)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('skill_upload', 'skill_approve')
   @Get('versions/:vid/diff')
   getDiff(@Param('vid', ParseIntPipe) vid: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;

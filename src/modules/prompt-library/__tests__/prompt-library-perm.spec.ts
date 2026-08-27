@@ -54,8 +54,8 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('listReviewSubmitters')).toEqual(['prompt_approve']);
   });
 
-  it('getDiff has no RequirePermission metadata (service-layer authz only)', () => {
-    expect(getPerm('getDiff')).toBeUndefined();
+  it('getDiff carries prompt_upload or prompt_approve', () => {
+    expect(getPerm('getDiff')).toEqual(['prompt_upload', 'prompt_approve']);
   });
 
   it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {

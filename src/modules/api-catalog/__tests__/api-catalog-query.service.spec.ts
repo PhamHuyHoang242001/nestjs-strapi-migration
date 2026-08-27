@@ -300,21 +300,22 @@ describe('ApiCatalogQueryService', () => {
         created_by: USER_ID,
         active_version: activeVersion,
       });
+      const reviewedAt = new Date('2026-01-15T00:00:00.000Z');
       versionRepo.find = jest
         .fn()
-        .mockResolvedValue([{ id: 11, version_no: 1, state: ApiVersionState.APPROVED, usage_guide_html: '# v1' }]);
+        .mockResolvedValue([{ id: 11, version_no: 1, reviewed_at: reviewedAt, usage_guide_html: '# v1' }]);
       permissionQuery.getUserPermissions.mockResolvedValue([]);
 
       const result = await service.detail(1, USER_ID);
 
       expect((result.active_version as any).avatar_url).toBe('/uploads/a.png');
       expect((result.active_version as any).file).toBeUndefined();
-      expect((result.versions[0] as any).usage_guide_html).toBe('# v1');
-      // Only the active_version relation is loaded (no files relation).
+      expect(result.versions[0]).toEqual({ version_no: 1, reviewed_at: reviewedAt });
+      expect((result.versions[0] as any).usage_guide_html).toBeUndefined();
       expect(packageRepo.findOne).toHaveBeenCalledWith(expect.objectContaining({ relations: ['active_version'] }));
-      // history versions load with no relations argument (plain rows).
-      const findArg = versionRepo.find.mock.calls[0][0];
-      expect(findArg.relations).toBeUndefined();
+      expect(versionRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ select: ['id', 'version_no', 'reviewed_at'] }),
+      );
     });
 
     it('throws NotFound when the package is missing', async () => {
@@ -451,23 +452,21 @@ describe('ApiCatalogQueryService', () => {
       );
     });
 
-    it('resolves submitted_by_email on active_version and history versions', async () => {
+    it('resolves submitted_by_email on active_version; that same row in versions[] stays full', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: ApiPackageStatus.ACTIVE,
         created_by: USER_ID,
+        active_version_id: 10,
         active_version: { id: 10, submitted_by: USER_ID },
       });
-      versionRepo.find = jest
-        .fn()
-        .mockResolvedValue([{ id: 10, version_no: 1, state: ApiVersionState.APPROVED, submitted_by: USER_ID }]);
+      versionRepo.find = jest.fn().mockResolvedValue([{ id: 10, version_no: 1, reviewed_at: new Date() }]);
       permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
       versionRepo.manager = { query: jest.fn().mockResolvedValue([{ id: USER_ID, email: 'uploader@bank.vn' }]) };
 
       const result = await service.detail(1, USER_ID);
       expect((result.active_version as any).submitted_by_email).toBe('uploader@bank.vn');
-      expect((result.versions[0] as any).submitted_by_email).toBe('uploader@bank.vn');
-      expect((result.versions[0] as any).submitted_by).toBe(USER_ID);
+      expect(result.versions[0]).toBe(result.active_version);
     });
 
     it('returns hasPendingVersion=false when no pending version exists', async () => {
@@ -485,126 +484,48 @@ describe('ApiCatalogQueryService', () => {
     });
   });
 
-  // ---- detail — content scrubbing ----
-  describe('detail — content scrubbing for non-owner non-approver', () => {
-    it('owner sees full content on non-approved versions (pending/rejected)', async () => {
+  describe('detail — approved history is a thin timeline for every caller', () => {
+    it('returns every approved version as version_no + reviewed_at, including others submissions', async () => {
+      const reviewedAt = new Date('2026-03-01T00:00:00.000Z');
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: ApiPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, usage_guide_html: '# active' },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([
+        { id: 11, version_no: 1, reviewed_at: reviewedAt, usage_guide_html: '# secret' },
+        { id: 12, version_no: 2, reviewed_at: null },
+      ]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.versions).toEqual([
+        { version_no: 1, reviewed_at: reviewedAt },
+        { version_no: 2, reviewed_at: null },
+      ]);
+      expect((result.versions[0] as any).usage_guide_html).toBeUndefined();
+    });
+
+    it('puts the full active version into versions[] and thins older approved rows', async () => {
+      const reviewedAt = new Date('2026-01-01T00:00:00.000Z');
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: ApiPackageStatus.ACTIVE,
         created_by: USER_ID,
-        active_version: { id: 10, state: ApiVersionState.APPROVED, usage_guide_html: '# active' },
+        active_version_id: 12,
+        active_version: { id: 12, version_no: 2, usage_guide_html: '# current', submitted_by: USER_ID },
       });
       versionRepo.find = jest.fn().mockResolvedValue([
-        {
-          id: 11,
-          version_no: 2,
-          state: ApiVersionState.PENDING,
-          usage_guide_html: '# pending',
-          reject_reason: null,
-        },
+        { id: 12, version_no: 2, reviewed_at: new Date() },
+        { id: 11, version_no: 1, reviewed_at: reviewedAt, usage_guide_html: '# old' },
       ]);
       permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
 
       const result = await service.detail(1, USER_ID);
-      const pending = result.versions[0] as any;
-      expect(pending.usage_guide_html).toBe('# pending');
-      expect(pending.reject_reason).toBeNull();
-    });
-
-    it('approver sees full content on non-approved versions (pending/rejected)', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({
-        id: 1,
-        status: ApiPackageStatus.ACTIVE,
-        created_by: OTHER_USER_ID,
-        active_version: { id: 10, state: ApiVersionState.APPROVED, usage_guide_html: '# active' },
-      });
-      versionRepo.find = jest.fn().mockResolvedValue([
-        {
-          id: 11,
-          version_no: 2,
-          state: ApiVersionState.PENDING,
-          usage_guide_html: '# pending',
-          reject_reason: null,
-        },
-      ]);
-      permissionQuery.getUserPermissions.mockResolvedValue(['api_approve']);
-
-      const result = await service.detail(1, USER_ID);
-      const pending = result.versions[0] as any;
-      expect(pending.usage_guide_html).toBe('# pending');
-      expect(pending.reject_reason).toBeNull();
-    });
-
-    it('non-owner non-approver receives scrubbed content (empty usage_guide_html, null reject_reason) on pending versions', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({
-        id: 1,
-        status: ApiPackageStatus.ACTIVE,
-        created_by: OTHER_USER_ID,
-        active_version: { id: 10, state: ApiVersionState.APPROVED, usage_guide_html: '# active' },
-      });
-      versionRepo.find = jest.fn().mockResolvedValue([
-        {
-          id: 11,
-          version_no: 2,
-          state: ApiVersionState.PENDING,
-          usage_guide_html: '# pending',
-          reject_reason: null,
-        },
-      ]);
-      permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
-
-      const result = await service.detail(1, USER_ID);
-      const pending = result.versions[0] as any;
-      expect(pending.usage_guide_html).toBe('');
-      expect(pending.reject_reason).toBeNull();
-    });
-
-    it('non-owner non-approver receives scrubbed content on rejected versions', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({
-        id: 1,
-        status: ApiPackageStatus.ACTIVE,
-        created_by: OTHER_USER_ID,
-        active_version: { id: 10, state: ApiVersionState.APPROVED, usage_guide_html: '# active' },
-      });
-      versionRepo.find = jest.fn().mockResolvedValue([
-        {
-          id: 11,
-          version_no: 2,
-          state: ApiVersionState.REJECTED,
-          usage_guide_html: '# rejected',
-          reject_reason: 'needs work',
-        },
-      ]);
-      permissionQuery.getUserPermissions.mockResolvedValue([]);
-
-      const result = await service.detail(1, USER_ID);
-      const rejected = result.versions[0] as any;
-      expect(rejected.usage_guide_html).toBe('');
-      expect(rejected.reject_reason).toBeNull();
-    });
-
-    it('all callers see full content on approved versions', async () => {
-      packageRepo.findOne = jest.fn().mockResolvedValue({
-        id: 1,
-        status: ApiPackageStatus.ACTIVE,
-        created_by: OTHER_USER_ID,
-        active_version: { id: 10, state: ApiVersionState.APPROVED, usage_guide_html: '# active' },
-      });
-      versionRepo.find = jest.fn().mockResolvedValue([
-        {
-          id: 10,
-          version_no: 1,
-          state: ApiVersionState.APPROVED,
-          usage_guide_html: '# active',
-          reject_reason: null,
-        },
-      ]);
-      permissionQuery.getUserPermissions.mockResolvedValue([]);
-
-      const result = await service.detail(1, USER_ID);
-      const approved = result.versions[0] as any;
-      expect(approved.usage_guide_html).toBe('# active');
-      expect(approved.reject_reason).toBeNull();
+      expect(result.versions[0]).toBe(result.active_version);
+      expect((result.versions[0] as any).usage_guide_html).toBe('# current');
+      expect(result.versions[1]).toEqual({ version_no: 1, reviewed_at: reviewedAt });
     });
   });
 

@@ -58,8 +58,8 @@ describe('ApiCatalogController — perm mapping', () => {
     expect(getPerm('listReviewSubmitters')).toEqual(['api_approve']);
   });
 
-  it('getDiff has no RequirePermission metadata (service-layer authz only)', () => {
-    expect(getPerm('getDiff')).toBeUndefined();
+  it('getDiff carries api_upload or api_approve', () => {
+    expect(getPerm('getDiff')).toEqual(['api_upload', 'api_approve']);
   });
 
   it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {

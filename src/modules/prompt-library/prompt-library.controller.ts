@@ -137,8 +137,11 @@ export class PromptLibraryController {
     return this.queryService.versionDetail(vid, userId);
   }
 
-  // GET /v1/prompt/versions/:vid/diff — service enforces owner-or-approver.
-  @ApiOperation({ summary: 'Get prompt diff for a version (owner or approver only)' })
+  // GET /v1/prompt/versions/:vid/diff — capability: upload OR approve. Service then restricts
+  // upload-only callers to submitter / package creator; approvers see any version.
+  @ApiOperation({ summary: 'Get prompt diff (upload or approve; row-ownership in service)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload', 'prompt_approve')
   @Get('versions/:vid/diff')
   getDiff(@Param('vid', ParseIntPipe) vid: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
