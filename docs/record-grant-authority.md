@@ -38,7 +38,7 @@ manage its grants.
 Controlled by `MANAGE_ENABLED_MODULES` in
 `src/modules/data-access/constants/hierarchy-config.ts` (keyed by `table_name`, must be a subset
 of `RULE_TARGET_TABLES`). Tables outside this set keep the prior global-verb-only behavior
-(backward compatible). Currently: `bi_hub_diagnostic_reports`.
+(backward compatible). Currently: `bi_hub_diagnostic_reports`, `bi_payment_programs`.
 
 ## Write-gate cache note
 

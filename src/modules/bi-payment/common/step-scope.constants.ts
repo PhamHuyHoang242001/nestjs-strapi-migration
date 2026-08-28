@@ -9,8 +9,8 @@ export const ALL_WORKSTEP_TYPES: readonly MaToolWorkstepType[] = Object.freeze(O
 //
 // - PREPARE / EX_PREPARE ("prepare" docs): upload (full) uploads them; approve
 //   sees them read-only to approve/reject.
-// - RECON_DATA ("tra soát" / sale step): upload (full) sees all; upload_recon
-//   sees only its own (own-filter applied by the resolver, see OWN_ONLY_CODES).
+// - RECON_DATA (tra soát / bước sale): upload xem hết; upload_recon chỉ xem
+//   doc mình upload (own-filter ở document.service applyWorkstepFilter).
 // - RECON_FEEDBACK ("feedback" / bicc step): only upload (full).
 // confirm grants no document view — it only gates the final pic-confirm action.
 export const WORKSTEP_VIEW_CODES: Readonly<Record<MaToolWorkstepType, readonly string[]>> = Object.freeze({

@@ -49,10 +49,11 @@ function createService(
 }
 
 describe('MANAGE_ENABLED_MODULES config', () => {
-  it('includes diagnostic and excludes descriptive/unknown tables', () => {
+  it('includes diagnostic and payment program; excludes descriptive/unknown tables', () => {
     expect(isManageEnabledTable(TABLE)).toBe(true);
+    expect(isManageEnabledTable('bi_payment_programs')).toBe(true);
     expect(isManageEnabledTable('bi_hub_reports')).toBe(false);
-    expect(isManageEnabledTable('bi_payment_programs')).toBe(false);
+    expect(isManageEnabledTable('bi_payment_projects')).toBe(false);
     expect(isManageEnabledTable(undefined)).toBe(false);
   });
 

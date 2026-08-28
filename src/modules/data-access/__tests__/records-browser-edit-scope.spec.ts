@@ -9,6 +9,7 @@ import { RecordPathService } from '../services/record-path.service';
 import { UserType } from '@modules/databases/user.entity';
 
 const DIAG = 'bi_hub_diagnostic_reports';
+const PROGRAM = 'bi_payment_programs';
 const page: PaginationParams = { page: 1, limit: 20, skip: 0 };
 
 function createService(opts: { queryResults: any[]; editIds?: number[] }) {
@@ -126,5 +127,26 @@ describe('Records browser — edit-scope (manage-enabled tables)', () => {
     expect(getEditAccessibleRecordIds).not.toHaveBeenCalled();
     const dataSQL = queryMock.mock.calls[1][0] as string;
     expect(dataSQL).not.toContain('id = ANY(');
+  });
+
+  it('bi_payment_programs: editor with edit-on-record ∧ create-verb → listed via id allow-list', async () => {
+    const { service, getEditAccessibleRecordIds } = createService({
+      editIds: [12],
+      queryResults: [
+        [],
+        [{ total: 1 }],
+        [{ id: 12, display_name: 'Program 12', created_at: '2026-01-01' }],
+      ],
+    });
+
+    const res = await service.getRecords(PROGRAM, {}, page, { id: 10 }, 'user');
+
+    expect(getEditAccessibleRecordIds).toHaveBeenCalledWith(
+      { userId: 10, client: 'user', isSuperAdmin: false },
+      PROGRAM,
+      'perm_data_access_create',
+    );
+    expect(res.data).toHaveLength(1);
+    expect(res.data[0].id).toBe(12);
   });
 });

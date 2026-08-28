@@ -103,6 +103,8 @@ export class StepScopeService {
       return scopes;
     }
 
+    // Sale chỉ có upload_recon: RECON_DATA vào đây hasOwn=true, hasFull=false
+    // → scopes.set(RECON_DATA, { own: true }). SQL list lọc uploaded_by_id.
     for (const ws of Object.keys(WORKSTEP_VIEW_CODES) as MaToolWorkstepType[]) {
       let hasFull = false;
       let hasOwn = false;

@@ -13,7 +13,7 @@ import { CreateDataAccessDto } from '../dto/create-data-access.dto';
 
 // Rule-target tables outside MANAGE_ENABLED_MODULES — the records-visibility gate must now
 // cover these (previously the gate no-op'd for them → the reported hole).
-const OWNER_CHAIN_TABLE = 'bi_payment_programs'; // owner-chain, not manage-enabled
+const OWNER_CHAIN_TABLE = 'bi_payment_projects'; // owner-chain, not manage-enabled
 const OWN_ALL_TABLE = 'ma_tool_cstb_rpt_properties'; // whole-table SO (OWNER_ALL_TABLES)
 
 /**

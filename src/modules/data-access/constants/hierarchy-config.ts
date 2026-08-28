@@ -98,7 +98,10 @@ export const OWNER_ALL_TABLES = new Set<string>(['ma_tool_cstb_rpt_properties'])
  * intentionally left out until it grows a create-flow + creator column (see plan §Deferred).
  * Inline like OWNER_ALL_TABLES — no load-time guard needed.
  */
-export const MANAGE_ENABLED_MODULES = new Set<string>(['bi_hub_diagnostic_reports']);
+export const MANAGE_ENABLED_MODULES = new Set<string>([
+  'bi_hub_diagnostic_reports',
+  'bi_payment_programs',
+]);
 
 /** True when `tableName` opts into the derive-from-edit grant-authority gate. */
 export function isManageEnabledTable(tableName: string | undefined | null): boolean {

@@ -14,7 +14,7 @@ import { RecordPathService } from '../services/record-path.service';
 import { HandoverDataAccessDto } from '../dto/handover-data-access.dto';
 
 const DIAG = 'bi_hub_diagnostic_reports';
-const OTHER = 'bi_payment_programs';
+const OTHER = 'bi_hub_reports';
 
 const RUD_PERMS = [
   { id: 1, action: 'read' },
@@ -104,6 +104,12 @@ describe('DataAccessService.handover()', () => {
   it('rejects a table outside MANAGE_ENABLED_MODULES', async () => {
     const { service } = makeService({ tableName: OTHER });
     await expect(service.handover(dto(), 'u', { id: 5 }, 'user')).rejects.toThrow('handover_not_enabled_for_table');
+  });
+
+  it('allows handover on bi_payment_programs (manage-enabled)', async () => {
+    const { service, transaction } = makeService({ tableName: 'bi_payment_programs' });
+    await service.handover(dto(), 'u', { id: 5 }, 'user');
+    expect(transaction).toHaveBeenCalled();
   });
 
   it('rejects an inactive/nonexistent recipient', async () => {

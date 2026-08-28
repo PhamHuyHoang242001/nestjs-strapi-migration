@@ -35,11 +35,9 @@ export class BiPaymentDocumentController {
   constructor(private readonly service: BiPaymentDocumentService) {}
 
   // GET /bi-payment/document?programId=X&workstep=prepare — Strapi findDocument.
-  // programId is required; StepScopeService (in the service) enforces per-program
-  // + per-workstep access (SO owner = all worksteps; otherwise only worksteps
-  // whose mapped code the user holds at this program). Visibility = step×program:
-  // a user with a step code at this program sees every doc of that step — no
-  // per-record data-scope (the doc table carries no data_access rules by design).
+  // Chỉ OR-gate: sale có bp_program_upload_recon vẫn vào được list.
+  // Lọc thật nằm ở BiPaymentDocumentService.list → StepScopeService
+  // (RECON_DATA + own:true) rồi applyWorkstepFilter (uploaded_by_id = chính mình).
   @ApiOperation({ summary: 'List documents (filter by workstep)' })
   @Get()
   @RequirePermission(...DOCUMENT_READ_PERMS)

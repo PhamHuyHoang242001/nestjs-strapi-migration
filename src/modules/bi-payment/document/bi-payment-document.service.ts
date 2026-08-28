@@ -68,6 +68,7 @@ export class BiPaymentDocumentService {
     if (!userId) throw new ForbiddenException('User not authenticated');
 
     const workstep = this.parseWorkstepType(query.workstep);
+    // Sale chỉ upload_recon → Map { RECON_DATA: { own: true } }.
     const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, programId);
 
     // `bp_program_view` is the base gate but does not grant document content.
@@ -102,7 +103,8 @@ export class BiPaymentDocumentService {
     qb.andWhere('d.program_id = :pid', { pid: programId });
   }
 
-  // workstep: a single step narrows to it; otherwise the caller's allowed step set.
+  // Sale chỉ recon: scopes = { recon_data: { own: true } } →
+  //   t.workstep_type IN (recon_data) AND d.uploaded_by_id = chính mình.
   private applyWorkstepFilter(
     qb: ReturnType<BiPaymentDocumentService['buildDocQuery']>,
     workstep: MaToolWorkstepType | undefined,
@@ -615,6 +617,7 @@ export class BiPaymentDocumentService {
     const scopes = await this.stepScope.resolveWorkstepScopesOrEmpty(userId, doc.program_id);
     const scope = scopes.get(doc.template.workstep_type);
     if (!scope) return false;
+    // Cùng own-filter với list: sale recon không mở được doc recon của người khác.
     return !scope.own || doc.uploaded_by_id === userId;
   }
 

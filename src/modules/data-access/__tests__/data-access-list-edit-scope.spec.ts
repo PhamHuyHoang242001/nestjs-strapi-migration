@@ -9,6 +9,7 @@ import { HierarchyValidationService } from '../hierarchy-validation.service';
 import { RecordPathService } from '../services/record-path.service';
 
 const DIAG = 'bi_hub_diagnostic_reports';
+const PROGRAM = 'bi_payment_programs';
 
 function createService(opts: { queryResults: any[]; editIds?: number[] }) {
   let callIndex = 0;
@@ -122,5 +123,23 @@ describe('DataAccessService.list() — edit-scope (manage-enabled tables)', () =
     const countSQL = queryMock.mock.calls[1][0] as string;
     expect(countSQL).toContain('accessible');
     expect(countSQL).not.toContain(`da.data_id IN (`);
+  });
+
+  it('OR-s an edit branch for bi_payment_programs as well as diagnostic', async () => {
+    const { service, queryMock, getEditAccessibleRecordIds } = createService({
+      editIds: [12],
+      queryResults: [[{ role_id: 3 }], [{ total: 1 }], [groupRow], [], []],
+    });
+
+    await service.list({}, sort, page, { id: 10 }, 'user');
+
+    expect(getEditAccessibleRecordIds).toHaveBeenCalledWith(
+      { userId: 10, client: 'user', isSuperAdmin: false },
+      PROGRAM,
+      'perm_data_access_view',
+    );
+    const countSQL = queryMock.mock.calls[1][0] as string;
+    expect(countSQL).toContain(`(m.table_name = '${PROGRAM}' AND da.data_id IN (12))`);
+    expect(countSQL).toContain(`(m.table_name = '${DIAG}' AND da.data_id IN (12))`);
   });
 });
