@@ -50,7 +50,7 @@ export class ListPromptQueryDto {
   @IsEnum(PromptPackageStatus)
   readonly status?: PromptPackageStatus;
 
-  @ApiProperty({ required: false, description: 'Filter by publishing unit ID' })
+  @ApiProperty({ required: false, description: 'Filter by khối chủ quản ID' })
   @IsOptional()
   @Transform(({ value }) => Number(value))
   @IsInt()

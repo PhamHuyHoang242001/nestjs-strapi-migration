@@ -21,7 +21,7 @@ import { FetchedFile, SkillFileFetchService } from './skill-file-fetch.util';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
-import { AssetHubItemMetaService } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
+import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
@@ -79,7 +79,8 @@ export class SkillPackageUploadService {
         manager,
       );
       // Reject unknown publisher / user / tag ids before writing anything.
-      await this.itemMeta.assertPublisher(manager, dto.publisher_id);
+      const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'create');
+      await this.itemMeta.assertPublisher(manager, owning.publisher_id);
       const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
       const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
 
@@ -89,7 +90,7 @@ export class SkillPackageUploadService {
           status: SkillPackageStatus.ACTIVE,
           active_version_id: null,
           created_by: userId,
-          publisher_id: dto.publisher_id,
+          ...owning,
           // Placeholder; the real code needs the generated id and is set immediately below.
           code: '',
         }),
@@ -197,11 +198,12 @@ export class SkillPackageUploadService {
         // A bump is also the only edit surface, so the package-level metadata travels with it and
         // is applied in this same transaction — publisher and people in charge first, then the
         // version row, then its tags.
-        await this.itemMeta.assertPublisher(manager, dto.publisher_id);
+        const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
+        await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
         const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
 
-        await manager.update(SkillPackage, packageId, { publisher_id: dto.publisher_id });
+        await manager.update(SkillPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', packageId, responsibleUserIds);
 
         const version = manager.create(SkillVersion, {

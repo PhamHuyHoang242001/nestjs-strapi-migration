@@ -7,7 +7,7 @@ import { AssetHubItemMetaFieldsDto } from '@modules/asset-hub-catalog/dto';
 // Prompt text is sent inline (no ZIP, no Strapi fetch for content). Media ids stay server-assigned.
 //
 // This is also the only update surface: the shared metadata block (publisher_id,
-// responsible_user_ids, usage_guide_html, tag_ids) is carried here and applied to the package in
+// responsible_user_ids, owning_unit_name, usage_guide_html, tag_ids) is carried here and applied to the package in
 // the same transaction as the new version. Unlike create, an empty usage_guide_html is accepted.
 export class CreatePromptVersionDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active prompt category ID' })

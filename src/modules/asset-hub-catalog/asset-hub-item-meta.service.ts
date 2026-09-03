@@ -49,6 +49,25 @@ const VERSION_OWNER: Record<AssetHubWorkspace, string> = {
 
 const unique = (ids: number[]): number[] => [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
 
+// JSON publisher_id / owning_unit_name → DB publisher_id + owning_unit_name.
+// bump + omit owning_unit_name → do not patch that column.
+export function packageOwningFields(
+  publisherId: number,
+  owningUnitName: string | undefined,
+  mode: 'create' | 'bump',
+): { publisher_id: number; owning_unit_name?: string | null } {
+  const patch: { publisher_id: number; owning_unit_name?: string | null } = {
+    publisher_id: publisherId,
+  };
+  if (owningUnitName === undefined) {
+    if (mode === 'create') patch.owning_unit_name = null;
+    return patch;
+  }
+  const trimmed = owningUnitName.trim();
+  patch.owning_unit_name = trimmed === '' ? null : trimmed;
+  return patch;
+}
+
 // Validation + full-replace persistence for the package/version metadata both workspaces share:
 // publishing unit, people in charge, and catalog tags. Every method takes the caller's
 // transaction manager so the metadata lands atomically with the package/version rows.

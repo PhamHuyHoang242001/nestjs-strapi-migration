@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { AssetHubItemMetaService, MAX_RESPONSIBLE_USERS, MAX_VERSION_TAGS } from '../asset-hub-item-meta.service';
+import {
+  AssetHubItemMetaService,
+  MAX_RESPONSIBLE_USERS,
+  MAX_VERSION_TAGS,
+  packageOwningFields,
+} from '../asset-hub-item-meta.service';
 
 interface CapturedWhere {
   clause: string;
@@ -206,5 +211,26 @@ describe('AssetHubItemMetaService full-replace writes', () => {
     await new AssetHubItemMetaService().replaceVersionTags(manager as never, 'skill', 9, [21, 21, 22]);
 
     expect(savedBatches[0]).toHaveLength(2);
+  });
+});
+
+describe('packageOwningFields', () => {
+  it('create omit → publisher_id + owning_unit_name null', () => {
+    expect(packageOwningFields(3, undefined, 'create')).toEqual({ publisher_id: 3, owning_unit_name: null });
+  });
+
+  it('bump omit → publisher_id only', () => {
+    expect(packageOwningFields(3, undefined, 'bump')).toEqual({ publisher_id: 3 });
+  });
+
+  it('empty string clears to null', () => {
+    expect(packageOwningFields(3, '  ', 'bump')).toEqual({ publisher_id: 3, owning_unit_name: null });
+  });
+
+  it('trims freetext', () => {
+    expect(packageOwningFields(3, '  P&C  ', 'create')).toEqual({
+      publisher_id: 3,
+      owning_unit_name: 'P&C',
+    });
   });
 });

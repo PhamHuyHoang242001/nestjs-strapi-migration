@@ -662,6 +662,7 @@ describe('PromptLibraryQueryService', () => {
         // Package metadata rides every read surface; empty here because the mock resolves no rows.
         publisher: null,
         responsible_users: [],
+        owning_unit_name: null,
       });
       expect(versionRepo.findOne).toHaveBeenLastCalledWith({
         where: {

@@ -50,7 +50,7 @@ export class ListSkillQueryDto {
   @IsEnum(SkillPackageStatus)
   readonly status?: SkillPackageStatus;
 
-  @ApiProperty({ required: false, description: 'Filter by publishing unit ID' })
+  @ApiProperty({ required: false, description: 'Filter by khối chủ quản ID' })
   @IsOptional()
   @Transform(({ value }) => Number(value))
   @IsInt()

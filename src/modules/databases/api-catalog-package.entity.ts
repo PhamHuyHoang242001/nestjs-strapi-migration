@@ -24,6 +24,10 @@ export class ApiPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public publisher_id: number;
 
+  // JSON owning_unit_name (Trung tâm/phòng ban chủ quản). Optional freetext; khối chủ quản is publisher_id.
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  public owning_unit_name: string | null;
+
   @OneToOne('ApiVersion', { nullable: true, eager: false })
   @JoinColumn({ name: 'active_version_id' })
   public active_version: ApiVersion | null;

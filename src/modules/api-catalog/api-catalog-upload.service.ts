@@ -18,7 +18,7 @@ import { ApiAvatarUrlService } from './api-avatar-url.util';
 import { PermissionQueryService } from '@common/authorization/services/permission-query.service';
 import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
-import { AssetHubItemMetaService } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
+import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
 import { specColumns, validateAndNormalizeSpec } from './api-spec.util';
 
@@ -74,7 +74,8 @@ export class ApiCatalogUploadService {
         manager,
       );
       // Reject unknown publisher / user / tag ids before writing anything.
-      await this.itemMeta.assertPublisher(manager, dto.publisher_id);
+      const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'create');
+      await this.itemMeta.assertPublisher(manager, owning.publisher_id);
       const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
       const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'api-catalog');
 
@@ -84,7 +85,7 @@ export class ApiCatalogUploadService {
           status: ApiPackageStatus.ACTIVE,
           active_version_id: null,
           created_by: userId,
-          publisher_id: dto.publisher_id,
+          ...owning,
           // Placeholder; the real code needs the generated id and is set immediately below.
           code: '',
         }),
@@ -182,11 +183,12 @@ export class ApiCatalogUploadService {
         // A bump is also the only edit surface, so the package-level metadata travels with it and
         // is applied in this same transaction — publisher and people in charge first, then the
         // version row, then its tags.
-        await this.itemMeta.assertPublisher(manager, dto.publisher_id);
+        const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
+        await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
         const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'api-catalog');
 
-        await manager.update(ApiPackage, packageId, { publisher_id: dto.publisher_id });
+        await manager.update(ApiPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', packageId, responsibleUserIds);
 
         const version = manager.create(ApiVersion, {

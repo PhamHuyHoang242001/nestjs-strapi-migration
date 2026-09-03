@@ -10,7 +10,7 @@ import { SkillFileDto } from './skill-file.dto';
 // time (SSRF guard), so relative or absolute Strapi URLs are both accepted here.
 // Media ids remain server-assigned — never accepted from the client (IDOR guard M2).
 //
-// Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, usage_guide_html and
+// Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, owning_unit_name, usage_guide_html and
 // tag_ids travel with the create request, because there is no separate metadata endpoint.
 export class CreateSkillPackageDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active skill category ID' })

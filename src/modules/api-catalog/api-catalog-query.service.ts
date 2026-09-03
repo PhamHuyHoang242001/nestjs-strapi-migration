@@ -188,6 +188,7 @@ export class ApiCatalogQueryService {
       ...pkg,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
+      owning_unit_name: pkg.owning_unit_name ?? null,
       active_version: pkg.active_version
         ? {
             ...this.decorateCategory(stripCatalogListVersion(pkg.active_version), categories),
@@ -263,6 +264,7 @@ export class ApiCatalogQueryService {
       ...pkg,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
+      owning_unit_name: pkg.owning_unit_name ?? null,
       active_version: formattedActive,
       versions: versions.map((v) =>
         activeId != null && v.id === activeId
@@ -504,6 +506,7 @@ export class ApiCatalogQueryService {
         created_by: pkg.created_by,
         publisher: meta.publishers.get(pkg.publisher_id) ?? null,
         responsible_users: meta.responsibles.get(pkg.id) ?? [],
+        owning_unit_name: pkg.owning_unit_name ?? null,
       },
       version: {
         ...this.decorateCategory(version, categories),

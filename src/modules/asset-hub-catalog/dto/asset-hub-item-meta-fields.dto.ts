@@ -20,14 +20,14 @@ import { MAX_RESPONSIBLE_USERS, MAX_VERSION_TAGS } from '../asset-hub-item-meta.
 // There is no separate metadata endpoint: a create or a version bump is the only way to set these,
 // so both request bodies carry the full set and the service persists them in one transaction.
 export abstract class AssetHubItemMetaFieldsDto {
-  @ApiProperty({ description: 'Publishing unit ID from /v1/asset-hub/publishers' })
+  @ApiProperty({ description: 'Khối chủ quản — ID from /v1/asset-hub/publishers' })
   @IsInt()
   @Min(1)
   @Type(() => Number)
   readonly publisher_id: number;
 
   @ApiProperty({
-    description: 'User IDs of the people in charge (full replace)',
+    description: 'Tác giả — user IDs (full replace)',
     type: [Number],
     minItems: 1,
     maxItems: MAX_RESPONSIBLE_USERS,
@@ -40,6 +40,16 @@ export abstract class AssetHubItemMetaFieldsDto {
   @Min(1, { each: true })
   @Type(() => Number)
   readonly responsible_user_ids: number[];
+
+  @ApiProperty({
+    required: false,
+    description: 'Trung tâm/phòng ban chủ quản (freetext). Omit on bump keeps previous; empty string clears.',
+    maxLength: 500,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  readonly owning_unit_name?: string;
 
   // Sanitized server-side before storage; the cap here bounds the raw payload, and sanitizing can
   // only shrink it. Emptiness is judged after sanitizing (markup with no text or image counts as

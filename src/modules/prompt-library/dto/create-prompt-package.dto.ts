@@ -8,7 +8,7 @@ import { AssetHubItemMetaFieldsDto } from '@modules/asset-hub-catalog/dto';
 // origin is validated against the configured Strapi host at submit. Media ids are never accepted
 // from the client (IDOR guard).
 //
-// Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, usage_guide_html and
+// Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, owning_unit_name, usage_guide_html and
 // tag_ids travel with the create request, because there is no separate metadata endpoint.
 export class CreatePromptPackageDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active prompt category ID' })

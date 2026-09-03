@@ -9,7 +9,7 @@ import { SkillFileDto } from './skill-file.dto';
 // backend fetches file.fileUrl to unzip/validate. Media ids stay server-assigned (M2).
 //
 // This is also the only update surface: the shared metadata block (publisher_id,
-// responsible_user_ids, usage_guide_html, tag_ids) is carried here and applied to the package in
+// responsible_user_ids, owning_unit_name, usage_guide_html, tag_ids) is carried here and applied to the package in
 // the same transaction as the new version. Unlike create, an empty usage_guide_html is accepted.
 export class CreateSkillVersionDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active skill category ID' })

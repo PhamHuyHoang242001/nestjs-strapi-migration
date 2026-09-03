@@ -35,6 +35,10 @@ export class PromptPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public publisher_id: number;
 
+  // JSON owning_unit_name (Trung tâm/phòng ban chủ quản). Optional freetext; khối chủ quản is publisher_id.
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  public owning_unit_name: string | null;
+
   // Eager relation to the active version (read-only navigation property).
   // lazy import avoids circular dependency between PromptPackage ↔ PromptVersion.
   @OneToOne('PromptVersion', { nullable: true, eager: false })
