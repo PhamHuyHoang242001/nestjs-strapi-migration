@@ -325,17 +325,10 @@ export class PromptLibraryQueryService {
               (
                 v.state = 'rejected'
                 AND v.submitted_by = $1
-                AND NOT EXISTS (
-                  SELECT 1 FROM prompt_versions pending
-                  WHERE pending.prompt_package_id = v.prompt_package_id
-                    AND pending.state = 'pending'
-                    AND pending.is_deleted = false AND pending.deleted_at IS NULL
-                )
                 AND v.id = (
-                  SELECT MAX(rejected.id) FROM prompt_versions rejected
-                  WHERE rejected.prompt_package_id = v.prompt_package_id
-                    AND rejected.state = 'rejected'
-                    AND rejected.is_deleted = false AND rejected.deleted_at IS NULL
+                  SELECT MAX(latest.id) FROM prompt_versions latest
+                  WHERE latest.prompt_package_id = v.prompt_package_id
+                    AND latest.is_deleted = false AND latest.deleted_at IS NULL
                 )
               ) AS is_update
        FROM prompt_versions v
@@ -502,6 +495,17 @@ export class PromptLibraryQueryService {
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
     // submitter, the package creator, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
+    const newestRows = (await this.versionRepo.manager.query(
+      `SELECT id FROM prompt_versions
+       WHERE prompt_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
+       ORDER BY id DESC LIMIT 1`,
+      [pkg.id],
+    )) as Array<{ id: number }>;
+    const isUpdate =
+      codes.includes('prompt_upload') &&
+      version.submitted_by === userId &&
+      version.state === PromptVersionState.REJECTED &&
+      Number(newestRows[0]?.id) === version.id;
     return {
       package: {
         id: pkg.id,
@@ -521,6 +525,7 @@ export class PromptLibraryQueryService {
       },
       comparison,
       can_review: version.state === PromptVersionState.PENDING && canApprove,
+      isUpdate,
     };
   }
 

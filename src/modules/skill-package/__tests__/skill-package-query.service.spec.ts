@@ -1089,7 +1089,7 @@ describe('SkillPackageQueryService', () => {
       expect(sqls).not.toContain('p.id = ANY');
     });
 
-    it('isUpdate=true only for latest rejected with no pending, submitter, and skill_upload', async () => {
+    it('isUpdate=true only for rejected newest live version, submitter, and skill_upload', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
       const query = stub({
         count: 2,
@@ -1104,8 +1104,9 @@ describe('SkillPackageQueryService', () => {
       expect((result.data[1] as any).isUpdate).toBe(false);
 
       const listSql = query.mock.calls.map((c) => c[0] as string).find((s) => /AS is_update/.test(s))!;
-      expect(listSql).toContain("pending.state = 'pending'");
-      expect(listSql).toContain("rejected.state = 'rejected'");
+      expect(listSql).toContain("v.state = 'rejected'");
+      expect(listSql).toContain('SELECT MAX(latest.id)');
+      expect(listSql).not.toContain("rejected.state = 'rejected'");
       expect(listSql).toContain('v.submitted_by = $1');
     });
 

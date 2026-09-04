@@ -595,7 +595,7 @@ describe('SkillPackageUploadService', () => {
 
     function stubLookups(opts?: {
       pending?: boolean;
-      latestRejectedId?: number;
+      newestId?: number;
       state?: SkillVersionState;
       submittedBy?: number;
       codes?: string[];
@@ -613,8 +613,8 @@ describe('SkillPackageUploadService', () => {
           };
         }
         if (where.state === SkillVersionState.PENDING) return opts?.pending ? { id: 88 } : null;
-        if (where.state === SkillVersionState.REJECTED) {
-          return { id: opts?.latestRejectedId ?? VERSION_ID };
+        if (where.skill_package_id && !where.state && !where.id) {
+          return { id: opts?.newestId ?? VERSION_ID, state };
         }
         return null;
       });
@@ -630,7 +630,7 @@ describe('SkillPackageUploadService', () => {
             .fn()
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([{ id: VERSION_ID }]),
+            .mockResolvedValueOnce([{ id: VERSION_ID, state: SkillVersionState.REJECTED }]),
           findOne: jest.fn().mockResolvedValue({
             id: VERSION_ID,
             skill_package_id: PACKAGE_ID,
@@ -668,8 +668,8 @@ describe('SkillPackageUploadService', () => {
       expect(fileFetch.downloadZip).not.toHaveBeenCalled();
     });
 
-    it('older rejected while a newer reject exists → ForbiddenException', async () => {
-      stubLookups({ latestRejectedId: 99 });
+    it('rejected but not the newest live version → ForbiddenException', async () => {
+      stubLookups({ newestId: 99 });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 

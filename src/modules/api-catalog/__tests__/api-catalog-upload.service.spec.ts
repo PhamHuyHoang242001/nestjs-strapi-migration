@@ -541,7 +541,7 @@ describe('ApiCatalogUploadService', () => {
 
     function stubLookups(opts?: {
       pending?: boolean;
-      latestRejectedId?: number;
+      newestId?: number;
       state?: ApiVersionState;
       submittedBy?: number;
       codes?: string[];
@@ -559,7 +559,9 @@ describe('ApiCatalogUploadService', () => {
           };
         }
         if (where.state === ApiVersionState.PENDING) return opts?.pending ? { id: 88 } : null;
-        if (where.state === ApiVersionState.REJECTED) return { id: opts?.latestRejectedId ?? VERSION_ID };
+        if (where.api_catalog_package_id && !where.state && !where.id) {
+          return { id: opts?.newestId ?? VERSION_ID, state };
+        }
         return null;
       });
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
@@ -570,7 +572,11 @@ describe('ApiCatalogUploadService', () => {
       stubLookups();
       dataSource.transaction = jest.fn(async (cb: any) => {
         const manager = {
-          query: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: VERSION_ID }]),
+          query: jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ id: VERSION_ID, state: ApiVersionState.REJECTED }]),
           findOne: jest.fn().mockResolvedValue({
             id: VERSION_ID,
             api_catalog_package_id: PACKAGE_ID,

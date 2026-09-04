@@ -540,7 +540,7 @@ describe('PromptLibraryUploadService', () => {
 
     function stubLookups(opts?: {
       pending?: boolean;
-      latestRejectedId?: number;
+      newestId?: number;
       state?: PromptVersionState;
       submittedBy?: number;
       codes?: string[];
@@ -558,7 +558,9 @@ describe('PromptLibraryUploadService', () => {
           };
         }
         if (where.state === PromptVersionState.PENDING) return opts?.pending ? { id: 88 } : null;
-        if (where.state === PromptVersionState.REJECTED) return { id: opts?.latestRejectedId ?? VERSION_ID };
+        if (where.prompt_package_id && !where.state && !where.id) {
+          return { id: opts?.newestId ?? VERSION_ID, state };
+        }
         return null;
       });
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
@@ -569,7 +571,11 @@ describe('PromptLibraryUploadService', () => {
       stubLookups();
       dataSource.transaction = jest.fn(async (cb: any) => {
         const manager = {
-          query: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: VERSION_ID }]),
+          query: jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ id: VERSION_ID, state: PromptVersionState.REJECTED }]),
           findOne: jest.fn().mockResolvedValue({
             id: VERSION_ID,
             prompt_package_id: PACKAGE_ID,

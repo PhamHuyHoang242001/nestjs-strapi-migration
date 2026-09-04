@@ -259,10 +259,6 @@ export class SkillPackageUploadService {
       throw new ForbiddenException('You can only edit versions you submitted');
     }
 
-    if (version.state !== SkillVersionState.REJECTED) {
-      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
-    }
-
     const pendingVersion = await this.versionRepo.findOne({
       where: { skill_package_id: pkg.id, state: SkillVersionState.PENDING, is_deleted: false },
       select: { id: true },
@@ -271,12 +267,12 @@ export class SkillPackageUploadService {
       throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
     }
 
-    const latestRejected = await this.versionRepo.findOne({
-      where: { skill_package_id: pkg.id, state: SkillVersionState.REJECTED, is_deleted: false },
+    const newest = await this.versionRepo.findOne({
+      where: { skill_package_id: pkg.id, is_deleted: false },
       order: { id: 'DESC' },
-      select: { id: true },
+      select: { id: true, state: true },
     });
-    if (!latestRejected || latestRejected.id !== versionId) {
+    if (!newest || newest.id !== versionId || newest.state !== SkillVersionState.REJECTED) {
       throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
     }
 
@@ -299,13 +295,13 @@ export class SkillPackageUploadService {
           throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
         }
 
-        const latestRows = await manager.query<{ id: number }[]>(
-          `SELECT id FROM skill_versions
-           WHERE skill_package_id = $1 AND state = 'rejected' AND is_deleted = false AND deleted_at IS NULL
+        const newestRows = await manager.query<{ id: number; state: string }[]>(
+          `SELECT id, state FROM skill_versions
+           WHERE skill_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
            ORDER BY id DESC LIMIT 1`,
           [pkg.id],
         );
-        if (Number(latestRows[0]?.id) !== versionId) {
+        if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== SkillVersionState.REJECTED) {
           throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
         }
 

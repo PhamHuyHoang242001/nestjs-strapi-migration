@@ -346,17 +346,10 @@ export class SkillPackageQueryService {
               (
                 v.state = 'rejected'
                 AND v.submitted_by = $1
-                AND NOT EXISTS (
-                  SELECT 1 FROM skill_versions pending
-                  WHERE pending.skill_package_id = v.skill_package_id
-                    AND pending.state = 'pending'
-                    AND pending.is_deleted = false AND pending.deleted_at IS NULL
-                )
                 AND v.id = (
-                  SELECT MAX(rejected.id) FROM skill_versions rejected
-                  WHERE rejected.skill_package_id = v.skill_package_id
-                    AND rejected.state = 'rejected'
-                    AND rejected.is_deleted = false AND rejected.deleted_at IS NULL
+                  SELECT MAX(latest.id) FROM skill_versions latest
+                  WHERE latest.skill_package_id = v.skill_package_id
+                    AND latest.is_deleted = false AND latest.deleted_at IS NULL
                 )
               ) AS is_update
        FROM skill_versions v
@@ -400,7 +393,7 @@ export class SkillPackageQueryService {
       avatar_url: r.avatar_url ?? null,
       // "mới" badge signal: first-ever pending (never had an approved predecessor).
       is_first_pending: r.state === SkillVersionState.PENDING && r.old_version == null,
-      // Edit affordance: latest rejected of the package, no pending sibling, submitter + upload.
+      // Edit affordance: this row is rejected AND the newest live version of the package.
       isUpdate: canUpload && r.is_update === true,
     }));
 
@@ -532,6 +525,17 @@ export class SkillPackageQueryService {
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
     // submitter, the package creator, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
+    const newestRows = (await this.versionRepo.manager.query(
+      `SELECT id FROM skill_versions
+       WHERE skill_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
+       ORDER BY id DESC LIMIT 1`,
+      [pkg.id],
+    )) as Array<{ id: number }>;
+    const isUpdate =
+      codes.includes('skill_upload') &&
+      version.submitted_by === userId &&
+      version.state === SkillVersionState.REJECTED &&
+      Number(newestRows[0]?.id) === version.id;
     return {
       package: {
         id: pkg.id,
@@ -553,6 +557,7 @@ export class SkillPackageQueryService {
         : formattedVersion,
       comparison,
       can_review: version.state === SkillVersionState.PENDING && canApprove,
+      isUpdate,
     };
   }
 
