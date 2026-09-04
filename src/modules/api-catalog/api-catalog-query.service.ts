@@ -118,6 +118,25 @@ export class ApiCatalogQueryService {
     return new Map(rows.map((r) => [Number(r.id), r.email]));
   }
 
+  // Edit affordance: rejected + newest live id + upload. Submitter/creator access is already
+  // enforced by the calling endpoint (list own-scope, detail/diff access union).
+  private async resolveIsUpdate(
+    packageId: number,
+    version: { id: number; state: string },
+    canUpload: boolean,
+  ): Promise<boolean> {
+    if (!canUpload || version.state !== ApiVersionState.REJECTED) {
+      return false;
+    }
+    const newestRows = (await this.versionRepo.manager.query(
+      `SELECT id FROM api_catalog_versions
+       WHERE api_catalog_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
+       ORDER BY id DESC LIMIT 1`,
+      [packageId],
+    )) as Array<{ id: number }>;
+    return Number(newestRows[0]?.id) === version.id;
+  }
+
   // Workspace counters used to live here as stats(); they now come from GET /v1/asset-hub/stats,
   // which reports skill and prompt in one array so the dashboard makes a single request.
 
@@ -340,7 +359,6 @@ export class ApiCatalogQueryService {
               v.old_version, v.version_no, v.state, v.submitted_by, v.created_at, v.avatar_url,
               (
                 v.state = 'rejected'
-                AND v.submitted_by = $1
                 AND v.id = (
                   SELECT MAX(latest.id) FROM api_catalog_versions latest
                   WHERE latest.api_catalog_package_id = v.api_catalog_package_id
@@ -511,17 +529,7 @@ export class ApiCatalogQueryService {
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
     // submitter, the package creator, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
-    const newestRows = (await this.versionRepo.manager.query(
-      `SELECT id FROM api_catalog_versions
-       WHERE api_catalog_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
-       ORDER BY id DESC LIMIT 1`,
-      [pkg.id],
-    )) as Array<{ id: number }>;
-    const isUpdate =
-      codes.includes('api_upload') &&
-      version.submitted_by === userId &&
-      version.state === ApiVersionState.REJECTED &&
-      Number(newestRows[0]?.id) === version.id;
+    const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('api_upload'));
     return {
       package: {
         id: pkg.id,
@@ -538,6 +546,7 @@ export class ApiCatalogQueryService {
         tags: meta.tags.get(version.id) ?? [],
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
         reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
+        isUpdate,
       },
       comparison,
       can_review: version.state === ApiVersionState.PENDING && canApprove,
@@ -574,10 +583,14 @@ export class ApiCatalogQueryService {
 
     // Resolve the submitter email so the review screen shows "Submitted by" as email, not a raw id.
     const emailMap = await this.resolveEmails([version.submitted_by]);
+    const isUpdate = pkg
+      ? await this.resolveIsUpdate(pkg.id, version, codes.includes('api_upload'))
+      : false;
 
     return {
       base: baseContent,
       incoming: stringifyApiSpec(version),
+      isUpdate,
       metadata: {
         version_id: version.id,
         version_no: version.version_no,
@@ -601,6 +614,7 @@ export class ApiCatalogQueryService {
         submitted_by: version.submitted_by,
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
         submitted_at: version.created_at,
+        isUpdate,
       },
     };
   }

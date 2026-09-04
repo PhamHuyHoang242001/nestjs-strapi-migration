@@ -670,6 +670,8 @@ describe('ApiCatalogQueryService', () => {
         },
       });
       expect(result.version.usage_guide_html).toBe('# incoming');
+      expect(result.isUpdate).toBe(false);
+      expect((result.version as any).isUpdate).toBe(false);
     });
 
     it('denies a caller outside the access union', async () => {
@@ -828,6 +830,21 @@ describe('ApiCatalogQueryService', () => {
 
       const result = await service.getDiff(VERSION_ID, USER_ID);
       expect(result.metadata.code).toBeNull();
+      expect(result.isUpdate).toBe(false);
+    });
+
+    it('isUpdate=true when rejected, newest, submitter, and api_upload', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ state: ApiVersionState.REJECTED }));
+      permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
+      versionRepo.manager.query = jest.fn().mockImplementation(async (sql: string) => {
+        if (/SELECT id FROM api_catalog_versions/.test(sql)) return [{ id: VERSION_ID }];
+        return [];
+      });
+
+      const result = await service.getDiff(VERSION_ID, USER_ID);
+      expect(result.isUpdate).toBe(true);
+      expect(result.metadata.isUpdate).toBe(true);
     });
   });
 
@@ -988,7 +1005,7 @@ describe('ApiCatalogQueryService', () => {
       expect(listSql).toContain("v.state = 'rejected'");
       expect(listSql).toContain('SELECT MAX(latest.id)');
       expect(listSql).not.toContain("rejected.state = 'rejected'");
-      expect(listSql).toContain('v.submitted_by = $1');
+      expect(listSql).not.toContain('AND v.submitted_by = $1');
     });
 
     it('isUpdate=false when caller lacks api_upload even if SQL marks the row editable', async () => {

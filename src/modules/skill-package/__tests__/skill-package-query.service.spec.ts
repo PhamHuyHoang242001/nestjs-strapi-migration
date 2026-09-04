@@ -782,6 +782,8 @@ describe('SkillPackageQueryService', () => {
       });
       expect((result.version as any).files).toBeUndefined();
       expect((result.version as any).file).toMatchObject({ file_url: '/uploads/v2.zip' });
+      expect(result.isUpdate).toBe(false);
+      expect((result.version as any).isUpdate).toBe(false);
     });
 
     it('denies a caller outside the access union', async () => {
@@ -945,6 +947,21 @@ describe('SkillPackageQueryService', () => {
 
       const result = await service.getDiff(VERSION_ID, USER_ID);
       expect(result.metadata.code).toBeNull();
+      expect(result.isUpdate).toBe(false);
+    });
+
+    it('isUpdate=true when rejected, newest, submitter, and skill_upload', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ state: SkillVersionState.REJECTED }));
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
+      versionRepo.manager.query = jest.fn().mockImplementation(async (sql: string) => {
+        if (/SELECT id FROM skill_versions/.test(sql)) return [{ id: VERSION_ID }];
+        return [];
+      });
+
+      const result = await service.getDiff(VERSION_ID, USER_ID);
+      expect(result.isUpdate).toBe(true);
+      expect(result.metadata.isUpdate).toBe(true);
     });
   });
 
@@ -1107,7 +1124,7 @@ describe('SkillPackageQueryService', () => {
       expect(listSql).toContain("v.state = 'rejected'");
       expect(listSql).toContain('SELECT MAX(latest.id)');
       expect(listSql).not.toContain("rejected.state = 'rejected'");
-      expect(listSql).toContain('v.submitted_by = $1');
+      expect(listSql).not.toContain('AND v.submitted_by = $1');
     });
 
     it('isUpdate=false when caller lacks skill_upload even if SQL marks the row editable', async () => {

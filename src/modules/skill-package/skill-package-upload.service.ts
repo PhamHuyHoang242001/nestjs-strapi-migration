@@ -252,11 +252,12 @@ export class SkillPackageUploadService {
     const pkg = await this.packageRepo.findOne({ where: { id: version.skill_package_id, is_deleted: false } });
     if (!pkg) throw new NotFoundException('Skill package not found');
 
-    // Edit is submitter-only: the caller must hold skill_upload (also gated on the controller)
-    // and must be the user who submitted this version. Package ownership / approve does not widen.
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    if (!codes.includes('skill_upload') || version.submitted_by !== userId) {
-      throw new ForbiddenException('You can only edit versions you submitted');
+    if (
+      !codes.includes('skill_upload') ||
+      (version.submitted_by !== userId && pkg.created_by !== userId)
+    ) {
+      throw new ForbiddenException('You can only edit versions you submitted or packages you created');
     }
 
     const pendingVersion = await this.versionRepo.findOne({

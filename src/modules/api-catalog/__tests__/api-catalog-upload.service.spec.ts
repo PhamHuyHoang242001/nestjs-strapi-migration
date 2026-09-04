@@ -544,6 +544,7 @@ describe('ApiCatalogUploadService', () => {
       newestId?: number;
       state?: ApiVersionState;
       submittedBy?: number;
+      createdBy?: number;
       codes?: string[];
     }) {
       const state = opts?.state ?? ApiVersionState.REJECTED;
@@ -564,7 +565,11 @@ describe('ApiCatalogUploadService', () => {
         }
         return null;
       });
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        is_deleted: false,
+        created_by: opts?.createdBy ?? USER_ID,
+      });
       permissionQuery.getUserPermissions.mockResolvedValue(opts?.codes ?? ['api_upload']);
     }
 
@@ -604,8 +609,12 @@ describe('ApiCatalogUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('non-submitter even with approve → ForbiddenException', async () => {
-      stubLookups({ submittedBy: OTHER_USER_ID, codes: ['api_upload', 'api_approve'] });
+    it('neither submitter nor creator, even with approve → ForbiddenException', async () => {
+      stubLookups({
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: ['api_upload', 'api_approve'],
+      });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 

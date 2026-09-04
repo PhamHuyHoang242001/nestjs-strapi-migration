@@ -598,6 +598,7 @@ describe('SkillPackageUploadService', () => {
       newestId?: number;
       state?: SkillVersionState;
       submittedBy?: number;
+      createdBy?: number;
       codes?: string[];
     }) {
       const state = opts?.state ?? SkillVersionState.REJECTED;
@@ -618,7 +619,11 @@ describe('SkillPackageUploadService', () => {
         }
         return null;
       });
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        is_deleted: false,
+        created_by: opts?.createdBy ?? USER_ID,
+      });
       permissionQuery.getUserPermissions.mockResolvedValue(opts?.codes ?? ['skill_upload']);
     }
 
@@ -678,8 +683,20 @@ describe('SkillPackageUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('non-submitter even with approve + package ownership → ForbiddenException', async () => {
-      stubLookups({ submittedBy: OTHER_USER_ID, codes: ['skill_upload', 'skill_approve'] });
+    it('package creator who did not submit may edit', async () => {
+      stubLookups({ submittedBy: OTHER_USER_ID, createdBy: USER_ID });
+      const saved = captureEditTx();
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+      expect(saved.find((s) => s.state === SkillVersionState.PENDING)).toBeDefined();
+    });
+
+    it('neither submitter nor creator, even with approve → ForbiddenException', async () => {
+      stubLookups({
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: ['skill_upload', 'skill_approve'],
+      });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
       expect(fileFetch.downloadZip).not.toHaveBeenCalled();
     });

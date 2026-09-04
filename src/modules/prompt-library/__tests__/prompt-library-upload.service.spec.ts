@@ -543,6 +543,7 @@ describe('PromptLibraryUploadService', () => {
       newestId?: number;
       state?: PromptVersionState;
       submittedBy?: number;
+      createdBy?: number;
       codes?: string[];
     }) {
       const state = opts?.state ?? PromptVersionState.REJECTED;
@@ -563,7 +564,11 @@ describe('PromptLibraryUploadService', () => {
         }
         return null;
       });
-      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        is_deleted: false,
+        created_by: opts?.createdBy ?? USER_ID,
+      });
       permissionQuery.getUserPermissions.mockResolvedValue(opts?.codes ?? ['prompt_upload']);
     }
 
@@ -603,8 +608,12 @@ describe('PromptLibraryUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('non-submitter even with approve → ForbiddenException', async () => {
-      stubLookups({ submittedBy: OTHER_USER_ID, codes: ['prompt_upload', 'prompt_approve'] });
+    it('neither submitter nor creator, even with approve → ForbiddenException', async () => {
+      stubLookups({
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: ['prompt_upload', 'prompt_approve'],
+      });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
