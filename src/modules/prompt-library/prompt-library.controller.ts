@@ -187,7 +187,8 @@ export class PromptLibraryController {
   }
 
   // PUT /v1/prompt/versions/:vid — resubmit the latest rejected version (same body as a bump).
-  @ApiOperation({ summary: 'Edit the latest rejected prompt version' })
+  // Caller must hold prompt_upload and be that version's submitter (not package owner / approver).
+  @ApiOperation({ summary: 'Edit the latest rejected prompt version (submitter + upload only)' })
   @Put('versions/:vid')
   @UseGuards(PermissionGuard)
   @RequirePermission('prompt_upload')

@@ -539,18 +539,31 @@ describe('ApiCatalogUploadService', () => {
       ...META_FIELDS,
     };
 
-    function stubLookups(opts?: { pending?: boolean; latestRejectedId?: number; state?: ApiVersionState }) {
+    function stubLookups(opts?: {
+      pending?: boolean;
+      latestRejectedId?: number;
+      state?: ApiVersionState;
+      submittedBy?: number;
+      codes?: string[];
+    }) {
       const state = opts?.state ?? ApiVersionState.REJECTED;
       versionRepo.findOne = jest.fn().mockImplementation(async ({ where }: any) => {
         if (where.id === VERSION_ID) {
-          return { id: VERSION_ID, api_catalog_package_id: PACKAGE_ID, state, version_no: 1, old_version: null };
+          return {
+            id: VERSION_ID,
+            api_catalog_package_id: PACKAGE_ID,
+            state,
+            version_no: 1,
+            old_version: null,
+            submitted_by: opts?.submittedBy ?? USER_ID,
+          };
         }
         if (where.state === ApiVersionState.PENDING) return opts?.pending ? { id: 88 } : null;
         if (where.state === ApiVersionState.REJECTED) return { id: opts?.latestRejectedId ?? VERSION_ID };
         return null;
       });
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
-      permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
+      permissionQuery.getUserPermissions.mockResolvedValue(opts?.codes ?? ['api_upload']);
     }
 
     it('resubmits latest rejected in place and returns to pending', async () => {
@@ -583,6 +596,16 @@ describe('ApiCatalogUploadService', () => {
     it('pending already exists → ConflictException', async () => {
       stubLookups({ pending: true });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('non-submitter even with approve → ForbiddenException', async () => {
+      stubLookups({ submittedBy: OTHER_USER_ID, codes: ['api_upload', 'api_approve'] });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('submitter without api_upload → ForbiddenException', async () => {
+      stubLookups({ codes: ['api_approve'] });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 

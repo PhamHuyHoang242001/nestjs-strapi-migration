@@ -230,10 +230,11 @@ export class PromptLibraryUploadService {
     const pkg = await this.packageRepo.findOne({ where: { id: version.prompt_package_id, is_deleted: false } });
     if (!pkg) throw new NotFoundException('Prompt package not found');
 
+    // Edit is submitter-only: the caller must hold prompt_upload (also gated on the controller)
+    // and must be the user who submitted this version. Package ownership / approve does not widen.
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('prompt_approve');
-    if (!canApprove && pkg.created_by !== userId) {
-      throw new ForbiddenException('You can only update prompt packages you created');
+    if (!codes.includes('prompt_upload') || version.submitted_by !== userId) {
+      throw new ForbiddenException('You can only edit versions you submitted');
     }
 
     if (version.state !== PromptVersionState.REJECTED) {

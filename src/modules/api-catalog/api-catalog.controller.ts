@@ -164,7 +164,8 @@ export class ApiCatalogController {
   }
 
   // PUT /v1/api-catalog/versions/:vid — resubmit the latest rejected version (same body as a bump).
-  @ApiOperation({ summary: 'Edit the latest rejected API version' })
+  // Caller must hold api_upload and be that version's submitter (not package owner / approver).
+  @ApiOperation({ summary: 'Edit the latest rejected API version (submitter + upload only)' })
   @Put('versions/:vid')
   @UseGuards(PermissionGuard)
   @RequirePermission('api_upload')

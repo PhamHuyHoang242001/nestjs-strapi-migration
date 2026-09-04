@@ -213,7 +213,8 @@ export class SkillPackageController {
   }
 
   // PUT /v1/skill/versions/:vid — resubmit the latest rejected version (same body as a bump).
-  @ApiOperation({ summary: 'Edit the latest rejected skill version (from Strapi URLs)' })
+  // Caller must hold skill_upload and be that version's submitter (not package owner / approver).
+  @ApiOperation({ summary: 'Edit the latest rejected skill version (submitter + upload only)' })
   @Put('versions/:vid')
   @UseGuards(PermissionGuard)
   @RequirePermission('skill_upload')

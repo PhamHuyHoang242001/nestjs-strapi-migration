@@ -234,10 +234,11 @@ export class ApiCatalogUploadService {
     });
     if (!pkg) throw new NotFoundException('API package not found');
 
+    // Edit is submitter-only: the caller must hold api_upload (also gated on the controller)
+    // and must be the user who submitted this version. Package ownership / approve does not widen.
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('api_approve');
-    if (!canApprove && pkg.created_by !== userId) {
-      throw new ForbiddenException('You can only update API packages you created');
+    if (!codes.includes('api_upload') || version.submitted_by !== userId) {
+      throw new ForbiddenException('You can only edit versions you submitted');
     }
 
     if (version.state !== ApiVersionState.REJECTED) {
