@@ -969,6 +969,34 @@ describe('ApiCatalogQueryService', () => {
       const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
       expect(sqls).not.toContain('p.id = ANY');
     });
+
+    it('isUpdate=true only for latest rejected with no pending, submitter, and api_upload', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
+      const query = stub({
+        count: 2,
+        rows: [
+          rawRow({ version_id: 10, state: ApiVersionState.REJECTED, is_update: true }),
+          rawRow({ version_id: 9, state: ApiVersionState.APPROVED, is_update: false }),
+        ],
+      });
+
+      const result = await service.listVersions({ state: 'all' }, USER_ID);
+      expect((result.data[0] as any).isUpdate).toBe(true);
+      expect((result.data[1] as any).isUpdate).toBe(false);
+
+      const listSql = query.mock.calls.map((c) => c[0] as string).find((s) => /AS is_update/.test(s))!;
+      expect(listSql).toContain("pending.state = 'pending'");
+      expect(listSql).toContain("rejected.state = 'rejected'");
+      expect(listSql).toContain('v.submitted_by = $1');
+    });
+
+    it('isUpdate=false when caller lacks api_upload even if SQL marks the row editable', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['api_approve']);
+      stub({ count: 1, rows: [rawRow({ state: ApiVersionState.REJECTED, is_update: true })] });
+
+      const result = await service.listVersions({ state: 'all' }, USER_ID);
+      expect((result.data[0] as any).isUpdate).toBe(false);
+    });
   });
 
 });

@@ -330,11 +330,30 @@ export class ApiCatalogQueryService {
     )) as Array<{ total: number }>;
     const total = Number(countRows[0]?.total ?? 0);
 
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canUpload = codes.includes('api_upload');
+
     const limitIdx = rowParams.push(pageSize);
     const offsetIdx = rowParams.push((page - 1) * pageSize);
     const rows = (await this.versionRepo.manager.query(
       `SELECT p.id AS package_id, p.code, v.id AS version_id, v.name AS package_name,
-              v.old_version, v.version_no, v.state, v.submitted_by, v.created_at, v.avatar_url
+              v.old_version, v.version_no, v.state, v.submitted_by, v.created_at, v.avatar_url,
+              (
+                v.state = 'rejected'
+                AND v.submitted_by = $1
+                AND NOT EXISTS (
+                  SELECT 1 FROM api_catalog_versions pending
+                  WHERE pending.api_catalog_package_id = v.api_catalog_package_id
+                    AND pending.state = 'pending'
+                    AND pending.is_deleted = false AND pending.deleted_at IS NULL
+                )
+                AND v.id = (
+                  SELECT MAX(rejected.id) FROM api_catalog_versions rejected
+                  WHERE rejected.api_catalog_package_id = v.api_catalog_package_id
+                    AND rejected.state = 'rejected'
+                    AND rejected.is_deleted = false AND rejected.deleted_at IS NULL
+                )
+              ) AS is_update
        FROM api_catalog_versions v
        INNER JOIN api_catalog_packages p ON p.id = v.api_catalog_package_id
        WHERE ${whereSql}${stateSql}
@@ -352,6 +371,7 @@ export class ApiCatalogQueryService {
       submitted_by: number;
       created_at: Date | string;
       avatar_url: string | null;
+      is_update: boolean;
     }>;
 
     const emailMap = await this.resolveEmails(rows.map((r) => r.submitted_by));
@@ -375,6 +395,7 @@ export class ApiCatalogQueryService {
       avatar_url: r.avatar_url ?? null,
       // "mới" badge signal: first-ever pending (never had an approved predecessor).
       is_first_pending: r.state === ApiVersionState.PENDING && r.old_version == null,
+      isUpdate: canUpload && r.is_update === true,
     }));
 
     return { data, meta: { total, page, limit: pageSize } };
