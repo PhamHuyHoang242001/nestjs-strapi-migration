@@ -583,6 +583,89 @@ describe('SkillPackageUploadService', () => {
     });
   });
 
+  describe('editVersion — latest rejected only', () => {
+    const dto = {
+      file: { fileUrl: 'http://strapi/uploads/skill.zip', name: 'skill.zip' },
+      name: 'v2-fixed',
+      short_description: 'desc',
+      category_id: 1,
+      changelog_note: 'resubmit',
+      ...META_FIELDS,
+    };
+
+    function stubLookups(opts?: { pending?: boolean; latestRejectedId?: number; state?: SkillVersionState }) {
+      const state = opts?.state ?? SkillVersionState.REJECTED;
+      versionRepo.findOne = jest.fn().mockImplementation(async ({ where }: any) => {
+        if (where.id === VERSION_ID) {
+          return { id: VERSION_ID, skill_package_id: PACKAGE_ID, state, version_no: 1, old_version: null };
+        }
+        if (where.state === SkillVersionState.PENDING) return opts?.pending ? { id: 88 } : null;
+        if (where.state === SkillVersionState.REJECTED) {
+          return { id: opts?.latestRejectedId ?? VERSION_ID };
+        }
+        return null;
+      });
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+    }
+
+    function captureEditTx() {
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ id: VERSION_ID }]),
+          findOne: jest.fn().mockResolvedValue({
+            id: VERSION_ID,
+            skill_package_id: PACKAGE_ID,
+            state: SkillVersionState.REJECTED,
+            version_no: 1,
+            old_version: null,
+          }),
+          create: jest.fn((_E: any, data: any) => ({ ...data })),
+          update: jest.fn(),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push(obj);
+            return obj;
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
+      return saved;
+    }
+
+    it('resubmits latest rejected in place and returns to pending', async () => {
+      stubLookups();
+      const saved = captureEditTx();
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+      const versionRow = saved.find((s) => s.state === SkillVersionState.PENDING);
+      expect(versionRow.reject_reason).toBeNull();
+      expect(versionRow.reviewed_by).toBeNull();
+      expect(fileFetch.downloadZip).toHaveBeenCalled();
+    });
+
+    it('non-rejected version → ForbiddenException', async () => {
+      stubLookups({ state: SkillVersionState.APPROVED });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(fileFetch.downloadZip).not.toHaveBeenCalled();
+    });
+
+    it('older rejected while a newer reject exists → ForbiddenException', async () => {
+      stubLookups({ latestRejectedId: 99 });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('pending already exists → ConflictException', async () => {
+      stubLookups({ pending: true });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
   // ---- toggleStatus ----
   describe('toggleStatus — active/inactive visibility toggle', () => {
     it('updates the package status and returns {id, status}', async () => {

@@ -28,6 +28,7 @@ import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-g
 const PG_UNIQUE_VIOLATION = '23505';
 const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
+const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
 
 function isPgUniqueViolation(error: unknown): boolean {
   return (
@@ -235,6 +236,128 @@ export class SkillPackageUploadService {
       // Catch PG unique-violation on partial-unique pending index → 409.
       // The constraint uidx_skill_versions_one_pending_per_package is
       // partial: (skill_package_id) WHERE state='pending' AND is_deleted=false.
+      if (isPgUniqueViolation(err)) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+      }
+      throw err;
+    }
+  }
+
+  // Resubmit the latest rejected version in place (same body as a package bump). Keeps
+  // version_no / old_version; flips state back to pending so the one-pending rule still holds.
+  async editVersion(versionId: number, dto: CreateSkillVersionDto, userId: number) {
+    const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
+    if (!version) throw new NotFoundException('Skill version not found');
+
+    const pkg = await this.packageRepo.findOne({ where: { id: version.skill_package_id, is_deleted: false } });
+    if (!pkg) throw new NotFoundException('Skill package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('skill_approve');
+    if (!canApprove && pkg.created_by !== userId) {
+      throw new ForbiddenException('You can only update skill packages you created');
+    }
+
+    if (version.state !== SkillVersionState.REJECTED) {
+      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+    }
+
+    const pendingVersion = await this.versionRepo.findOne({
+      where: { skill_package_id: pkg.id, state: SkillVersionState.PENDING, is_deleted: false },
+      select: { id: true },
+    });
+    if (pendingVersion) {
+      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+    }
+
+    const latestRejected = await this.versionRepo.findOne({
+      where: { skill_package_id: pkg.id, state: SkillVersionState.REJECTED, is_deleted: false },
+      order: { id: 'DESC' },
+      select: { id: true },
+    });
+    if (!latestRejected || latestRejected.id !== versionId) {
+      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+    }
+
+    const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
+    const { skillMd: skillMdContent, zipTree } = extractSkillZip(zipFile.buffer);
+    if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
+    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await manager.query('SELECT id FROM skill_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
+
+        const pendingRows = await manager.query<{ id: number }[]>(
+          `SELECT id FROM skill_versions
+           WHERE skill_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
+           LIMIT 1`,
+          [pkg.id],
+        );
+        if (pendingRows[0]) {
+          throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+        }
+
+        const latestRows = await manager.query<{ id: number }[]>(
+          `SELECT id FROM skill_versions
+           WHERE skill_package_id = $1 AND state = 'rejected' AND is_deleted = false AND deleted_at IS NULL
+           ORDER BY id DESC LIMIT 1`,
+          [pkg.id],
+        );
+        if (Number(latestRows[0]?.id) !== versionId) {
+          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+        }
+
+        const locked = await manager.findOne(SkillVersion, {
+          where: { id: versionId, is_deleted: false },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!locked) throw new NotFoundException('Skill version not found');
+        if (locked.state !== SkillVersionState.REJECTED) {
+          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+        }
+
+        const resolvedCategory = await this.categoryService?.validateActive(
+          dto.category_id,
+          CategoryType.SKILL,
+          manager,
+        );
+        const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
+        await this.itemMeta.assertPublisher(manager, owning.publisher_id);
+        const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
+        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
+
+        await manager.update(SkillPackage, pkg.id, owning);
+        await this.itemMeta.replaceResponsibles(manager, 'skill', pkg.id, responsibleUserIds);
+
+        locked.name = dto.name;
+        locked.short_description = dto.short_description;
+        locked.category_id = resolvedCategory?.id ?? dto.category_id;
+        locked.usage_guide_html = usageGuideHtml;
+        locked.kind = dto.kind;
+        locked.avatar_url = dto.avatar_url ?? null;
+        locked.skill_md_content = skillMdContent;
+        locked.zip_tree = zipTree;
+        locked.changelog_note = dto.changelog_note ?? null;
+        locked.submitted_by = userId;
+        locked.state = SkillVersionState.PENDING;
+        locked.reject_reason = null;
+        locked.reviewed_by = null;
+        locked.reviewed_at = null;
+        await manager.save(SkillVersion, locked);
+
+        await this.itemMeta.replaceVersionTags(manager, 'skill', locked.id, tagIds);
+
+        await manager.update(
+          SkillVersionFile,
+          { skill_version_id: locked.id, is_deleted: false },
+          { is_deleted: true, deleted_at: new Date() },
+        );
+        await this.saveZipFile(manager, locked.id, dto.file, zipFile);
+
+        return { version: { id: locked.id, version_no: locked.version_no } };
+      });
+    } catch (err) {
       if (isPgUniqueViolation(err)) {
         throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
       }

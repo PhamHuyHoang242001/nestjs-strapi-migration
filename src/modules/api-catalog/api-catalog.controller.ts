@@ -163,6 +163,21 @@ export class ApiCatalogController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
+  // PUT /v1/api-catalog/versions/:vid — resubmit the latest rejected version (same body as a bump).
+  @ApiOperation({ summary: 'Edit the latest rejected API version' })
+  @Put('versions/:vid')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('api_upload')
+  async editVersion(
+    @Param('vid', ParseIntPipe) vid: number,
+    @Body() dto: CreateApiVersionDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.uploadService.editVersion(vid, dto, userId);
+  }
+
   // POST /v1/api-catalog/versions/:vid/approve — requires api_approve.
   @ApiOperation({ summary: 'Approve a pending API version (promotes to active)' })
   @Post('versions/:vid/approve')

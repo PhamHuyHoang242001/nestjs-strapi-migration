@@ -1,5 +1,6 @@
 import { BearerGuard } from '@common/guards/bearer.guard';
-import { Controller, Get, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+import { RequestWithInfo } from '@common/types/request-with-info';
+import { Controller, ForbiddenException, Get, Query, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { LatestArtifactsService } from './latest-artifacts.service';
 import { LatestArtifactsQueryDto } from './dto/latest-artifacts-query.dto';
@@ -30,7 +31,9 @@ export class LatestArtifactsController {
   // with its `type`. Replaces the per-workspace stats endpoints so the dashboard makes one request.
   @ApiOperation({ summary: 'Get dashboard counters for the Skill and Prompt workspaces' })
   @Get('stats')
-  listStats() {
-    return this.service.listStats();
+  listStats(@Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.service.listStats(userId);
   }
 }

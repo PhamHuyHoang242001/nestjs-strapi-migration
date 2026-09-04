@@ -25,6 +25,7 @@ import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-g
 const PG_UNIQUE_VIOLATION = '23505';
 const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
+const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
 
 function isPgUniqueViolation(error: unknown): boolean {
   return (
@@ -214,6 +215,117 @@ export class PromptLibraryUploadService {
       // Catch PG unique-violation on partial-unique pending index → 409.
       // The constraint uidx_prompt_versions_one_pending_per_package is
       // partial: (prompt_package_id) WHERE state='pending' AND is_deleted=false.
+      if (isPgUniqueViolation(err)) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+      }
+      throw err;
+    }
+  }
+
+  // Resubmit the latest rejected version in place (same body as a package bump).
+  async editVersion(versionId: number, dto: CreatePromptVersionDto, userId: number) {
+    const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
+    if (!version) throw new NotFoundException('Prompt version not found');
+
+    const pkg = await this.packageRepo.findOne({ where: { id: version.prompt_package_id, is_deleted: false } });
+    if (!pkg) throw new NotFoundException('Prompt package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('prompt_approve');
+    if (!canApprove && pkg.created_by !== userId) {
+      throw new ForbiddenException('You can only update prompt packages you created');
+    }
+
+    if (version.state !== PromptVersionState.REJECTED) {
+      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+    }
+
+    const pendingVersion = await this.versionRepo.findOne({
+      where: { prompt_package_id: pkg.id, state: PromptVersionState.PENDING, is_deleted: false },
+      select: { id: true },
+    });
+    if (pendingVersion) {
+      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+    }
+
+    const latestRejected = await this.versionRepo.findOne({
+      where: { prompt_package_id: pkg.id, state: PromptVersionState.REJECTED, is_deleted: false },
+      order: { id: 'DESC' },
+      select: { id: true },
+    });
+    if (!latestRejected || latestRejected.id !== versionId) {
+      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+    }
+
+    if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
+    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await manager.query('SELECT id FROM prompt_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
+
+        const pendingRows = await manager.query<{ id: number }[]>(
+          `SELECT id FROM prompt_versions
+           WHERE prompt_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
+           LIMIT 1`,
+          [pkg.id],
+        );
+        if (pendingRows[0]) {
+          throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+        }
+
+        const latestRows = await manager.query<{ id: number }[]>(
+          `SELECT id FROM prompt_versions
+           WHERE prompt_package_id = $1 AND state = 'rejected' AND is_deleted = false AND deleted_at IS NULL
+           ORDER BY id DESC LIMIT 1`,
+          [pkg.id],
+        );
+        if (Number(latestRows[0]?.id) !== versionId) {
+          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+        }
+
+        const locked = await manager.findOne(PromptVersion, {
+          where: { id: versionId, is_deleted: false },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!locked) throw new NotFoundException('Prompt version not found');
+        if (locked.state !== PromptVersionState.REJECTED) {
+          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+        }
+
+        const resolvedCategory = await this.categoryService?.validateActive(
+          dto.category_id,
+          CategoryType.PROMPT,
+          manager,
+        );
+        const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
+        await this.itemMeta.assertPublisher(manager, owning.publisher_id);
+        const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
+        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'prompt');
+
+        await manager.update(PromptPackage, pkg.id, owning);
+        await this.itemMeta.replaceResponsibles(manager, 'prompt', pkg.id, responsibleUserIds);
+
+        locked.name = dto.name;
+        locked.short_description = dto.short_description;
+        locked.category_id = resolvedCategory?.id ?? dto.category_id;
+        locked.usage_guide_html = usageGuideHtml;
+        locked.kind = dto.kind;
+        locked.avatar_url = dto.avatar_url ?? null;
+        locked.prompt_content = dto.prompt_content;
+        locked.changelog_note = dto.changelog_note ?? null;
+        locked.submitted_by = userId;
+        locked.state = PromptVersionState.PENDING;
+        locked.reject_reason = null;
+        locked.reviewed_by = null;
+        locked.reviewed_at = null;
+        await manager.save(PromptVersion, locked);
+
+        await this.itemMeta.replaceVersionTags(manager, 'prompt', locked.id, tagIds);
+
+        return { version: { id: locked.id, version_no: locked.version_no } };
+      });
+    } catch (err) {
       if (isPgUniqueViolation(err)) {
         throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
       }

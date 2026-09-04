@@ -26,6 +26,7 @@ import { specColumns, validateAndNormalizeSpec } from './api-spec.util';
 const PG_UNIQUE_VIOLATION = '23505';
 const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
+const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
 
 function isPgUniqueViolation(error: unknown): boolean {
   return (
@@ -216,6 +217,120 @@ export class ApiCatalogUploadService {
       // Catch PG unique-violation on partial-unique pending index → 409.
       // The constraint uidx_api_catalog_versions_one_pending_per_package is
       // partial: (api_catalog_package_id) WHERE state='pending' AND is_deleted=false.
+      if (isPgUniqueViolation(err)) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+      }
+      throw err;
+    }
+  }
+
+  // Resubmit the latest rejected version in place (same body as a package bump).
+  async editVersion(versionId: number, dto: CreateApiVersionDto, userId: number) {
+    const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
+    if (!version) throw new NotFoundException('API version not found');
+
+    const pkg = await this.packageRepo.findOne({
+      where: { id: version.api_catalog_package_id, is_deleted: false },
+    });
+    if (!pkg) throw new NotFoundException('API package not found');
+
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canApprove = codes.includes('api_approve');
+    if (!canApprove && pkg.created_by !== userId) {
+      throw new ForbiddenException('You can only update API packages you created');
+    }
+
+    if (version.state !== ApiVersionState.REJECTED) {
+      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+    }
+
+    const pendingVersion = await this.versionRepo.findOne({
+      where: { api_catalog_package_id: pkg.id, state: ApiVersionState.PENDING, is_deleted: false },
+      select: { id: true },
+    });
+    if (pendingVersion) {
+      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+    }
+
+    const latestRejected = await this.versionRepo.findOne({
+      where: { api_catalog_package_id: pkg.id, state: ApiVersionState.REJECTED, is_deleted: false },
+      order: { id: 'DESC' },
+      select: { id: true },
+    });
+    if (!latestRejected || latestRejected.id !== versionId) {
+      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+    }
+
+    if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
+    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
+    const spec = validateAndNormalizeSpec(dto);
+
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await manager.query('SELECT id FROM api_catalog_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
+
+        const pendingRows = await manager.query<{ id: number }[]>(
+          `SELECT id FROM api_catalog_versions
+           WHERE api_catalog_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
+           LIMIT 1`,
+          [pkg.id],
+        );
+        if (pendingRows[0]) {
+          throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+        }
+
+        const latestRows = await manager.query<{ id: number }[]>(
+          `SELECT id FROM api_catalog_versions
+           WHERE api_catalog_package_id = $1 AND state = 'rejected' AND is_deleted = false AND deleted_at IS NULL
+           ORDER BY id DESC LIMIT 1`,
+          [pkg.id],
+        );
+        if (Number(latestRows[0]?.id) !== versionId) {
+          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+        }
+
+        const locked = await manager.findOne(ApiVersion, {
+          where: { id: versionId, is_deleted: false },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!locked) throw new NotFoundException('API version not found');
+        if (locked.state !== ApiVersionState.REJECTED) {
+          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+        }
+
+        const resolvedCategory = await this.categoryService?.validateActive(
+          dto.category_id,
+          CategoryType.API_CATALOG,
+          manager,
+        );
+        const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
+        await this.itemMeta.assertPublisher(manager, owning.publisher_id);
+        const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
+        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'api-catalog');
+
+        await manager.update(ApiPackage, pkg.id, owning);
+        await this.itemMeta.replaceResponsibles(manager, 'api-catalog', pkg.id, responsibleUserIds);
+
+        locked.name = dto.name;
+        locked.short_description = dto.short_description;
+        locked.category_id = resolvedCategory?.id ?? dto.category_id;
+        locked.usage_guide_html = usageGuideHtml;
+        locked.kind = dto.kind;
+        locked.avatar_url = dto.avatar_url ?? null;
+        Object.assign(locked, specColumns(spec));
+        locked.changelog_note = dto.changelog_note ?? null;
+        locked.submitted_by = userId;
+        locked.state = ApiVersionState.PENDING;
+        locked.reject_reason = null;
+        locked.reviewed_by = null;
+        locked.reviewed_at = null;
+        await manager.save(ApiVersion, locked);
+
+        await this.itemMeta.replaceVersionTags(manager, 'api-catalog', locked.id, tagIds);
+
+        return { version: { id: locked.id, version_no: locked.version_no } };
+      });
+    } catch (err) {
       if (isPgUniqueViolation(err)) {
         throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
       }

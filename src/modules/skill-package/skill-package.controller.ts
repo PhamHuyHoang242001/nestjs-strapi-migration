@@ -212,6 +212,21 @@ export class SkillPackageController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
+  // PUT /v1/skill/versions/:vid — resubmit the latest rejected version (same body as a bump).
+  @ApiOperation({ summary: 'Edit the latest rejected skill version (from Strapi URLs)' })
+  @Put('versions/:vid')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('skill_upload')
+  async editVersion(
+    @Param('vid', ParseIntPipe) vid: number,
+    @Body() dto: CreateSkillVersionDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.uploadService.editVersion(vid, dto, userId);
+  }
+
   // POST /v1/skill/versions/:vid/approve — requires skill_approve.
   @ApiOperation({ summary: 'Approve a pending skill version (promotes to active)' })
   @Post('versions/:vid/approve')

@@ -186,6 +186,21 @@ export class PromptLibraryController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
+  // PUT /v1/prompt/versions/:vid — resubmit the latest rejected version (same body as a bump).
+  @ApiOperation({ summary: 'Edit the latest rejected prompt version' })
+  @Put('versions/:vid')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload')
+  async editVersion(
+    @Param('vid', ParseIntPipe) vid: number,
+    @Body() dto: CreatePromptVersionDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.uploadService.editVersion(vid, dto, userId);
+  }
+
   // POST /v1/prompt/versions/:vid/approve — requires prompt_approve.
   @ApiOperation({ summary: 'Approve a pending prompt version (promotes to active)' })
   @Post('versions/:vid/approve')

@@ -32,6 +32,7 @@ export interface WorkspaceStatRow {
   approved: number;
   rejected: number;
   published: number;
+  my_versions: number;
 }
 
 // Internal row shape returned by the per-type SQL before email resolution + reshaping.
@@ -105,8 +106,10 @@ export class LatestArtifactsService {
     versionTable: string,
     packageTable: string,
     fkColumn: string,
+    userId: number,
   ): Promise<WorkspaceStatRow> {
-    const rows = (await this.versionRepo.manager.query(`
+    const rows = (await this.versionRepo.manager.query(
+      `
       WITH latest AS (
         SELECT DISTINCT ON (v.${fkColumn}) v.state
         FROM ${versionTable} v
@@ -133,9 +136,19 @@ export class LatestArtifactsService {
             AND p.active_version_id IS NOT NULL
             AND p.deleted_at IS NULL
             AND p.is_deleted = false
-        ) AS published
+        ) AS published,
+        (
+          SELECT COUNT(*)::int
+          FROM ${versionTable} v
+          INNER JOIN ${packageTable} p ON p.id = v.${fkColumn}
+          WHERE v.deleted_at IS NULL AND v.is_deleted = false
+            AND p.deleted_at IS NULL AND p.is_deleted = false
+            AND (v.submitted_by = $1 OR p.created_by = $1)
+        ) AS my_versions
       FROM latest
-    `)) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published', number | string>>;
+    `,
+      [userId],
+    )) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published' | 'my_versions', number | string>>;
 
     const row = rows[0];
     return {
@@ -145,6 +158,7 @@ export class LatestArtifactsService {
       approved: Number(row?.approved ?? 0),
       rejected: Number(row?.rejected ?? 0),
       published: Number(row?.published ?? 0),
+      my_versions: Number(row?.my_versions ?? 0),
     };
   }
 
@@ -152,11 +166,17 @@ export class LatestArtifactsService {
   // single request. This replaces the per-workspace GET /v1/skill/stats and GET /v1/prompt/stats;
   // the SQL was moved here rather than injected, because neither library module exports its query
   // service. The classification is unchanged — only the transport and the response shape differ.
-  async listStats(): Promise<{ data: WorkspaceStatRow[] }> {
+  async listStats(userId: number): Promise<{ data: WorkspaceStatRow[] }> {
     const [skills, prompts, apiCatalogs] = await Promise.all([
-      this.fetchWorkspaceStats('skill', 'skill_versions', 'skill_packages', 'skill_package_id'),
-      this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id'),
-      this.fetchWorkspaceStats('api-catalog', 'api_catalog_versions', 'api_catalog_packages', 'api_catalog_package_id'),
+      this.fetchWorkspaceStats('skill', 'skill_versions', 'skill_packages', 'skill_package_id', userId),
+      this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id', userId),
+      this.fetchWorkspaceStats(
+        'api-catalog',
+        'api_catalog_versions',
+        'api_catalog_packages',
+        'api_catalog_package_id',
+        userId,
+      ),
     ]);
     return { data: [skills, prompts, apiCatalogs] };
   }

@@ -11,9 +11,10 @@ function makeService() {
   return { service: new LatestArtifactsService(versionRepo), query };
 }
 
-const SKILL_AGGREGATE = { total: '7', pending: '2', approved: '4', rejected: '1', published: '5' };
-const PROMPT_AGGREGATE = { total: '9', pending: '3', approved: '5', rejected: '1', published: '6' };
-const API_AGGREGATE = { total: '4', pending: '1', approved: '2', rejected: '1', published: '3' };
+const USER_ID = 42;
+const SKILL_AGGREGATE = { total: '7', pending: '2', approved: '4', rejected: '1', published: '5', my_versions: '3' };
+const PROMPT_AGGREGATE = { total: '9', pending: '3', approved: '5', rejected: '1', published: '6', my_versions: '2' };
+const API_AGGREGATE = { total: '4', pending: '1', approved: '2', rejected: '1', published: '3', my_versions: '1' };
 
 describe('LatestArtifactsService.listStats', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -25,11 +26,11 @@ describe('LatestArtifactsService.listStats', () => {
       .mockResolvedValueOnce([PROMPT_AGGREGATE])
       .mockResolvedValueOnce([API_AGGREGATE]);
 
-    await expect(service.listStats()).resolves.toEqual({
+    await expect(service.listStats(USER_ID)).resolves.toEqual({
       data: [
-        { type: 'skill', total: 7, pending: 2, approved: 4, rejected: 1, published: 5 },
-        { type: 'prompt', total: 9, pending: 3, approved: 5, rejected: 1, published: 6 },
-        { type: 'api-catalog', total: 4, pending: 1, approved: 2, rejected: 1, published: 3 },
+        { type: 'skill', total: 7, pending: 2, approved: 4, rejected: 1, published: 5, my_versions: 3 },
+        { type: 'prompt', total: 9, pending: 3, approved: 5, rejected: 1, published: 6, my_versions: 2 },
+        { type: 'api-catalog', total: 4, pending: 1, approved: 2, rejected: 1, published: 3, my_versions: 1 },
       ],
     });
   });
@@ -38,12 +39,12 @@ describe('LatestArtifactsService.listStats', () => {
     const { service, query } = makeService();
     query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
-    const result = await service.listStats();
+    const result = await service.listStats(USER_ID);
 
     expect(result.data).toEqual([
-      { type: 'skill', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
-      { type: 'prompt', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
-      { type: 'api-catalog', total: 0, pending: 0, approved: 0, rejected: 0, published: 0 },
+      { type: 'skill', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
+      { type: 'prompt', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
+      { type: 'api-catalog', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
     ]);
   });
 
@@ -57,7 +58,7 @@ describe('LatestArtifactsService.listStats', () => {
     const { service, query } = makeService();
     query.mockResolvedValue([SKILL_AGGREGATE]);
 
-    await service.listStats();
+    await service.listStats(USER_ID);
 
     const sql = query.mock.calls[callIndex as number][0] as string;
     expect(sql).toContain(`DISTINCT ON (v.${fk as string})`);
@@ -73,16 +74,18 @@ describe('LatestArtifactsService.listStats', () => {
     // Soft-deleted rows never contribute on either side of the join.
     expect(sql).toContain('v.deleted_at IS NULL AND v.is_deleted = false');
     expect(sql).toContain('p.deleted_at IS NULL AND p.is_deleted = false');
+    expect(sql).toContain('v.submitted_by = $1 OR p.created_by = $1');
   });
 
-  it('takes no caller-supplied parameters — the aggregate is whole-workspace', async () => {
+  it('binds the caller id for my_versions and keeps workspace aggregates unscoped', async () => {
     const { service, query } = makeService();
     query.mockResolvedValue([SKILL_AGGREGATE]);
 
-    await service.listStats();
+    await service.listStats(USER_ID);
 
-    expect(query.mock.calls[0][1]).toBeUndefined();
-    expect(query.mock.calls[1][1]).toBeUndefined();
+    expect(query.mock.calls[0][1]).toEqual([USER_ID]);
+    expect(query.mock.calls[1][1]).toEqual([USER_ID]);
+    expect(query.mock.calls[2][1]).toEqual([USER_ID]);
   });
 });
 
