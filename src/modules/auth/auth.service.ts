@@ -23,15 +23,7 @@ import { ERROR_CODE } from '@constant/error-code';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { CommonServiceService } from '@modules/common-service/common-service.service';
 import { DayJS } from '@common/utils/dayjs';
-import axios from 'axios';
-import {
-  OIDC_ISSUER,
-  OIDC_CLIENT_ID,
-  OIDC_CLIENT_SECRET,
-  OIDC_REDIRECT_URI,
-  OIDC_TOKEN_ENDPOINT,
-  OIDC_USERINFO_ENDPOINT,
-} from '@configuration/env.config';
+
 
 @Injectable()
 export class AuthService {
@@ -363,55 +355,4 @@ export class AuthService {
     return Promise.resolve({ validCountry, validState });
   }
 
-  /**
-   * Handle OIDC callback: exchange code for tokens, fetch userinfo, find/create user, return local tokens
-   */
-  async handleOidcCallback(code: string, header: Record<string, unknown>) {
-    if (!code) throw new BadRequestException(DATA_INVALID);
-    // Exchange code for token
-    const tokenEndpoint = OIDC_TOKEN_ENDPOINT || `${OIDC_ISSUER}/protocol/openid-connect/token`;
-    const params = new URLSearchParams();
-    params.append('grant_type', 'authorization_code');
-    params.append('code', code);
-    params.append('redirect_uri', OIDC_REDIRECT_URI);
-    params.append('client_id', OIDC_CLIENT_ID);
-    if (OIDC_CLIENT_SECRET) params.append('client_secret', OIDC_CLIENT_SECRET);
-
-    const tokenRes = await axios.post<{ access_token?: string }>(tokenEndpoint, params.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
-
-    const access_token = tokenRes?.data?.access_token;
-    if (!access_token) throw new BadRequestException('Invalid OIDC response');
-
-    // Fetch userinfo
-    const userinfoEndpoint = OIDC_USERINFO_ENDPOINT || `${OIDC_ISSUER}/protocol/openid-connect/userinfo`;
-    const userinfoRes = await axios.get<Record<string, string>>(userinfoEndpoint, {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
-    const userinfo = userinfoRes?.data ?? {};
-
-    const email = userinfo['email'] || userinfo['preferred_username'];
-    const first_name = userinfo['given_name'] || userinfo['first_name'] || '';
-    const last_name = userinfo['family_name'] || userinfo['last_name'] || '';
-
-    if (!email) throw new BadRequestException('OIDC userinfo missing email');
-
-    // Find or create local user
-    let user = await this.userRepository.findOneBy({ email });
-    if (!user) {
-      const created = await this.userRepository.createData({
-        email,
-        first_name,
-        last_name,
-        status: USER_STATUS.ACTIVE,
-        password: hashPassword(randomStringUuid()),
-      } as unknown as Users);
-      user = created;
-    }
-
-    const domain = (header?.['domain'] as string) || '';
-    const device_hash = (header?.['device_hash'] as string) || '';
-    return this.createToken(user.id, USER_CLIENT.USER, domain, device_hash, false, false);
-  }
 }

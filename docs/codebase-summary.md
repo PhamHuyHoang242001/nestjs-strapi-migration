@@ -14,6 +14,7 @@ This repository is a NestJS backend with authorization, data access, BI Payment,
 | `src/common/authorization/` | Permission guard, data access interceptor, cache, owner-scope helpers, and query services. |
 | `src/modules/bi-payment/` | Program, template, document, checklist, comment, other-file, history, report, and shared step-scope logic. |
 | `src/modules/data-access/` | Record-level data access APIs and helpers used by program-scoped authorization. |
+| `src/modules/auth/` | User/admin login plus ADFS/OIDC SSO: `GET custom-auth/login-sso/oidc` (alias `oidc/authorize`) and `GET custom-auth/oidc/callback` (redirect FE with Nest `accessToken`). |
 | `src/modules/role/` and `src/modules/users/` | Role/permission management, user role assignment, and related queries. |
 | `src/migration/` and `src/deferred-migrations/` | TypeORM migrations, including the BI Payment permission addition and deferred cleanup. |
 | `src/seeders/` | Permission and role seeds used to bootstrap module IDs and relationships. |

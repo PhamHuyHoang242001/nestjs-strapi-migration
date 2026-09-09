@@ -103,14 +103,14 @@ export class ApiVersion extends BaseSoftDeleteEntity {
     type: 'jsonb',
     default: {},
     comment:
-      'JSON request: đúng một key trùng call_mode. body/query = object; upload_file = { fields, files[] } (mỗi file.url bắt buộc).',
+      'JSON request object. body/query = object; upload_file = { fields?, files[] } (mỗi file.url bắt buộc). Không theo call_mode.',
   })
   public mock_req: Record<string, unknown>;
 
   @Column({
     type: 'jsonb',
     default: {},
-    comment: 'Sample response: cùng key mode với mock_req; mỗi value là object.',
+    comment: 'Sample response JSON object. Không theo call_mode.',
   })
   public mock_res: Record<string, unknown>;
 

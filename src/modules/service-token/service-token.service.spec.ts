@@ -2,9 +2,13 @@ import { NotFoundException } from '@nestjs/common';
 import { JWT_TOKEN_TYPE } from '@modules/databases/jwt-token.entity';
 import { ServiceTokenService } from './service-token.service';
 
-jest.mock('@common/utils', () => ({
-  standardizePagination: jest.fn((total: number) => ({ totalItems: total })),
-}));
+jest.mock('@common/utils', () => {
+  const actual = jest.requireActual('@common/utils');
+  return {
+    ...actual,
+    standardizePagination: jest.fn((total: number) => ({ totalItems: total })),
+  };
+});
 
 describe('ServiceTokenService', () => {
   const jwtTokenRepository = {

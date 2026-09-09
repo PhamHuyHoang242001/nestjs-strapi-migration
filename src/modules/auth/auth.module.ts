@@ -6,6 +6,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthAdminController } from './auth-admin.controller';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { OidcSsoService } from './oidc-sso.service';
 import { PassportModule } from '@nestjs/passport';
 import { Admins } from '@modules/databases/admin.entity';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
@@ -19,7 +20,7 @@ import { CommonServiceModule } from '@modules/common-service/common-service.modu
     CommonServiceModule,
   ],
   controllers: [AuthController, AuthAdminController],
-  providers: [AuthService, UserRepository, TokenRepository, AdminRepository],
+  providers: [AuthService, OidcSsoService, UserRepository, TokenRepository, AdminRepository],
   exports: [AuthService],
 })
 export class AuthModule {}

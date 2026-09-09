@@ -1,4 +1,4 @@
-import { standardizePagination } from '@common/utils';
+import { parseJwt, ParsedJwt, standardizePagination } from '@common/utils';
 import { NOT_FOUND } from '@constant/error-messages';
 import { ADMIN_JWT_SECRET } from '@configuration/env.config';
 import { JWT_TOKEN_TYPE } from '@modules/databases/jwt-token.entity';
@@ -8,12 +8,7 @@ import { JwtTokenRepository } from './repository/jwt-token.repository';
 import { ListServiceTokenDto } from './dto/list-service-token.dto';
 import { RenderServiceTokenDto } from './dto/render-service-token.dto';
 
-/** Decoded JWT structure (mirrors the Strapi `parseJWTToken` shape). */
-export interface ParsedJwt {
-  header: Record<string, unknown>;
-  payload: Record<string, unknown>;
-  signature: string;
-}
+export type { ParsedJwt };
 
 @Injectable()
 export class ServiceTokenService {
@@ -86,25 +81,11 @@ export class ServiceTokenService {
    * an active row exists in `jwt_tokens`. Returns the parsed JWT or null.
    */
   async verifyServiceToken(token: string): Promise<ParsedJwt | null> {
-    const decoded = this.parseJwt(token);
+    const decoded = parseJwt(token);
     if (!decoded) return null;
     const exists = await this.jwtTokenRepository.findActiveServiceToken(token);
     if (!exists) return null;
     return decoded;
   }
 
-  /** Base64-decode a JWT into header/payload/signature without verifying the signature. */
-  private parseJwt(token: string): ParsedJwt | null {
-    if (!token) return null;
-    try {
-      const [header, payload, signature] = token.split('.');
-      return {
-        header: JSON.parse(Buffer.from(header, 'base64').toString('utf8')) as Record<string, unknown>,
-        payload: JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) as Record<string, unknown>,
-        signature,
-      };
-    } catch {
-      return null;
-    }
-  }
 }

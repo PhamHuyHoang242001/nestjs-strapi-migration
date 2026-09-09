@@ -22,22 +22,23 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function assertMockReqShape(format: ApiInputFormat, payload: unknown, mode: string): void {
-  if (!isPlainObject(payload)) {
-    throw new BadRequestException(`INVALID_MOCK_REQ: ${mode} must be an object matching input_format`);
+function assertMockReqShape(format: ApiInputFormat, payload: Record<string, unknown>): void {
+  if (format !== ApiInputFormat.UPLOAD_FILE) {
+    return;
   }
-  if (format === ApiInputFormat.UPLOAD_FILE) {
-    if (!isPlainObject(payload.fields) || !Array.isArray(payload.files)) {
-      throw new BadRequestException('INVALID_MOCK_REQ: upload_file requires { fields, files[] }');
-    }
-    const files = payload.files as Array<Record<string, unknown>>;
-    if (!files.length) {
-      throw new BadRequestException('INVALID_MOCK_REQ: upload_file requires at least one sample file');
-    }
-    for (const file of files) {
-      if (!isPlainObject(file) || typeof file.url !== 'string' || !file.url.trim()) {
-        throw new BadRequestException('INVALID_MOCK_REQ: each sample file needs a url');
-      }
+  if (!Array.isArray(payload.files)) {
+    throw new BadRequestException('INVALID_MOCK_REQ: upload_file requires files[]');
+  }
+  if (payload.fields !== undefined && !isPlainObject(payload.fields)) {
+    throw new BadRequestException('INVALID_MOCK_REQ: upload_file fields must be an object when present');
+  }
+  const files = payload.files as Array<Record<string, unknown>>;
+  if (!files.length) {
+    throw new BadRequestException('INVALID_MOCK_REQ: upload_file requires at least one sample file');
+  }
+  for (const file of files) {
+    if (!isPlainObject(file) || typeof file.url !== 'string' || !file.url.trim()) {
+      throw new BadRequestException('INVALID_MOCK_REQ: each sample file needs a url');
     }
   }
 }
@@ -53,24 +54,20 @@ export function validateAndNormalizeSpec(dto: ApiSpecInput): ApiSpecInput {
     throw new BadRequestException('INVALID_SYNC_TIMEOUT: required when call_mode is sync');
   }
 
-  const mock_req = isPlainObject(dto.mock_req) ? dto.mock_req : {};
-  const mock_res = isPlainObject(dto.mock_res) ? dto.mock_res : {};
-  const mode = call_mode;
-
-  if (!(mode in mock_req)) {
-    throw new BadRequestException(`INVALID_MOCK_REQ: missing ${mode} sample`);
+  if (!isPlainObject(dto.mock_req)) {
+    throw new BadRequestException('INVALID_MOCK_REQ: must be a JSON object');
   }
-  assertMockReqShape(dto.input_format, mock_req[mode], mode);
-  if (!(mode in mock_res) || !isPlainObject(mock_res[mode])) {
-    throw new BadRequestException(`INVALID_MOCK_RES: ${mode} must be a JSON object`);
+  if (!isPlainObject(dto.mock_res)) {
+    throw new BadRequestException('INVALID_MOCK_RES: must be a JSON object');
   }
+  assertMockReqShape(dto.input_format, dto.mock_req);
 
   return {
     ...dto,
     call_mode,
     sync_timeout: call_mode === ApiCallMode.ASYNC ? undefined : timeout,
-    mock_req: { [mode]: mock_req[mode] },
-    mock_res: { [mode]: mock_res[mode] },
+    mock_req: dto.mock_req,
+    mock_res: dto.mock_res,
   };
 }
 

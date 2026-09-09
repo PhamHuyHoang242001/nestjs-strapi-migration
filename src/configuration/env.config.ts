@@ -185,15 +185,20 @@ export const TAX_CLOUD_API_KEY: string = process.env.TAX_CLOUD_API_KEY ?? '';
 export const TAX_CLOUD_API_LOGIN_ID: string = process.env.TAX_CLOUD_API_LOGIN_ID ?? '';
 export const TAX_CLOUD_TIC: string = process.env.TAX_CLOUD_TIC ?? '';
 
-// OIDC / SSO (optional)
+// OIDC / SSO (optional). SSO_OIDC_* aliases match Strapi/ADFS env names.
 export const OIDC_ISSUER: string = process.env.OIDC_ISSUER ?? '';
-export const OIDC_CLIENT_ID: string = process.env.OIDC_CLIENT_ID ?? '';
-export const OIDC_CLIENT_SECRET: string = process.env.OIDC_CLIENT_SECRET ?? '';
-export const OIDC_REDIRECT_URI: string = process.env.OIDC_REDIRECT_URI ?? '';
-export const OIDC_SCOPE: string = process.env.OIDC_SCOPE ?? 'openid profile email';
-export const OIDC_AUTHORIZATION_ENDPOINT: string = process.env.OIDC_AUTHORIZATION_ENDPOINT ?? '';
-export const OIDC_TOKEN_ENDPOINT: string = process.env.OIDC_TOKEN_ENDPOINT ?? '';
-export const OIDC_USERINFO_ENDPOINT: string = process.env.OIDC_USERINFO_ENDPOINT ?? '';
+export const OIDC_CLIENT_ID: string = process.env.OIDC_CLIENT_ID ?? process.env.SSO_OIDC_CLIENT_ID ?? '';
+export const OIDC_CLIENT_SECRET: string = process.env.OIDC_CLIENT_SECRET ?? process.env.SSO_OIDC_CLIENT_SECRET ?? '';
+export const OIDC_REDIRECT_URI: string = process.env.OIDC_REDIRECT_URI ?? process.env.SSO_OIDC_REDIRECT_URI ?? '';
+export const OIDC_SCOPE: string = process.env.OIDC_SCOPE ?? process.env.SSO_OIDC_SCOPES ?? 'openid profile email';
+export const OIDC_AUTHORIZATION_ENDPOINT: string =
+  process.env.OIDC_AUTHORIZATION_ENDPOINT ?? process.env.SSO_OIDC_AUTHORIZATION_ENDPOINT ?? '';
+export const OIDC_TOKEN_ENDPOINT: string = process.env.OIDC_TOKEN_ENDPOINT ?? process.env.SSO_OIDC_TOKEN_ENDPOINT ?? '';
+export const OIDC_USERINFO_ENDPOINT: string =
+  process.env.OIDC_USERINFO_ENDPOINT ?? process.env.SSO_OIDC_USER_INFO_ENDPOINT ?? '';
+export const OIDC_GRANT_TYPE: string = process.env.OIDC_GRANT_TYPE ?? process.env.SSO_OIDC_GRANT_TYPE ?? 'authorization_code';
+export const OIDC_TLS_INSECURE: boolean = (process.env.OIDC_TLS_INSECURE ?? '').toLowerCase() === 'true';
+export const BASE_END_USER_URL: string = process.env.BASE_END_USER_URL ?? '';
 
 // Strapi v5 upload integration — skill package file storage.
 // STRAPI_UPLOAD_URL: base URL of the Strapi v5 instance (e.g. http://localhost:1337).

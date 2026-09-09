@@ -7,6 +7,7 @@ import { IsUserGuard } from '@common/guards/is-user.guard';
 import { Body, Controller, Delete, Get, HttpCode, Post, Put, Res, UseGuards, Query } from '@nestjs/common';
 import { ApiBasicAuth, ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { OidcSsoService } from './oidc-sso.service';
 import { EmailDto, LogoutDto, RefreshTokenDto, TokenDto, UserLoginDto } from './dto';
 import { UserChangePasswordDto } from './dto/change-password.dto';
 import { RecoverPasswordDto } from './dto/confirm-forgot-password.dto';
@@ -17,7 +18,10 @@ import { USER_CLIENT } from '@common/enums';
 @Controller(['custom-auth', 'v1/auth'])
 @ApiTags('Auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly oidcSsoService: OidcSsoService,
+  ) {}
 
   @ApiOperation({ summary: 'login' })
   @ApiBody({
@@ -32,30 +36,27 @@ export class AuthController {
     return this.authService.login(body as unknown as UserLoginDto, USER_CLIENT.USER, header as never);
   }
 
+  @Get('login-sso/oidc')
+  @ApiOperation({ summary: 'ADFS/OIDC SSO start (Strapi login-sso/oidc)' })
+  oidcSignIn(@Query() query: Record<string, unknown>, @Res() res: { redirect: (url: string) => void }) {
+    return res.redirect(this.oidcSsoService.buildAuthorizationUrl(query));
+  }
+
   @Get('oidc/authorize')
-  @ApiOperation({ summary: 'OIDC authorize (redirect to provider)' })
-  oidcAuthorize(@HeaderScope() header: Record<string, unknown>, @Res() res: { redirect: (url: string) => void }) {
-    // Build authorization URL and redirect
-    const deviceHash = header?.['device_hash'] as string | undefined;
-    const state = deviceHash ? encodeURIComponent(deviceHash) : '';
-    const rawParams: Record<string, string | undefined> = {
-      client_id: process.env.OIDC_CLIENT_ID || undefined,
-      response_type: 'code',
-      scope: process.env.OIDC_SCOPE || 'openid profile email',
-      redirect_uri: process.env.OIDC_REDIRECT_URI || undefined,
-    };
-    const query = Object.entries(rawParams)
-      .filter((entry): entry is [string, string] => Boolean(entry[1]))
-      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-      .join('&');
-    const url = `${process.env.OIDC_AUTHORIZATION_ENDPOINT || ''}?${query}${state ? `&state=${state}` : ''}`;
-    return res.redirect(url);
+  @ApiOperation({ summary: 'OIDC authorize alias of login-sso/oidc' })
+  oidcAuthorize(@Query() query: Record<string, unknown>, @Res() res: { redirect: (url: string) => void }) {
+    return this.oidcSignIn(query, res);
   }
 
   @Get('oidc/callback')
-  @ApiOperation({ summary: 'OIDC callback' })
-  async oidcCallback(@Query('code') code: string, @HeaderScope() header: Record<string, unknown>) {
-    return this.authService.handleOidcCallback(code, header);
+  @ApiOperation({ summary: 'OIDC/ADFS callback — redirect to end-user login' })
+  async oidcCallback(
+    @Query() query: Record<string, unknown>,
+    @HeaderScope() header: Record<string, unknown>,
+    @Res() res: { redirect: (url: string) => void },
+  ) {
+    const url = await this.oidcSsoService.handleCallback(query, header);
+    return res.redirect(url);
   }
 
   @ApiOperation({ summary: 'register' })

@@ -77,36 +77,32 @@ export class ApiSpecFieldsDto {
   @ApiProperty({
     required: true,
     description:
-      'Request JSON: đúng một key trùng call_mode (sync hoặc async). body/query: object. upload_file: { fields, files[] }, mỗi file.url bắt buộc.',
+      'Request JSON object. body/query: any object. upload_file: { fields?, files[] }, mỗi file.url bắt buộc. Không phụ thuộc call_mode.',
     example: {
-      sync: {
-        account_id: '123',
-        amount: 10000,
-      },
+      account_id: '123',
+      amount: 10000,
     },
     examples: {
       body: {
         summary: 'JSON body',
-        value: { sync: { account_id: '123', amount: 10000 } },
+        value: { account_id: '123', amount: 10000 },
       },
       query: {
         summary: 'Query params',
-        value: { sync: { q: 'vietcombank', page: 1 } },
+        value: { q: 'vietcombank', page: 1 },
       },
       upload_file: {
         summary: 'File upload sample (url only stored)',
         value: {
-          sync: {
-            fields: { note: 'sao ke T6' },
-            files: [
-              {
-                field: 'file',
-                filename: 'statement-sample.pdf',
-                mime: 'application/pdf',
-                url: 'https://your-strapi.example/uploads/statement-sample.pdf',
-              },
-            ],
-          },
+          fields: { note: 'sao ke T6' },
+          files: [
+            {
+              field: 'file',
+              filename: 'statement-sample.pdf',
+              mime: 'application/pdf',
+              url: 'https://your-strapi.example/uploads/statement-sample.pdf',
+            },
+          ],
         },
       },
     },
@@ -116,8 +112,8 @@ export class ApiSpecFieldsDto {
 
   @ApiProperty({
     required: true,
-    description: 'Sample response: đúng một key trùng call_mode. Value phải là object.',
-    example: { sync: { ok: true } },
+    description: 'Sample response JSON object. Không phụ thuộc call_mode.',
+    example: { ok: true },
   })
   @IsObject()
   readonly mock_res: Record<string, unknown>;
