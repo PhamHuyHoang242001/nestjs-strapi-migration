@@ -31,12 +31,12 @@ import {
   ToggleStatusDto,
 } from './dto';
 
-// Controller mounted at 'v1/prompt' so routes resolve to /api/v1/api-catalog/*.
+// Controller mounted at 'v1/ai-hub/api-catalog' so routes resolve to /api/v1/ai-hub/api-catalog/*.
 // IMPORTANT: No DataAccessInterceptor, no OwnerScopeGuard on prompt routes.
 //
 // Spec is inline JSON (mock_req / mock_res). There is NO ZIP fetch — only the optional avatar
 // URL is validated against the configured Strapi origin at submit time.
-@Controller('v1/api-catalog')
+@Controller('v1/ai-hub/api-catalog')
 @ApiTags('api-catalog')
 @ApiBearerAuth()
 @UseGuards(BearerGuard)
@@ -50,7 +50,7 @@ export class ApiCatalogController {
     private readonly uploadService: ApiCatalogUploadService,
   ) {}
 
-  // GET /v1/api-catalog/items — list packages with active version joined. Defaults to active-only;
+  // GET /v1/ai-hub/api-catalog/items — list packages with active version joined. Defaults to active-only;
   // status=inactive is honored only for approvers (drives the status gate in the service).
   @ApiOperation({ summary: 'List API packages (active by default; inactive for approvers)' })
   @Get('items')
@@ -63,7 +63,7 @@ export class ApiCatalogController {
   // Workspace counters moved to GET /v1/asset-hub/stats, which reports skill and prompt together
   // so the dashboard makes one request instead of two.
 
-  // GET /v1/api-catalog/items/:id — detail with versions[] folded in + caller-scoped flags.
+  // GET /v1/ai-hub/api-catalog/items/:id — detail with versions[] folded in + caller-scoped flags.
   // All callers are authenticated (BearerGuard); userId drives isUpdate / inactive access / scrubbing.
   @ApiOperation({ summary: 'Get API package detail with version history' })
   @Get('items/:id')
@@ -73,7 +73,7 @@ export class ApiCatalogController {
     return this.queryService.detail(id, userId);
   }
 
-  // GET /v1/api-catalog/reviews/submitters — distinct pending-version creators for the queue filter.
+  // GET /v1/ai-hub/api-catalog/reviews/submitters — distinct pending-version creators for the queue filter.
   // Static path before GET reviews so it is never captured as a param. Approver-only.
   @ApiOperation({ summary: 'Distinct submitters of pending API versions (approver-only)' })
   @UseGuards(PermissionGuard)
@@ -83,7 +83,7 @@ export class ApiCatalogController {
     return this.queryService.listReviewSubmitters();
   }
 
-  // GET /v1/api-catalog/reviews — pending versions queue. Approver-only (PermissionGuard).
+  // GET /v1/ai-hub/api-catalog/reviews — pending versions queue. Approver-only (PermissionGuard).
   @ApiOperation({ summary: 'Review queue (approver-only pending versions)' })
   @UseGuards(PermissionGuard)
   @RequirePermission('api_approve')
@@ -92,7 +92,7 @@ export class ApiCatalogController {
     return this.queryService.listReviews(q);
   }
 
-  // GET /v1/api-catalog/versions — flat "My Version" list (all states) with code/state filters +
+  // GET /v1/ai-hub/api-catalog/versions — flat "My Version" list (all states) with code/state filters +
   // pagination. codesOnly=true returns the distinct-code options for the filter select.
   // BearerGuard only; always own-scoped in the service — every caller, approver included, sees only
   // versions they submitted or that belong to a package they created (role never widens this).
@@ -104,7 +104,7 @@ export class ApiCatalogController {
     return this.queryService.listVersions(q, userId);
   }
 
-  // GET /v1/api-catalog/versions/:vid — full caller-authorized version detail. Service permits the
+  // GET /v1/ai-hub/api-catalog/versions/:vid — full caller-authorized version detail. Service permits the
   // submitter, package creator, or an approver and builds predecessor comparison for pending rows.
   @ApiOperation({ summary: 'Get API version detail' })
   @Get('versions/:vid')
@@ -114,7 +114,7 @@ export class ApiCatalogController {
     return this.queryService.versionDetail(vid, userId);
   }
 
-  // GET /v1/api-catalog/versions/:vid/diff — capability: upload OR approve. Service then restricts
+  // GET /v1/ai-hub/api-catalog/versions/:vid/diff — capability: upload OR approve. Service then restricts
   // upload-only callers to submitter / package creator; approvers see any version.
   @ApiOperation({ summary: 'Get API version diff (upload or approve; row-ownership in service)' })
   @UseGuards(PermissionGuard)
@@ -126,7 +126,7 @@ export class ApiCatalogController {
     return this.queryService.getDiff(vid, userId);
   }
 
-  // GET /v1/api-catalog/my-permissions — caller's prompt permission flags.
+  // GET /v1/ai-hub/api-catalog/my-permissions — caller's prompt permission flags.
   @ApiOperation({ summary: 'Get caller API catalog permission flags' })
   @Get('my-permissions')
   myPermissions(@Req() req: RequestWithInfo) {
@@ -135,7 +135,7 @@ export class ApiCatalogController {
     return this.uploadService.getMyPermissions(userId);
   }
 
-  // POST /v1/api-catalog/items — create new package from inline prompt text; requires api_upload.
+  // POST /v1/ai-hub/api-catalog/items — create new package from inline prompt text; requires api_upload.
   @ApiOperation({ summary: 'Create new API package' })
   @Post('items')
   @UseGuards(PermissionGuard)
@@ -146,7 +146,7 @@ export class ApiCatalogController {
     return this.uploadService.createNew(dto, userId);
   }
 
-  // PUT /v1/api-catalog/items/:id/versions — submit a new version (full-body replace);
+  // PUT /v1/ai-hub/api-catalog/items/:id/versions — submit a new version (full-body replace);
   // requires api_upload. Creates a pending version; the current active version keeps serving
   // until this one is approved (see uploadService.createVersion / approve).
   @ApiOperation({ summary: 'Submit new version of an existing API package' })
@@ -163,7 +163,7 @@ export class ApiCatalogController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
-  // PUT /v1/api-catalog/versions/:vid — resubmit the latest rejected version (same body as a bump).
+  // PUT /v1/ai-hub/api-catalog/versions/:vid — resubmit the latest rejected version (same body as a bump).
   // Caller must hold api_upload and be that version's submitter (not package owner / approver).
   @ApiOperation({ summary: 'Edit the latest rejected API version (submitter + upload only)' })
   @Put('versions/:vid')
@@ -179,7 +179,7 @@ export class ApiCatalogController {
     return this.uploadService.editVersion(vid, dto, userId);
   }
 
-  // POST /v1/api-catalog/versions/:vid/approve — requires api_approve.
+  // POST /v1/ai-hub/api-catalog/versions/:vid/approve — requires api_approve.
   @ApiOperation({ summary: 'Approve a pending API version (promotes to active)' })
   @Post('versions/:vid/approve')
   @UseGuards(PermissionGuard)
@@ -190,7 +190,7 @@ export class ApiCatalogController {
     return this.uploadService.approve(vid, userId);
   }
 
-  // POST /v1/api-catalog/versions/:vid/reject — requires api_approve; reason required in body.
+  // POST /v1/ai-hub/api-catalog/versions/:vid/reject — requires api_approve; reason required in body.
   @ApiOperation({ summary: 'Reject a pending API version (reason required)' })
   @Post('versions/:vid/reject')
   @UseGuards(PermissionGuard)
@@ -205,7 +205,7 @@ export class ApiCatalogController {
     return this.uploadService.reject(vid, dto, userId);
   }
 
-  // PATCH /v1/api-catalog/items/:id/status — toggle active/inactive; requires api_approve.
+  // PATCH /v1/ai-hub/api-catalog/items/:id/status — toggle active/inactive; requires api_approve.
   @ApiOperation({ summary: 'Toggle API package active/inactive status' })
   @Patch('items/:id/status')
   @UseGuards(PermissionGuard)

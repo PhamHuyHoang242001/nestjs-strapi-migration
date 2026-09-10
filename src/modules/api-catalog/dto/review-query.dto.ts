@@ -5,7 +5,7 @@ import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 export const REVIEW_SORTS = ['newest', 'oldest', 'name'] as const;
 export type ReviewSort = (typeof REVIEW_SORTS)[number];
 
-// Query DTO for GET /v1/api-catalog/reviews.
+// Query DTO for GET /v1/ai-hub/api-catalog/reviews.
 // Visibility is derived from the caller's permissions (approver = all pending, else own
 // submitted). submitted_by / category_id / sort are display filters and never widen that.
 export class ReviewQueryDto {

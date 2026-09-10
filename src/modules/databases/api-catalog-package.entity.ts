@@ -7,7 +7,7 @@ export enum ApiPackageStatus {
   INACTIVE = 'inactive',
 }
 
-@Entity('api_catalog_packages')
+@Entity('ai_api_catalog_packages')
 export class ApiPackage extends BaseSoftDeleteEntity {
   @Column({ nullable: true, type: 'int' })
   public active_version_id: number | null;

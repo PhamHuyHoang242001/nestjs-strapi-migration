@@ -172,8 +172,8 @@ export class LatestArtifactsService {
       this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id', userId),
       this.fetchWorkspaceStats(
         'api-catalog',
-        'api_catalog_versions',
-        'api_catalog_packages',
+        'ai_api_catalog_versions',
+        'ai_api_catalog_packages',
         'api_catalog_package_id',
         userId,
       ),
@@ -193,7 +193,7 @@ export class LatestArtifactsService {
     const [skillRows, promptRows, apiRows] = await Promise.all([
       this.fetchLatestPerPackage('skill_versions', 'skill_packages', 'skill_package_id', limit),
       this.fetchLatestPerPackage('prompt_versions', 'prompt_packages', 'prompt_package_id', limit),
-      this.fetchLatestPerPackage('api_catalog_versions', 'api_catalog_packages', 'api_catalog_package_id', limit),
+      this.fetchLatestPerPackage('ai_api_catalog_versions', 'ai_api_catalog_packages', 'api_catalog_package_id', limit),
     ]);
 
     const emailMap = await this.resolveEmails([

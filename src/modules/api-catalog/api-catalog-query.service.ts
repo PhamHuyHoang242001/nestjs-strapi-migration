@@ -129,7 +129,7 @@ export class ApiCatalogQueryService {
       return false;
     }
     const newestRows = (await this.versionRepo.manager.query(
-      `SELECT id FROM api_catalog_versions
+      `SELECT id FROM ai_api_catalog_versions
        WHERE api_catalog_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
        ORDER BY id DESC LIMIT 1`,
       [packageId],
@@ -318,8 +318,8 @@ export class ApiCatalogQueryService {
     if (query.codesOnly) {
       const rows = (await this.versionRepo.manager.query(
         `SELECT DISTINCT ON (p.code) p.id AS package_id, p.code, v.name AS package_name
-         FROM api_catalog_versions v
-         INNER JOIN api_catalog_packages p ON p.id = v.api_catalog_package_id
+         FROM ai_api_catalog_versions v
+         INNER JOIN ai_api_catalog_packages p ON p.id = v.api_catalog_package_id
          WHERE ${whereSql}
          ORDER BY p.code, v.id DESC`,
         params,
@@ -342,8 +342,8 @@ export class ApiCatalogQueryService {
 
     const countRows = (await this.versionRepo.manager.query(
       `SELECT COUNT(*)::int AS total
-       FROM api_catalog_versions v
-       INNER JOIN api_catalog_packages p ON p.id = v.api_catalog_package_id
+       FROM ai_api_catalog_versions v
+       INNER JOIN ai_api_catalog_packages p ON p.id = v.api_catalog_package_id
        WHERE ${whereSql}${stateSql}`,
       rowParams,
     )) as Array<{ total: number }>;
@@ -360,13 +360,13 @@ export class ApiCatalogQueryService {
               (
                 v.state = 'rejected'
                 AND v.id = (
-                  SELECT MAX(latest.id) FROM api_catalog_versions latest
+                  SELECT MAX(latest.id) FROM ai_api_catalog_versions latest
                   WHERE latest.api_catalog_package_id = v.api_catalog_package_id
                     AND latest.is_deleted = false AND latest.deleted_at IS NULL
                 )
               ) AS is_update
-       FROM api_catalog_versions v
-       INNER JOIN api_catalog_packages p ON p.id = v.api_catalog_package_id
+       FROM ai_api_catalog_versions v
+       INNER JOIN ai_api_catalog_packages p ON p.id = v.api_catalog_package_id
        WHERE ${whereSql}${stateSql}
        ORDER BY v.created_at ${orderDir}, v.id ${orderDir}
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -464,7 +464,7 @@ export class ApiCatalogQueryService {
   async listReviewSubmitters() {
     const rows = (await this.versionRepo.manager.query(
       `SELECT DISTINCT v.submitted_by AS id, u.email
-         FROM api_catalog_versions v
+         FROM ai_api_catalog_versions v
          LEFT JOIN users u ON u.id = v.submitted_by
         WHERE v.state = 'pending'
           AND v.deleted_at IS NULL

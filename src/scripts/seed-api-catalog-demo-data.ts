@@ -170,21 +170,21 @@ async function main(): Promise<void> {
       if (!categoryId) {
         categoryId = ((await m.query(`INSERT INTO ai_hub_categories (name, type, is_active) VALUES ('API Demo', 'api-catalog', true) RETURNING id`)) as Array<{ id: number }>)[0].id;
       }
-      await m.query(`DELETE FROM api_catalog_version_tags`);
-      await m.query(`DELETE FROM api_catalog_package_responsibles`);
-      await m.query(`UPDATE api_catalog_packages SET active_version_id = NULL`);
-      await m.query(`DELETE FROM api_catalog_versions`);
-      await m.query(`DELETE FROM api_catalog_packages`);
+      await m.query(`DELETE FROM ai_api_catalog_version_tags`);
+      await m.query(`DELETE FROM ai_api_catalog_package_responsibles`);
+      await m.query(`UPDATE ai_api_catalog_packages SET active_version_id = NULL`);
+      await m.query(`DELETE FROM ai_api_catalog_versions`);
+      await m.query(`DELETE FROM ai_api_catalog_packages`);
 
       const published: Array<{ pid: number; s: Sample; guide: string; verId: number }> = [];
       for (const s of samples) {
         const pkg = (await m.query(
-          `INSERT INTO api_catalog_packages (status, created_by, publisher_id, code) VALUES ('active', $1, $2, '') RETURNING id`,
+          `INSERT INTO ai_api_catalog_packages (status, created_by, publisher_id, code) VALUES ('active', $1, $2, '') RETURNING id`,
           [uploader.id, publisher[0].id],
         )) as Array<{ id: number }>;
         const pid = pkg[0].id;
-        await m.query(`UPDATE api_catalog_packages SET code = $1 WHERE id = $2`, [`api_catalog_${pid}`, pid]);
-        await m.query(`INSERT INTO api_catalog_package_responsibles (api_catalog_package_id, user_id) VALUES ($1, $2)`, [pid, uploader.id]);
+        await m.query(`UPDATE ai_api_catalog_packages SET code = $1 WHERE id = $2`, [`api_catalog_${pid}`, pid]);
+        await m.query(`INSERT INTO ai_api_catalog_package_responsibles (api_catalog_package_id, user_id) VALUES ($1, $2)`, [pid, uploader.id]);
         const reqRows = s.req.map((r) => `<tr><td>${r.name}</td><td>${r.location}</td><td>${r.type}</td><td>${r.required}</td><td>${r.desc}</td></tr>`).join('');
         const resRows = s.res.map((r) => `<tr><td>${r.name}</td><td>${r.type}</td><td>${r.desc}</td></tr>`).join('');
         const errRows = s.err.map((r) => `<tr><td>${r.code}</td><td>${r.status}</td><td>${r.desc}</td></tr>`).join('');
@@ -194,7 +194,7 @@ async function main(): Promise<void> {
 <h3>Mã lỗi</h3><table><thead><tr><th>HTTP code</th><th>Status</th><th>Nguyên nhân</th></tr></thead><tbody>${errRows}</tbody></table>
 <h3>Sequence diagram</h3><ol>${s.seq.map((st) => `<li><p><strong>${st.title}</strong> — ${st.desc}</p></li>`).join('')}</ol>`;
         const ver = (await m.query(
-          `INSERT INTO api_catalog_versions (
+          `INSERT INTO ai_api_catalog_versions (
              api_catalog_package_id, version_no, state, name, short_description, category_id,
              usage_guide_html, http_method, endpoint_path, input_format, call_mode, sync_timeout,
              sla, tps, latency_p95, throughput, max_payload, rate_limit, encryption,
@@ -209,7 +209,7 @@ async function main(): Promise<void> {
             JSON.stringify(s.mockReq), JSON.stringify(s.mockRes), uploader.id,
           ],
         )) as Array<{ id: number }>;
-        await m.query(`UPDATE api_catalog_packages SET active_version_id = $1 WHERE id = $2`, [ver[0].id, pid]);
+        await m.query(`UPDATE ai_api_catalog_packages SET active_version_id = $1 WHERE id = $2`, [ver[0].id, pid]);
         published.push({ pid, s, guide, verId: ver[0].id });
       }
 
@@ -218,7 +218,7 @@ async function main(): Promise<void> {
         submitter: number; changelog?: string; reject?: string;
       }) => {
         await m.query(
-          `INSERT INTO api_catalog_versions (
+          `INSERT INTO ai_api_catalog_versions (
              api_catalog_package_id, version_no, old_version, state, name, short_description, category_id,
              usage_guide_html, http_method, endpoint_path, input_format, call_mode, sync_timeout,
              sla, tps, latency_p95, throughput, max_payload, rate_limit, encryption,
@@ -253,16 +253,16 @@ async function main(): Promise<void> {
       const approverSamples = [samples[0], samples[5]];
       for (const [i, s] of approverSamples.entries()) {
         const pkg = (await m.query(
-          `INSERT INTO api_catalog_packages (status, created_by, publisher_id, code) VALUES ('active', $1, $2, '') RETURNING id`,
+          `INSERT INTO ai_api_catalog_packages (status, created_by, publisher_id, code) VALUES ('active', $1, $2, '') RETURNING id`,
           [approver.id, publisher[0].id],
         )) as Array<{ id: number }>;
         const pid = pkg[0].id;
-        await m.query(`UPDATE api_catalog_packages SET code = $1 WHERE id = $2`, [`api_catalog_${pid}`, pid]);
-        await m.query(`INSERT INTO api_catalog_package_responsibles (api_catalog_package_id, user_id) VALUES ($1, $2)`, [pid, approver.id]);
+        await m.query(`UPDATE ai_api_catalog_packages SET code = $1 WHERE id = $2`, [`api_catalog_${pid}`, pid]);
+        await m.query(`INSERT INTO ai_api_catalog_package_responsibles (api_catalog_package_id, user_id) VALUES ($1, $2)`, [pid, approver.id]);
         const guide = `<h2>Cách dùng</h2><p>${s.definition}</p><h3>Sequence diagram</h3><ol>${s.seq.map((st) => `<li><p><strong>${st.title}</strong> — ${st.desc}</p></li>`).join('')}</ol>`;
         if (i === 0) {
           const ver = (await m.query(
-            `INSERT INTO api_catalog_versions (
+            `INSERT INTO ai_api_catalog_versions (
                api_catalog_package_id, version_no, state, name, short_description, category_id,
                usage_guide_html, http_method, endpoint_path, input_format, call_mode, sync_timeout,
                sla, tps, latency_p95, throughput, max_payload, rate_limit, encryption,
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
               JSON.stringify(s.mockReq), JSON.stringify(s.mockRes), approver.id, approver.id,
             ],
           )) as Array<{ id: number }>;
-          await m.query(`UPDATE api_catalog_packages SET active_version_id = $1 WHERE id = $2`, [ver[0].id, pid]);
+          await m.query(`UPDATE ai_api_catalog_packages SET active_version_id = $1 WHERE id = $2`, [ver[0].id, pid]);
           await insertVer({
             pid, no: 2, old: 1, state: 'pending', s, guide, submitter: approver.id, changelog: 'Approver self-bump chờ duyệt',
           });
@@ -289,11 +289,11 @@ async function main(): Promise<void> {
       // Rejected version owned by approver (My Version filter rejected).
       const rej = samples[2];
       const rejPkg = (await m.query(
-        `INSERT INTO api_catalog_packages (status, created_by, publisher_id, code) VALUES ('active', $1, $2, '') RETURNING id`,
+        `INSERT INTO ai_api_catalog_packages (status, created_by, publisher_id, code) VALUES ('active', $1, $2, '') RETURNING id`,
         [approver.id, publisher[0].id],
       )) as Array<{ id: number }>;
-      await m.query(`UPDATE api_catalog_packages SET code = $1 WHERE id = $2`, [`api_catalog_${rejPkg[0].id}`, rejPkg[0].id]);
-      await m.query(`INSERT INTO api_catalog_package_responsibles (api_catalog_package_id, user_id) VALUES ($1, $2)`, [rejPkg[0].id, approver.id]);
+      await m.query(`UPDATE ai_api_catalog_packages SET code = $1 WHERE id = $2`, [`api_catalog_${rejPkg[0].id}`, rejPkg[0].id]);
+      await m.query(`INSERT INTO ai_api_catalog_package_responsibles (api_catalog_package_id, user_id) VALUES ($1, $2)`, [rejPkg[0].id, approver.id]);
       await insertVer({
         pid: rejPkg[0].id, no: 1, old: null, state: 'rejected', s: rej,
         guide: `<p>${rej.definition}</p>`, submitter: approver.id, reject: 'Thiếu mô tả QoS / sample không đủ.',

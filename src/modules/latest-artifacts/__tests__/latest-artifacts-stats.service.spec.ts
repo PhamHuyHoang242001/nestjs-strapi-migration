@@ -53,7 +53,7 @@ describe('LatestArtifactsService.listStats', () => {
   it.each([
     ['skill', 0, 'skill_package_id', 'skill_versions', 'skill_packages'],
     ['prompt', 1, 'prompt_package_id', 'prompt_versions', 'prompt_packages'],
-    ['api-catalog', 2, 'api_catalog_package_id', 'api_catalog_versions', 'api_catalog_packages'],
+    ['api-catalog', 2, 'api_catalog_package_id', 'ai_api_catalog_versions', 'ai_api_catalog_packages'],
   ])('classifies %s by latest live version per package', async (_type, callIndex, fk, versionTable, packageTable) => {
     const { service, query } = makeService();
     query.mockResolvedValue([SKILL_AGGREGATE]);

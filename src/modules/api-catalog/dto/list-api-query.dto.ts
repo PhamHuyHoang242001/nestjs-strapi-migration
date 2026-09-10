@@ -4,7 +4,7 @@ import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-
 import { ApiPackageStatus } from '@modules/databases/api-catalog-package.entity';
 import { ApiHttpMethod } from '@modules/databases/api-catalog-version.entity';
 
-// Query DTO for GET /v1/api-catalog/items.
+// Query DTO for GET /v1/ai-hub/api-catalog/items.
 // limit is capped at 100 (uncapped limit is a DoS risk on large tables).
 // Filters are parameter-bound in the service (never string-concatenated into SQL).
 // Tag matching lives inside `search` (substring on catalog tag name) — there is no

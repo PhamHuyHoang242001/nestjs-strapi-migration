@@ -170,7 +170,7 @@ describe('ApiCatalogQueryService', () => {
       const joined = qb.capturedWheres.join(' | ');
       // Tag matching now goes through the join table, so a keyword hits the catalog name.
       expect(joined).toContain('t.name ILIKE :search');
-      expect(joined).toContain('SELECT vt.api_catalog_version_id FROM api_catalog_version_tags vt');
+      expect(joined).toContain('SELECT vt.api_catalog_version_id FROM ai_api_catalog_version_tags vt');
       // The jsonb column is gone from the read path entirely.
       expect(joined).not.toContain('av.tags');
       // The subquery must not reference an outer alias — that breaks TypeORM's skip/take rewrite.
@@ -601,7 +601,7 @@ describe('ApiCatalogQueryService', () => {
 
       const result = await service.listReviewSubmitters();
 
-      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM api_catalog_versions'));
+      expect(versionRepo.manager.query).toHaveBeenCalledWith(expect.stringContaining('FROM ai_api_catalog_versions'));
       expect(result).toEqual({
         data: [
           { id: 2, email: 'a@x.com' },
@@ -838,7 +838,7 @@ describe('ApiCatalogQueryService', () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
       versionRepo.manager.query = jest.fn().mockImplementation(async (sql: string) => {
-        if (/SELECT id FROM api_catalog_versions/.test(sql)) return [{ id: VERSION_ID }];
+        if (/SELECT id FROM ai_api_catalog_versions/.test(sql)) return [{ id: VERSION_ID }];
         return [];
       });
 

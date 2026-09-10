@@ -163,10 +163,10 @@ export class ApiCatalogUploadService {
         // point at a soft-deleted row. The pending version shares that number as a placeholder
         // (version_no = old_version); approve later finalizes version_no = (old_version ?? 0) + 1.
         // The one-pending partial index still guards against a second pending (23505 → 409 below).
-        await manager.query('SELECT id FROM api_catalog_packages WHERE id = $1 FOR UPDATE', [packageId]);
+        await manager.query('SELECT id FROM ai_api_catalog_packages WHERE id = $1 FOR UPDATE', [packageId]);
 
         const maxRow = await manager.query<{ max: string | null }[]>(
-          `SELECT MAX(version_no) AS max FROM api_catalog_versions
+          `SELECT MAX(version_no) AS max FROM ai_api_catalog_versions
            WHERE api_catalog_package_id = $1 AND state = 'approved' AND is_deleted = false AND deleted_at IS NULL`,
           [packageId],
         );
@@ -265,10 +265,10 @@ export class ApiCatalogUploadService {
 
     try {
       return await this.dataSource.transaction(async (manager) => {
-        await manager.query('SELECT id FROM api_catalog_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
+        await manager.query('SELECT id FROM ai_api_catalog_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
 
         const pendingRows = await manager.query<{ id: number }[]>(
-          `SELECT id FROM api_catalog_versions
+          `SELECT id FROM ai_api_catalog_versions
            WHERE api_catalog_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
            LIMIT 1`,
           [pkg.id],
@@ -278,7 +278,7 @@ export class ApiCatalogUploadService {
         }
 
         const newestRows = await manager.query<{ id: number; state: string }[]>(
-          `SELECT id, state FROM api_catalog_versions
+          `SELECT id, state FROM ai_api_catalog_versions
            WHERE api_catalog_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
            ORDER BY id DESC LIMIT 1`,
           [pkg.id],

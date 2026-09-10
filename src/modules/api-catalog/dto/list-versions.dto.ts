@@ -6,7 +6,7 @@ import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-val
 export const VERSION_STATE_FILTERS = ['pending', 'approved', 'rejected', 'all'] as const;
 export type VersionStateFilter = (typeof VERSION_STATE_FILTERS)[number];
 
-// Query DTO for GET /v1/api-catalog/versions — the flat 1-row-per-version management list.
+// Query DTO for GET /v1/ai-hub/api-catalog/versions — the flat 1-row-per-version management list.
 // Visibility is derived server-side from the caller's permission set (NOT from any field here):
 // api_catalog_package_id is ONLY a display filter, never an authorization input.
 export class ListVersionsDto {
