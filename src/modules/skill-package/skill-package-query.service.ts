@@ -152,7 +152,12 @@ export class SkillPackageQueryService {
 
     const qb = this.packageRepo
       .createQueryBuilder('pkg')
-      .innerJoinAndSelect('pkg.active_version', 'av', 'av.deleted_at IS NULL AND av.is_deleted = false')
+      .innerJoinAndMapOne(
+        'pkg.active_version',
+        SkillVersion,
+        'av',
+        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
+      )
       // Zip file(s) live in skill_version_files; join the non-deleted rows so each active_version
       // carries its files[] with full metadata (name/size/mime). avatar_url is a native column on
       // the version (returned automatically). Filter both soft-delete markers uniformly.
@@ -174,7 +179,11 @@ export class SkillPackageQueryService {
     // Separate COUNT query for accurate total (reference: bi-payment-document.service.ts:502).
     const countQb = this.packageRepo
       .createQueryBuilder('pkg')
-      .innerJoin('pkg.active_version', 'av', 'av.deleted_at IS NULL AND av.is_deleted = false')
+      .innerJoin(
+        SkillVersion,
+        'av',
+        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
+      )
       .where('pkg.deleted_at IS NULL')
       .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
@@ -221,10 +230,11 @@ export class SkillPackageQueryService {
   // edit/pending flags, gates inactive access to owner/approver, and scrubs non-approved draft
   // content from callers who are neither the owner nor an approver.
   async detail(packageId: number, userId: number) {
-    const pkg = await this.packageRepo.findOne({
-      where: { id: packageId, is_deleted: false },
-      relations: ['active_version', 'active_version.files'],
-    });
+    const pkg = await this.attachActiveVersion(
+      await this.packageRepo.findOne({
+        where: { id: packageId, is_deleted: false },
+      }),
+    );
     if (!pkg) throw new NotFoundException('Skill package not found');
 
     // Resolve caller permissions once (per-user TTL cache upstream).
@@ -642,10 +652,11 @@ export class SkillPackageQueryService {
     packageId: number,
     userId: number,
   ): Promise<{ fileUrl: string; name: string; versionNo: number }> {
-    const pkg = await this.packageRepo.findOne({
-      where: { id: packageId, is_deleted: false },
-      relations: ['active_version', 'active_version.files'],
-    });
+    const pkg = await this.attachActiveVersion(
+      await this.packageRepo.findOne({
+        where: { id: packageId, is_deleted: false },
+      }),
+    );
     if (!pkg) throw new NotFoundException('Skill package not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
@@ -668,5 +679,20 @@ export class SkillPackageQueryService {
     if (!zip) throw new NotFoundException('Active skill version has no downloadable file');
 
     return { fileUrl: zip.file_url, name: active.name, versionNo: active.version_no };
+  }
+
+  private async attachActiveVersion(pkg: SkillPackage | null): Promise<SkillPackage | null> {
+    if (!pkg) return pkg;
+    if (pkg.active_version !== undefined) return pkg;
+    if (!pkg.active_version_id) {
+      pkg.active_version = null;
+      return pkg;
+    }
+    const loaded = await this.versionRepo.findOne({
+      where: { id: pkg.active_version_id },
+      relations: ['files'],
+    });
+    pkg.active_version = loaded ?? pkg.active_version ?? null;
+    return pkg;
   }
 }

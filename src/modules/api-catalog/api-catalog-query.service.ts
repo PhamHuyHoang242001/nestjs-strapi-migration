@@ -160,7 +160,12 @@ export class ApiCatalogQueryService {
 
     const qb = this.packageRepo
       .createQueryBuilder('pkg')
-      .innerJoinAndSelect('pkg.active_version', 'av', 'av.deleted_at IS NULL AND av.is_deleted = false')
+      .innerJoinAndMapOne(
+        'pkg.active_version',
+        ApiVersion,
+        'av',
+        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
+      )
       .where('pkg.deleted_at IS NULL')
       .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
@@ -182,7 +187,11 @@ export class ApiCatalogQueryService {
     const countQb = this.packageRepo
       .createQueryBuilder('pkg')
       // Match the data query's soft-delete filter exactly (both markers) so total never overcounts.
-      .innerJoin('pkg.active_version', 'av', 'av.deleted_at IS NULL AND av.is_deleted = false')
+      .innerJoin(
+        ApiVersion,
+        'av',
+        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
+      )
       .where('pkg.deleted_at IS NULL')
       .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
@@ -230,10 +239,11 @@ export class ApiCatalogQueryService {
   // edit/pending flags, gates inactive access to owner/approver, and scrubs non-approved draft
   // content from callers who are neither the owner nor an approver.
   async detail(packageId: number, userId: number) {
-    const pkg = await this.packageRepo.findOne({
-      where: { id: packageId, is_deleted: false },
-      relations: ['active_version'],
-    });
+    const pkg = await this.attachActiveVersion(
+      await this.packageRepo.findOne({
+        where: { id: packageId, is_deleted: false },
+      }),
+    );
     if (!pkg) throw new NotFoundException('API package not found');
 
     // Resolve caller permissions once (per-user TTL cache upstream).
@@ -626,10 +636,11 @@ export class ApiCatalogQueryService {
     packageId: number,
     userId: number,
   ): Promise<{ version: ApiVersion; authorEmail: string | null; categoryName: string | null; tags: TagRef[] }> {
-    const pkg = await this.packageRepo.findOne({
-      where: { id: packageId, is_deleted: false },
-      relations: ['active_version'],
-    });
+    const pkg = await this.attachActiveVersion(
+      await this.packageRepo.findOne({
+        where: { id: packageId, is_deleted: false },
+      }),
+    );
     if (!pkg) throw new NotFoundException('API package not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
@@ -655,5 +666,17 @@ export class ApiCatalogQueryService {
       pkg.active_version.id,
     );
     return { version: pkg.active_version, authorEmail, categoryName, tags: tags ?? [] };
+  }
+
+  private async attachActiveVersion(pkg: ApiPackage | null): Promise<ApiPackage | null> {
+    if (!pkg) return pkg;
+    if (pkg.active_version !== undefined) return pkg;
+    if (!pkg.active_version_id) {
+      pkg.active_version = null;
+      return pkg;
+    }
+    const loaded = await this.versionRepo.findOne({ where: { id: pkg.active_version_id } });
+    pkg.active_version = loaded ?? pkg.active_version ?? null;
+    return pkg;
   }
 }

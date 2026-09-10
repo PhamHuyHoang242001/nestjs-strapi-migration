@@ -1,5 +1,5 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, OneToOne } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 import type { ApiVersion } from './api-catalog-version.entity';
 
 export enum ApiPackageStatus {
@@ -28,7 +28,6 @@ export class ApiPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   public owning_unit_name: string | null;
 
-  @OneToOne('ApiVersion', { nullable: true, eager: false })
-  @JoinColumn({ name: 'active_version_id' })
-  public active_version: ApiVersion | null;
+  // Hydrated in query services by active_version_id — not a TypeORM relation (no circular FK).
+  public active_version?: ApiVersion | null;
 }

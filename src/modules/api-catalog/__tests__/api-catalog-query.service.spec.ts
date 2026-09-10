@@ -20,6 +20,7 @@ function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
   const qb: any = {
     innerJoin: jest.fn().mockReturnThis(),
     innerJoinAndSelect: jest.fn().mockReturnThis(),
+    innerJoinAndMapOne: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     where: jest.fn((sql: string, p?: Record<string, unknown>) => {
       capturedWheres.push(sql);
@@ -312,7 +313,9 @@ describe('ApiCatalogQueryService', () => {
       expect((result.active_version as any).file).toBeUndefined();
       expect(result.versions[0]).toEqual({ version_no: 1, reviewed_at: reviewedAt });
       expect((result.versions[0] as any).usage_guide_html).toBeUndefined();
-      expect(packageRepo.findOne).toHaveBeenCalledWith(expect.objectContaining({ relations: ['active_version'] }));
+      expect(packageRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 1, is_deleted: false } }),
+      );
       expect(versionRepo.find).toHaveBeenCalledWith(
         expect.objectContaining({ select: ['id', 'version_no', 'reviewed_at'] }),
       );

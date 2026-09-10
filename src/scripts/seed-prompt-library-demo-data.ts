@@ -248,16 +248,6 @@ async function ensureSchema(m: EntityManager): Promise<void> {
         FOREIGN KEY (prompt_package_id) REFERENCES prompt_packages (id) ON DELETE RESTRICT
     )
   `);
-  // Circular FK — add only if missing (CREATE TABLE IF NOT EXISTS won't re-add it on re-run).
-  await m.query(`
-    DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_prompt_packages_active_version') THEN
-        ALTER TABLE prompt_packages
-          ADD CONSTRAINT fk_prompt_packages_active_version
-          FOREIGN KEY (active_version_id) REFERENCES prompt_versions (id) ON DELETE SET NULL;
-      END IF;
-    END $$;
-  `);
   await m.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS uidx_prompt_versions_one_pending_per_package
     ON prompt_versions (prompt_package_id) WHERE state = 'pending' AND is_deleted = false

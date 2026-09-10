@@ -20,6 +20,7 @@ function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
   const qb: any = {
     innerJoin: jest.fn().mockReturnThis(),
     innerJoinAndSelect: jest.fn().mockReturnThis(),
+    innerJoinAndMapOne: jest.fn().mockReturnThis(),
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     where: jest.fn((sql: string, p?: Record<string, unknown>) => {
       capturedWheres.push(sql);
@@ -205,15 +206,16 @@ describe('SkillPackageQueryService', () => {
 
       await service.list({ page: 1, limit: 10 }, USER_ID);
 
-      expect(qb.innerJoinAndSelect).toHaveBeenCalledWith(
+      expect(qb.innerJoinAndMapOne).toHaveBeenCalledWith(
         'pkg.active_version',
+        expect.anything(),
         'av',
-        'av.deleted_at IS NULL AND av.is_deleted = false',
+        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
       );
       expect(qb.innerJoin).toHaveBeenCalledWith(
-        'pkg.active_version',
+        expect.anything(),
         'av',
-        'av.deleted_at IS NULL AND av.is_deleted = false',
+        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
       );
     });
 
@@ -384,7 +386,7 @@ describe('SkillPackageQueryService', () => {
       expect((result.active_version as any).file.file_url).toBe('/uploads/v2.zip');
       expect(result.versions[0]).toEqual({ version_no: 1, reviewed_at: reviewedAt });
       expect(packageRepo.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ relations: ['active_version', 'active_version.files'] }),
+        expect.objectContaining({ where: { id: 1, is_deleted: false } }),
       );
       expect(versionRepo.find).toHaveBeenCalledWith(
         expect.objectContaining({ select: ['id', 'version_no', 'reviewed_at'] }),

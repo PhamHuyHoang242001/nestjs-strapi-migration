@@ -1,5 +1,5 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, OneToOne } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 import type { PromptVersion } from './prompt-version.entity';
 
 // Status controls approver-facing visibility toggle. 'inactive' hides from public list
@@ -39,9 +39,6 @@ export class PromptPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   public owning_unit_name: string | null;
 
-  // Eager relation to the active version (read-only navigation property).
-  // lazy import avoids circular dependency between PromptPackage ↔ PromptVersion.
-  @OneToOne('PromptVersion', { nullable: true, eager: false })
-  @JoinColumn({ name: 'active_version_id' })
-  public active_version: PromptVersion | null;
+  // Hydrated in query services by active_version_id — not a TypeORM relation (no circular FK).
+  public active_version?: PromptVersion | null;
 }

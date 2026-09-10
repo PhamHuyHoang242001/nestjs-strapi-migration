@@ -1,5 +1,5 @@
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { Column, Entity, JoinColumn, OneToOne } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 import type { SkillVersion } from './skill-version.entity';
 
 // Status controls approver-facing visibility toggle. 'inactive' hides from public list
@@ -39,9 +39,6 @@ export class SkillPackage extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   public owning_unit_name: string | null;
 
-  // Eager relation to the active version (read-only navigation property).
-  // lazy import avoids circular dependency between SkillPackage ↔ SkillVersion.
-  @OneToOne('SkillVersion', { nullable: true, eager: false })
-  @JoinColumn({ name: 'active_version_id' })
-  public active_version: SkillVersion | null;
+  // Hydrated in query services by active_version_id — not a TypeORM relation (no circular FK).
+  public active_version?: SkillVersion | null;
 }
