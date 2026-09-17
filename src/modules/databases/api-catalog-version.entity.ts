@@ -27,7 +27,7 @@ export enum ApiCallMode {
   ASYNC = 'async',
 }
 
-@Entity('ai_api_catalog_versions')
+@Entity('api_catalog_versions')
 export class ApiVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public api_catalog_package_id: number;
