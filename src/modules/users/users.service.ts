@@ -72,70 +72,71 @@ export class UsersService {
     return new PageDto(entities, pageMetaDto);
   }
 
-  async getMyProfile(user: Users | { id: number }) {
+  async getMyProfile(user: Pick<Users, 'id'>) {
     const { id } = user;
 
-    const query = this.userRepository
+    // Do not join role_permissions and user_data_access in one query:
+    // those OneToMany trees cartesian-product in TypeORM (RAM ~ perms × DA rules).
+    const result = await this.userRepository
       .createQueryBuilder('u')
       .leftJoinAndSelect('u.user_roles', 'ur')
       .leftJoinAndSelect('ur.role', 'r')
-      .leftJoinAndSelect('r.role_permissions', 'rrp')
-      .leftJoinAndSelect('rrp.permission', 'rp')
-      .leftJoinAndSelect('u.user_data_access', 'uda')
-      .leftJoinAndSelect('uda.permission', 'udap')
-      .leftJoinAndSelect(
-        'uda.data_access',
-        'da',
-        // Date-granularity window: start_date counts from the beginning of its day,
-        // end_date through the end of its day (so start = end = today is active all day).
-        `da.scope_type = :scope
-         AND (da.start_date IS NULL OR da.start_date::date <= CURRENT_DATE)
-         AND (da.end_date   IS NULL OR da.end_date::date   >= CURRENT_DATE)`,
-        { scope: SCOPE_TYPE.ALLOW },
-      )
-      .where('u.id = :userId', { userId: id });
-
-    const result = await query.getOne();
+      .select(['u.id', 'u.username', 'u.email', 'u.status', 'u.type', 'ur.id', 'ur.role_id', 'r.id', 'r.name'])
+      .where('u.id = :userId AND u.is_deleted = :isDeleted', {
+        userId: id,
+        isDeleted: false,
+      })
+      .getOne();
 
     if (!result) {
       throw new NotFoundException(ERROR_CODE.A009);
     }
 
-    // 1) Role-derived permissions (via the role_permissions join)
-    const rolePermissions: Permission[] = (result.user_roles ?? [])
-      .flatMap((ur) => (ur.role?.role_permissions ?? []).map((rp) => rp.permission))
-      .filter(Boolean);
+    const roleIds = [...new Set((result.user_roles ?? []).map((ur) => ur.role_id).filter(Boolean))];
+    const permRepo = this.dataSource.getRepository(Permission);
+    const startDate = DayJS().startOf('date').toDate();
+    const endDate = DayJS().endOf('date').toDate();
 
-    // 2) User-level data_access exceptions (scope=allow, within active window)
-    //    Only rows where `uda.data_access` matched the JOIN condition contribute.
-    const userAccessPermissions: Permission[] = (result.user_data_access ?? [])
-      .filter((uda) => !!uda.data_access)
-      .map((uda) => uda.permission)
-      .filter(Boolean);
+    const [rolePermissions, dataAccessPermissions] = await Promise.all([
+      roleIds.length
+        ? permRepo
+            .createQueryBuilder('p')
+            .innerJoin('p.role_permissions', 'rp')
+            .where('rp.role_id IN (:...roleIds)', { roleIds })
+            .distinct(true)
+            .getMany()
+        : Promise.resolve([] as Permission[]),
+      permRepo
+        .createQueryBuilder('p')
+        .innerJoin('p.user_data_access', 'uda')
+        .innerJoin(
+          'uda.data_access',
+          'da',
+          `da.scope_type = :scope
+           AND (da.start_date IS NULL OR da.start_date <= :endDate)
+           AND (da.end_date IS NULL OR da.end_date >= :startDate)`,
+          { scope: SCOPE_TYPE.ALLOW, startDate, endDate },
+        )
+        .where('uda.user_id = :userId', { userId: id })
+        .distinct(true)
+        .getMany(),
+    ]);
 
-    // Dedupe role + user_access by permission id
     const permissionMap = new Map<number, Permission>();
-    [...rolePermissions, ...userAccessPermissions].forEach((permission) => {
-      if (permission?.id != null) permissionMap.set(permission.id, permission);
-    });
+    for (const permission of [...rolePermissions, ...dataAccessPermissions]) {
+      permissionMap.set(permission.id, permission);
+    }
 
-    // 3) SO (resource_owners) implicit verbs.
-    //    OwnerScopeResolverService walks owned roots' module subtree and excludes
-    //    the root-level `create` action — matches "trừ create root module".
     const impliedVerbs: Set<string> = await this.ownerScopeResolver.getUserImpliedVerbs(id);
-
-    // Fetch full Permission rows for SO verbs not already covered by role/user_access.
     const existingCodes = new Set([...permissionMap.values()].map((p) => p.code).filter(Boolean));
     const missingSoCodes = [...impliedVerbs].filter((code) => !existingCodes.has(code));
 
     if (missingSoCodes.length > 0) {
-      const soPermissions = await this.dataSource.getRepository(Permission).find({
-        where: { code: In(missingSoCodes), is_active: true },
+      const soPermissions = await permRepo.find({
+        where: { code: In(missingSoCodes) },
       });
       soPermissions.forEach((p) => permissionMap.set(p.id, p));
     }
-
-    const permissions = [...permissionMap.values()];
 
     return {
       id: result.id,
@@ -143,7 +144,9 @@ export class UsersService {
       email: result.email,
       status: result.status,
       type: result.type,
-      permissions,
+      permissions: [...permissionMap.values()],
+      language: (result as Users & { language?: string }).language,
+      roles: result.user_roles?.map((ur) => ur?.role?.name),
     };
   }
 
