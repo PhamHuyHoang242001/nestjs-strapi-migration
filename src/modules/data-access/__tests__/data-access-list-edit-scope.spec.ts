@@ -29,7 +29,7 @@ function createService(opts: { queryResults: any[]; editIds?: number[] }) {
     {} as HierarchyValidationService,
     { log: jest.fn().mockResolvedValue(undefined) } as unknown as ChangeHistoryLogger,
     { invalidateByTable: jest.fn(), invalidateUser: jest.fn() } as unknown as PermissionCacheService,
-    { buildPath: jest.fn().mockResolvedValue('ID: 0') } as unknown as RecordPathService,
+    { buildPath: jest.fn().mockResolvedValue('ID: 0'), buildPaths: jest.fn().mockResolvedValue(new Map()) } as unknown as RecordPathService,
     {} as unknown as Repository<any>,
     {} as unknown as Repository<any>,
     {} as unknown as Repository<any>,

@@ -14,6 +14,7 @@ import { ReportAccessRecordsController } from './report-access-records.controlle
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
 import { CreatorAccessGrantService } from './services/creator-access-grant.service';
 import { RecordPathService } from './services/record-path.service';
+import { RecordSubjectsService } from './services/record-subjects.service';
 import { ManageAuthorityService } from './helpers/manage-authority.helper';
 
 @Module({
@@ -29,6 +30,7 @@ import { ManageAuthorityService } from './helpers/manage-authority.helper';
     HierarchyValidationService,
     CreatorAccessGrantService,
     RecordPathService,
+    RecordSubjectsService,
     ManageAuthorityService,
   ],
   exports: [DataAccessService, DataAccessRepository, CreatorAccessGrantService, ManageAuthorityService],

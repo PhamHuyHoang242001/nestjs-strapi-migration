@@ -22,6 +22,11 @@ const mockRecordPath = {
   buildPath: jest.fn().mockImplementation((_table: string, id: number) =>
     Promise.resolve(`ROOT / leaf-${id}`),
   ),
+  buildPaths: jest.fn().mockImplementation((leaves: { tableName: string; id: number }[]) => {
+    const map = new Map<string, string>();
+    for (const leaf of leaves) map.set(`${leaf.tableName}:${leaf.id}`, `ROOT / leaf-${leaf.id}`);
+    return Promise.resolve(map);
+  }),
 } as unknown as import("../services/record-path.service").RecordPathService;
 
 function createMockService(queryMock: jest.Mock) {
@@ -185,7 +190,10 @@ describe('DataAccessService.list() — grouped', () => {
       // record_path: root→leaf breadcrumb (RecordPathService stub). module_path
       // + record_name unchanged — additive field only.
       expect(group).toHaveProperty('record_path', 'ROOT / leaf-42');
-      expect(mockRecordPath.buildPath).toHaveBeenCalledWith('bi_hub_reports', 42);
+      expect(mockRecordPath.buildPaths).toHaveBeenCalled();
+      expect(mockRecordPath.buildPaths).toHaveBeenCalledWith(
+        expect.arrayContaining([{ tableName: 'bi_hub_reports', id: 42 }]),
+      );
       // Default (no EXTRA_FIELDS_MAP entry) → record_extra key absent, base
       // contract unchanged. Additive only when dev declares extra fields.
       expect(group).not.toHaveProperty('record_extra');

@@ -322,15 +322,11 @@ export class DataAccessService {
     // Step 3: Batch fetch record names + extra fields from target tables
     const recordInfos = await this.batchFetchRecordInfo(groups);
 
-    // Step 3b: Build root→leaf record path per group (breadcrumb). Per-record
-    // walk via HIERARCHY_MAP; isolated catch so one bad record can't fail the list.
-    const recordPaths = await Promise.all(
-      groups.map((g) =>
-        g.table_name && RULE_TARGET_TABLES.has(g.table_name)
-          ? this.recordPath.buildPath(g.table_name, g.data_id).catch(() => `ID: ${g.data_id}`)
-          : Promise.resolve(`ID: ${g.data_id}`),
-      ),
-    );
+    // Step 3b: Batch root→leaf paths (one query per table/hop, not per record).
+    const pathLeaves = groups
+      .filter((g) => g.table_name && RULE_TARGET_TABLES.has(g.table_name))
+      .map((g) => ({ tableName: g.table_name as string, id: g.data_id as number }));
+    const pathMap = await this.recordPath.buildPaths(pathLeaves).catch(() => new Map<string, string>());
 
     // Step 4: Assemble grouped response
     const rulesByGroup = new Map<string, any[]>();
@@ -351,7 +347,7 @@ export class DataAccessService {
       rulesByGroup.set(key, arr);
     }
 
-    const data = groups.map((g, i) => {
+    const data = groups.map((g) => {
       const info = recordInfos.get(`${g.data_id}-${g.module_id}`);
       return {
         data_id: g.data_id,
@@ -359,7 +355,7 @@ export class DataAccessService {
         module_name: g.module_name,
         module_path: g.module_path,
         record_name: info?.record_name || `ID: ${g.data_id}`,
-        record_path: recordPaths[i],
+        record_path: pathMap.get(`${g.table_name}:${g.data_id}`) ?? `ID: ${g.data_id}`,
         table_name: g.table_name,
         // record_extra only present when the table has declared extra fields
         // AND a live row was fetched. Empty/missing config or soft-deleted row

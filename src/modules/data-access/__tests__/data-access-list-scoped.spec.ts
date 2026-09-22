@@ -26,7 +26,10 @@ function createService(queryResults: any[], opts: { superAdmin?: boolean } = {})
     invalidateByTable: jest.fn().mockReturnValue(Promise.resolve()),
     invalidateUser: jest.fn().mockReturnValue(Promise.resolve()),
   } as unknown as PermissionCacheService;
-  const mockRecordPath = { buildPath: jest.fn().mockResolvedValue("ID: 0") } as unknown as import("../services/record-path.service").RecordPathService;
+  const mockRecordPath = {
+    buildPath: jest.fn().mockResolvedValue("ID: 0"),
+    buildPaths: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as import("../services/record-path.service").RecordPathService;
   const mockModuleRepo = {} as unknown as Repository<any>;
   const mockRoleDataAccessRepo = {} as unknown as Repository<any>;
   const mockUserDataAccessRepo = {} as unknown as Repository<any>;

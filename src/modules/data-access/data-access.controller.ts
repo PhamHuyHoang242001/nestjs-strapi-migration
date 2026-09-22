@@ -8,6 +8,8 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import { DataAccessService } from './data-access.service';
+import { RecordSubjectsQueryDto } from './dto/record-subjects-query.dto';
+import { RecordSubjectsService } from './services/record-subjects.service';
 import { CreateBulkDataAccessDto } from './dto/create-bulk-data-access.dto';
 import { CreateDataAccessDto } from './dto/create-data-access.dto';
 import { HandoverDataAccessDto } from './dto/handover-data-access.dto';
@@ -20,7 +22,10 @@ import { UpdateDataAccessDto } from './dto/update-data-access.dto';
 @ApiBearerAuth()
 @UseGuards(BearerGuard, IsMaintenanceGuard, PermissionGuard)
 export class DataAccessController {
-  constructor(private readonly dataAccessService: DataAccessService) {}
+  constructor(
+    private readonly dataAccessService: DataAccessService,
+    private readonly recordSubjectsService: RecordSubjectsService,
+  ) {}
 
   @ApiOperation({ summary: 'List data access rules grouped by record (data_id + module_id) with pagination' })
   @Get('list')
@@ -97,6 +102,30 @@ export class DataAccessController {
   handover(@Body() body: HandoverDataAccessDto, @Req() req: RequestWithInfo) {
     const user = req.info?.user;
     return this.dataAccessService.handover(body, (user?.username as string) || 'system', user, req.info?.client);
+  }
+
+  @ApiOperation({
+    summary: 'List roles with explicit VIEW on the parent of a child table being created',
+  })
+  @Get('record-subjects/roles')
+  @RequirePermission('perm_data_access_create')
+  listRecordSubjectRoles(
+    @Query() query: RecordSubjectsQueryDto,
+    @PaginationDecorator() pagination: PaginationParams,
+  ) {
+    return this.recordSubjectsService.listRoles(query, pagination);
+  }
+
+  @ApiOperation({
+    summary: 'List users with explicit VIEW on the parent of a child table being created',
+  })
+  @Get('record-subjects/users')
+  @RequirePermission('perm_data_access_create')
+  listRecordSubjectUsers(
+    @Query() query: RecordSubjectsQueryDto,
+    @PaginationDecorator() pagination: PaginationParams,
+  ) {
+    return this.recordSubjectsService.listUsers(query, pagination);
   }
 
   @ApiOperation({ summary: 'Get all data access rules for a specific user' })
