@@ -16,6 +16,7 @@ import { RoleModule } from './modules/role/role.module';
 import { TokenModule } from './modules/token/token.module';
 import { UsersModule } from './modules/users/users.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { UploadsModule } from '@modules/upload/uploads.module';
 import { CommonServiceModule } from '@modules/common-service/common-service.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import * as session from 'express-session';
@@ -25,7 +26,6 @@ import { randomBytes } from 'crypto';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminsModule } from '@modules/admins/admins.module';
-import { UploadsModule } from '@modules/upload/uploads.module';
 import { ModuleManagementModule } from '@modules/module/module-management.module';
 import { PermissionMatrixModule } from '@modules/permission-matrix/permission-matrix.module';
 import { ChangeHistoryModule } from '@modules/change-history/change-history.module';
@@ -96,9 +96,9 @@ import { CategoryModule } from '@modules/category/category.module';
     RoleModule,
     PermissionModule,
     SettingsModule,
+    UploadsModule,
     CommonServiceModule,
     AdminsModule,
-    UploadsModule,
     ModuleManagementModule,
     PermissionMatrixModule,
     ChangeHistoryModule,

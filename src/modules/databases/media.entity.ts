@@ -3,32 +3,60 @@ import { Column, Entity } from 'typeorm';
 
 @Entity('media')
 export class Media extends BaseSoftDeleteEntity {
-  @Column({ nullable: false })
-  public filename: string;
+  @Column({ type: 'varchar', nullable: true })
+  name: string;
 
-  @Column({ nullable: true })
-  public original_name: string;
+  @Column({ type: 'text', nullable: true })
+  alternative_text: string;
 
-  @Column({ nullable: true })
-  public mime_type: string;
+  @Column({ type: 'text', nullable: true })
+  caption: string;
 
-  @Column({ nullable: true })
-  public size: number;
+  @Column({ type: 'int', nullable: true })
+  width: number;
 
-  @Column({ nullable: true })
-  public path: string;
+  @Column({ type: 'int', nullable: true })
+  height: number;
 
-  @Column({ nullable: true })
-  public uploader_id?: number;
+  @Column({ type: 'jsonb', nullable: true })
+  formats: Record<string, any>;
 
-  @Column({ nullable: true })
-  public uploader_type?: string;
+  @Column({ type: 'varchar', nullable: true })
+  hash: string;
 
-  @Column({ nullable: true })
-  public upload_type?: string;
+  @Column({ type: 'varchar', nullable: true })
+  ext: string;
 
-  // Strapi file ID (provider_uid) returned by the Strapi v5 upload API response.
-  // Stored to enable lifecycle callbacks (delete from Strapi when NestJS soft-deletes this row).
-  @Column({ nullable: true })
-  public provider_uid?: string;
+  @Column({ type: 'varchar', nullable: true })
+  mime: string;
+
+  @Column({ type: 'numeric', nullable: true })
+  size: number;
+
+  @Column({ type: 'text', nullable: true })
+  url: string;
+
+  @Column({ type: 'text', nullable: true })
+  preview_url: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  provider: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  provider_metadata: Record<string, any>;
+
+  @Column({ type: 'varchar', nullable: true })
+  folder_path: string;
+
+  @Column({ type: 'int', nullable: true })
+  created_by_id: number;
+
+  @Column({ type: 'int', nullable: true })
+  updated_by_id: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  locale: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  focal_point: Record<string, any>;
 }
