@@ -59,10 +59,41 @@ async function scanRar(filePath: string): Promise<boolean> {
 // `7z list` rows look like: 2024-01-31 10:20:30 ....A  1234  567  path/to/file.txt
 const SEVEN_ZIP_ENTRY_LINE = /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+[.\w]+\s+\d*\s+\d*\s+(.+)$/;
 
+/**
+ * Only the slice of the 7z-wasm surface this file touches.
+ *
+ * Declared locally on purpose: the package ships CommonJS typings whose shape TypeScript
+ * resolves differently depending on the consumer's `moduleResolution` / interop flags, so
+ * importing its types makes this file compile in one repo and fail in the next.
+ */
+interface SevenZipModule {
+  FS: { writeFile(path: string, data: Uint8Array): void };
+  callMain(args: string[]): number | void;
+}
+
+type SevenZipFactory = (opts?: {
+  print?(text: string): void;
+  printErr?(text: string): void;
+}) => Promise<SevenZipModule>;
+
+/**
+ * At runtime `module.exports` IS the factory and `module.exports.default` points back at
+ * itself, but the static type is either the namespace or `{ default: namespace }` depending
+ * on the build config. Pick whichever side is actually callable instead of guessing.
+ */
+function resolveSevenZipFactory(imported: unknown): SevenZipFactory {
+  const candidate = typeof imported === 'function' ? imported : (imported as { default?: unknown })?.default;
+
+  if (typeof candidate !== 'function') {
+    throw new TypeError('7z-wasm did not expose a callable factory');
+  }
+  return candidate as unknown as SevenZipFactory;
+}
+
 async function scan7z(filePath: string): Promise<boolean> {
   try {
     // Loaded lazily: the wasm binary is heavy and most uploads never touch .7z.
-    const SevenZip = (await import('7z-wasm')).default;
+    const SevenZip = resolveSevenZipFactory(await import('7z-wasm'));
 
     const lines: string[] = [];
     const sevenZip = await SevenZip({
