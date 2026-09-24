@@ -49,6 +49,7 @@ import { ApiCatalogModule } from '@modules/api-catalog/api-catalog.module';
 import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
 import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { CategoryModule } from '@modules/category/category.module';
+import { ConfigsModule } from '@modules/configs/configs.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -121,6 +122,7 @@ import { CategoryModule } from '@modules/category/category.module';
     LatestArtifactsModule,
     AssetHubCatalogModule,
     CategoryModule,
+    ConfigsModule,
   ],
   controllers: [AppController],
   providers: [
