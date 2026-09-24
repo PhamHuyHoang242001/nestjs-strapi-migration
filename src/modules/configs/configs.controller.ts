@@ -1,20 +1,6 @@
 import { BearerGuard } from '@common/guards';
 import { RequestWithInfo } from '@common/types/request-with-info';
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-  UsePipes,
-  ValidationPipe,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigsService } from './configs.service';
 import { CreateConfigDto, ListConfigDto, UpdateConfigDto } from './dto/config.dto';
@@ -23,7 +9,6 @@ import { CreateConfigDto, ListConfigDto, UpdateConfigDto } from './dto/config.dt
 @ApiBearerAuth()
 @Controller('v1/configs')
 @UseGuards(BearerGuard)
-@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class ConfigsController {
   constructor(private readonly configsService: ConfigsService) {}
 
