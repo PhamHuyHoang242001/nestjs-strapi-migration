@@ -95,8 +95,10 @@ export class AuthController {
   @ApiOperation({ summary: 'Log out and remove refresh token' })
   @Post('logout')
   @HttpCode(200)
-  async logOut(@Body() body: LogoutDto) {
-    return this.authService.logOut(body);
+  @ApiBearerAuth()
+  @UseGuards(BearerGuard)
+  async logOut(@Body() body: LogoutDto, @UserScope() user: Record<string, unknown>) {
+    return this.authService.logOut(body, user);
   }
 
   @ApiOperation({ summary: 'fetch-profile' })

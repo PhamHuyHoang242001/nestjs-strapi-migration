@@ -38,4 +38,9 @@ export class Token extends BaseColumn {
 
   @Column({ nullable: true })
   public device_id: string;
+
+  // OIDC id_token captured at SSO login. Needed at logout to build the provider's
+  // end-session URL (id_token_hint); null for username/password logins.
+  @Column({ type: 'text', nullable: true })
+  public id_token: string;
 }

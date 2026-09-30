@@ -81,7 +81,17 @@ export class OidcSsoService {
       const user = await this.findOrCreateUser(email, sub);
       const domain = (header?.['domain'] as string) || '';
       const device_hash = (header?.['device_hash'] as string) || '';
-      const { token } = await this.authService.createToken(user.id, USER_CLIENT.USER, domain, device_hash, false, false);
+      // id_token is persisted on the login row so logout can pass it back as id_token_hint.
+      const { token } = await this.authService.createToken(
+        user.id,
+        USER_CLIENT.USER,
+        domain,
+        device_hash,
+        false,
+        false,
+        false,
+        tokens.id_token,
+      );
 
       const decodedState = decodeURIComponent(state);
       let redirectUrl = `${BASE_END_USER_URL}/login?accessToken=${token}&state=${decodedState}`;

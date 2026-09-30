@@ -10,6 +10,8 @@ export interface ICreateToken {
   remember_me?: boolean;
   device_hash?: string;
   is_mobile?: boolean;
+  /** OIDC id_token, stored on the login row so logout can build the end-session URL. */
+  id_token?: string;
 }
 
 export interface ClientBasic {

@@ -1,4 +1,5 @@
-import { STATUS, TOKEN_TYPE, USER_CLIENT, USER_STATUS } from '@common/enums';
+import { RedisKey, STATUS, TOKEN_TYPE, USER_CLIENT, USER_STATUS } from '@common/enums';
+import { RedisAdapter } from '@common/infrastructure/redis.adapter';
 import { comparePassword, decryptToken, generateToken, hashPassword, randomStringUuid } from '@common/utils';
 import { TOKEN_TIME } from '@constant/auth';
 import {
@@ -23,6 +24,8 @@ import { ERROR_CODE } from '@constant/error-code';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
 import { CommonServiceService } from '@modules/common-service/common-service.service';
 import { DayJS } from '@common/utils/dayjs';
+import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
+import { BASE_END_USER_URL, OIDC_CLIENT_ID, OIDC_LOGOUT_URI } from '@configuration/env.config';
 
 
 @Injectable()
@@ -32,6 +35,7 @@ export class AuthService {
     private readonly userRepository: UserRepository,
     private readonly adminRepository: AdminRepository,
     private readonly commonService: CommonServiceService,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
 
   checkPassword(password: string, hash: string, _messageError?: string, errorCode = ERROR_CODE.A007) {
@@ -122,6 +126,7 @@ export class AuthService {
     ask_change_pwd: boolean = false,
     remember_me: boolean = false,
     is_mobile: boolean = false,
+    id_token?: string,
   ) {
     const { token, expired_at } = await this.generateToken({
       user,
@@ -130,6 +135,7 @@ export class AuthService {
       remember_me,
       device_hash,
       is_mobile,
+      id_token,
     });
     const { token: refresh_token, expired_at: refresh_token_expired_at } = await this.generateToken({
       user,
@@ -150,7 +156,16 @@ export class AuthService {
   }
 
   async generateToken(payload: ICreateToken) {
-    const { token_ref = null, user, client: tokenClient, type, remember_me = false, device_hash, is_mobile } = payload;
+    const {
+      token_ref = null,
+      user,
+      client: tokenClient,
+      type,
+      remember_me = false,
+      device_hash,
+      is_mobile,
+      id_token,
+    } = payload;
     let time: number | undefined;
     const time_extend_remember_login = remember_me ? 14 * 24 * 60 : 0;
     switch (type) {
@@ -182,6 +197,9 @@ export class AuthService {
       expired_at: expired_at?.valueOf(),
       timestamp: dayjs().valueOf(),
       options: payload.options || {},
+      // Persisted on the row only; deliberately absent from MAPPING_ENCRYPT_TOKEN so the
+      // issued token stays opaque and small.
+      ...(id_token ? { id_token } : {}),
     };
 
     if (is_mobile) delete options['expired_at'];
@@ -216,12 +234,42 @@ export class AuthService {
     };
   }
 
-  async logOut(payload: LogoutDto) {
+  /**
+   * Log out the caller's own session: drop the token row, the Redis token allowlist entry and
+   * every cached authorization artifact, then hand back the provider end-session URL so the
+   * client can terminate the SSO session too.
+   */
+  async logOut(payload: LogoutDto, caller?: Record<string, unknown>) {
     const { access_token } = payload;
-    await this.tokenRepository.checkTokenValid(access_token, [TOKEN_TYPE.LOGIN]);
+    const token = await this.tokenRepository.checkTokenValid(access_token, [TOKEN_TYPE.LOGIN]);
+
+    const userId = token.user_id;
+    const callerId = Number(caller?.['id']);
+    // A session may only be revoked by its owner; anything else is treated as invalid input.
+    if (!callerId || !userId || userId !== callerId) throw new BadRequestException(DATA_INVALID);
 
     await this.tokenRepository.delete({ access_token });
-    return { logout: true };
+    // USER_TOKEN_<id> is the allowlist entry read by TransformFileAuthGuard; permission and
+    // owner-scope caches outlive the token otherwise, so a re-login would reuse stale grants.
+    await Promise.all([
+      RedisAdapter.del(`${RedisKey.USER_TOKEN}_${userId}`),
+      this.permissionCache.invalidateUser(userId),
+      this.permissionCache.invalidateOwnerScopeUser(userId),
+    ]);
+
+    return { logout: true, url: this.buildSsoLogoutUrl(token.id_token, caller) };
+  }
+
+  /** Provider end-session URL; null when SSO is not configured or the session was not an SSO login. */
+  private buildSsoLogoutUrl(id_token: string | undefined, caller?: Record<string, unknown>): string | null {
+    if (!OIDC_LOGOUT_URI) return null;
+    const username = caller?.['username'] ?? caller?.['email'] ?? '';
+    const params = new URLSearchParams();
+    if (id_token) params.append('id_token_hint', id_token);
+    params.append('client_id', OIDC_CLIENT_ID);
+    params.append('username', String(username));
+    params.append('post_logout_redirect_uri', `${BASE_END_USER_URL}/login`);
+    return `${OIDC_LOGOUT_URI}?${params.toString()}`;
   }
 
   async refreshSession(data: RefreshTokenDto, header: ClientBasic): Promise<AccessToken> {

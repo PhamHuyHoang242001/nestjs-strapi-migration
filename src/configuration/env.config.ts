@@ -197,6 +197,7 @@ export const OIDC_TOKEN_ENDPOINT: string = process.env.OIDC_TOKEN_ENDPOINT ?? pr
 export const OIDC_USERINFO_ENDPOINT: string =
   process.env.OIDC_USERINFO_ENDPOINT ?? process.env.SSO_OIDC_USER_INFO_ENDPOINT ?? '';
 export const OIDC_GRANT_TYPE: string = process.env.OIDC_GRANT_TYPE ?? process.env.SSO_OIDC_GRANT_TYPE ?? 'authorization_code';
+export const OIDC_LOGOUT_URI: string = process.env.OIDC_LOGOUT_URI ?? process.env.SSO_OIDC_LOGOUT_URI ?? '';
 export const OIDC_TLS_INSECURE: boolean = (process.env.OIDC_TLS_INSECURE ?? '').toLowerCase() === 'true';
 export const BASE_END_USER_URL: string = process.env.BASE_END_USER_URL ?? '';
 
