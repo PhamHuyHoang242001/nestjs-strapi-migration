@@ -209,3 +209,24 @@ export const EXTRA_FIELDS_MAP: Record<string, string[]> = {
 export function getExtraFields(tableName: string): string[] {
   return (EXTRA_FIELDS_MAP[tableName] || []).filter((c) => /^[a-z_]+$/.test(c));
 }
+
+/**
+ * Additional columns the keyword search matches, on top of the display-name
+ * column from NAME_COLUMN_MAP. Dev-maintained whitelist; a missing table means
+ * "name only". Columns are sanitized at read time by getSearchColumns().
+ */
+export const SEARCH_COLUMNS_MAP: Record<string, string[]> = {
+  bi_hub_reports: ['code'],
+  bi_hub_diagnostic_reports: ['code'],
+};
+
+/**
+ * Full, sanitized, de-duplicated list of columns the keyword search should hit
+ * for a table: the display-name column first, then any SEARCH_COLUMNS_MAP
+ * extras. Every entry passes the same /^[a-z_]+$/ guard as getNameColumn so it
+ * is safe to interpolate into a WHERE clause.
+ */
+export function getSearchColumns(tableName: string): string[] {
+  const extras = (SEARCH_COLUMNS_MAP[tableName] || []).filter((c) => /^[a-z_]+$/.test(c));
+  return Array.from(new Set([getNameColumn(tableName), ...extras]));
+}

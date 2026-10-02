@@ -19,6 +19,7 @@ import {
   ROOT_OWNER_CONFIG,
   getExtraFields,
   getNameColumn,
+  getSearchColumns,
   isManageEnabledTable,
   MANAGE_ENABLED_MODULES,
 } from './constants/hierarchy-config';
@@ -479,14 +480,32 @@ export class DataAccessService {
     // (not ALLOWED_TABLES): a rule can only target these tables, so searching leaf
     // tables for a name match would never correspond to a rule and only adds noise.
     const branches: string[] = [];
-    for (const [tableName, nameCol] of Object.entries(NAME_COLUMN_MAP)) {
+    for (const tableName of Object.keys(NAME_COLUMN_MAP)) {
       if (!RULE_TARGET_TABLES.has(tableName)) continue;
-      const safeCol = /^[a-z_]+$/.test(nameCol) ? nameCol : 'id';
+      // Display-name column plus any per-table extras (e.g. report `code`), all
+      // regex-sanitized by getSearchColumns before interpolation.
+      const matchExpr = getSearchColumns(tableName)
+        .map((col) => `CAST(t."${col}" AS TEXT) ILIKE ${searchParam}`)
+        .join(' OR ');
       branches.push(
-        `SELECT t.id as data_id, m.id as module_id FROM "${tableName}" t JOIN modules m ON m.table_name = '${tableName}' AND m.deleted_at IS NULL WHERE CAST(t."${safeCol}" AS TEXT) ILIKE ${searchParam} AND t.deleted_at IS NULL${moduleId ? ` AND m.id = ${Number(moduleId)}` : ''}`,
+        `SELECT t.id as data_id, m.id as module_id FROM "${tableName}" t JOIN modules m ON m.table_name = '${tableName}' AND m.deleted_at IS NULL WHERE (${matchExpr}) AND t.deleted_at IS NULL${moduleId ? ` AND m.id = ${Number(moduleId)}` : ''}`,
       );
     }
     return branches.join('\nUNION ALL\n');
+  }
+
+  /**
+   * Keyword match predicate for the records browser: record id plus every
+   * searchable column of the table (display name + per-table extras such as
+   * report `code`). `alias` is the qualifier for the record table in the
+   * caller's query ('m.', 't0.' or '' for an unqualified single-table query);
+   * column names come pre-sanitized from getSearchColumns.
+   */
+  private buildRecordKeywordMatch(tableName: string, alias: string, searchParam: string): string {
+    const columnMatches = getSearchColumns(tableName).map(
+      (col) => `CAST(${alias}"${col}" AS TEXT) ILIKE ${searchParam}`,
+    );
+    return [`CAST(${alias}id AS TEXT) ILIKE ${searchParam}`, ...columnMatches].join(' OR ');
   }
 
   /** Fetch flattened rules (role + user branches) for a set of groups */
@@ -1295,7 +1314,7 @@ export class DataAccessService {
 
     if (dto.keyword) {
       params.push(`%${dto.keyword}%`);
-      whereClause += ` AND (CAST(m.id AS TEXT) ILIKE $${params.length} OR CAST(m.${nameCol} AS TEXT) ILIKE $${params.length})`;
+      whereClause += ` AND (${this.buildRecordKeywordMatch(tableName, 'm.', `$${params.length}`)})`;
     }
     if (dto.date_from) {
       params.push(dto.date_from);
@@ -1354,7 +1373,7 @@ export class DataAccessService {
 
     if (dto.keyword) {
       params.push(`%${dto.keyword}%`);
-      whereClause += ` AND (CAST(id AS TEXT) ILIKE $${params.length} OR CAST(${nameCol} AS TEXT) ILIKE $${params.length})`;
+      whereClause += ` AND (${this.buildRecordKeywordMatch(tableName, '', `$${params.length}`)})`;
     }
 
     if (dto.date_from) {
@@ -1432,7 +1451,7 @@ export class DataAccessService {
 
     if (dto.keyword) {
       params.push(`%${dto.keyword}%`);
-      whereExtra += ` AND (CAST(t0.id AS TEXT) ILIKE $${params.length} OR CAST(t0."${nameCol}" AS TEXT) ILIKE $${params.length})`;
+      whereExtra += ` AND (${this.buildRecordKeywordMatch(tableName, 't0.', `$${params.length}`)})`;
     }
 
     if (dto.date_from) {

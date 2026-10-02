@@ -498,5 +498,31 @@ describe('DataAccessService.list() — grouped', () => {
       // Should have UNION ALL for multiple tables
       expect(countSQL).toContain('UNION ALL');
     });
+
+    it('bi_hub report tables also match on the code column', async () => {
+      const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
+      const dto: SearchDataAccessDto = { keyword: 'RPT-01' };
+      await service.list(dto, defaultSort, defaultPagination);
+
+      const countSQL = queryMock.mock.calls[0][0] as string;
+      for (const table of ['bi_hub_reports', 'bi_hub_diagnostic_reports']) {
+        const branch = countSQL.split('UNION ALL').find((b) => b.includes(`FROM "${table}"`));
+        expect(branch).toBeDefined();
+        expect(branch).toContain('CAST(t."name" AS TEXT) ILIKE');
+        expect(branch).toContain('CAST(t."code" AS TEXT) ILIKE');
+      }
+    });
+
+    it('tables without extra search columns still match name only', async () => {
+      const { service, queryMock } = setupGroupedMock({ count: 0, groups: [] });
+      const dto: SearchDataAccessDto = { keyword: 'x' };
+      await service.list(dto, defaultSort, defaultPagination);
+
+      const countSQL = queryMock.mock.calls[0][0] as string;
+      const branch = countSQL.split('UNION ALL').find((b) => b.includes('FROM "bi_payment_programs"'));
+      expect(branch).toBeDefined();
+      expect(branch).toContain('CAST(t."name" AS TEXT) ILIKE');
+      expect(branch).not.toContain('"code"');
+    });
   });
 });

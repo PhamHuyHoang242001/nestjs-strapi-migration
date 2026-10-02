@@ -136,6 +136,17 @@ describe('DataAccessService.getRecords() — owner scoping', () => {
       expect(countParams).toContainEqual([3, 7]);
     });
 
+    it('keyword search on scoped bi_hub_reports matches name and code via t0 alias', async () => {
+      const { service, queryMock } = createService([[{ role_id: 3 }], [{ total: 0 }], []]);
+
+      await service.getRecords('bi_hub_reports', { keyword: 'RPT-01' }, defaultPagination, { id: 10 }, 'user');
+
+      const countSQL = queryMock.mock.calls[1][0] as string;
+      expect(countSQL).toContain('CAST(t0.id AS TEXT) ILIKE');
+      expect(countSQL).toContain('CAST(t0."name" AS TEXT) ILIKE');
+      expect(countSQL).toContain('CAST(t0."code" AS TEXT) ILIKE');
+    });
+
     it('enriches scoped records with configured record_extra without record_path', async () => {
       EXTRA_FIELDS_MAP.bi_hub_reports = ['code'];
       try {

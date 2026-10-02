@@ -261,6 +261,40 @@ describe('DataAccessService.getRecords()', () => {
     expect(query.mock.calls[0][1]).toContain('%Revenue%');
   });
 
+  it.each(['bi_hub_reports', 'bi_hub_diagnostic_reports'])(
+    'search on %s also matches the code column, reusing one param',
+    async (table) => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce([{ total: 1 }])
+        .mockResolvedValueOnce([{ id: 1, display_name: 'Revenue', created_at: '2026-01-01' }]);
+
+      const { service } = createService({ query });
+      await service.getRecords(table, { keyword: 'RPT-01' }, { page: 1, limit: 20, skip: 0 });
+
+      const countSQL = query.mock.calls[0][0] as string;
+      expect(countSQL).toContain('CAST(id AS TEXT) ILIKE');
+      expect(countSQL).toContain('CAST("name" AS TEXT) ILIKE');
+      expect(countSQL).toContain('CAST("code" AS TEXT) ILIKE');
+      // One placeholder shared by every branch — params must not grow per column
+      expect((query.mock.calls[0][1] as unknown[]).filter((p) => p === '%RPT-01%')).toHaveLength(1);
+    },
+  );
+
+  it('search on a table without extra search columns stays id + name only', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce([{ total: 0 }])
+      .mockResolvedValueOnce([]);
+
+    const { service } = createService({ query });
+    await service.getRecords('bi_payment_programs', { keyword: 'x' }, { page: 1, limit: 20, skip: 0 });
+
+    const countSQL = query.mock.calls[0][0] as string;
+    expect(countSQL).toContain('CAST("name" AS TEXT) ILIKE');
+    expect(countSQL).not.toContain('"code"');
+  });
+
   it('applies date_from and date_to filters', async () => {
     const query = jest
       .fn()
