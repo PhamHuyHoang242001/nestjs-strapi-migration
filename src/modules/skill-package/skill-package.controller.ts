@@ -27,11 +27,13 @@ import * as fs from 'fs';
 import { SkillPackageQueryService } from './skill-package-query.service';
 import { SkillPackageUploadService } from './skill-package-upload.service';
 import { SkillFileFetchService } from './skill-file-fetch.util';
+import { SkillZipPreviewService } from './skill-zip-preview.service';
 import {
   CreateSkillPackageDto,
   CreateSkillVersionDto,
   ListSkillQueryDto,
   ListVersionsDto,
+  PreviewZipFileQueryDto,
   RejectSkillVersionDto,
   ReviewQueryDto,
   ToggleStatusDto,
@@ -57,6 +59,7 @@ export class SkillPackageController {
     private readonly queryService: SkillPackageQueryService,
     private readonly uploadService: SkillPackageUploadService,
     private readonly fileFetchService: SkillFileFetchService,
+    private readonly zipPreviewService: SkillZipPreviewService,
   ) {}
 
   // GET /v1/skill/items — list packages with active version joined. Defaults to active-only;
@@ -120,6 +123,19 @@ export class SkillPackageController {
       else res.status(404).end();
     });
     stream.pipe(res);
+  }
+
+  // GET /v1/skill/items/:id/files/preview — utf-8 file inside the active zip. Auth = download.
+  @ApiOperation({ summary: "Preview a text file inside the active skill version's zip" })
+  @Get('items/:id/files/preview')
+  previewZipFile(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() q: PreviewZipFileQueryDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.zipPreviewService.preview(id, userId, q.file);
   }
 
   // GET /v1/skill/reviews/submitters — distinct pending-version creators for the queue filter.

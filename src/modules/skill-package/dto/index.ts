@@ -5,3 +5,4 @@ export { ListVersionsDto } from './list-versions.dto';
 export { ReviewQueryDto } from './review-query.dto';
 export { RejectSkillVersionDto } from './reject-skill-version.dto';
 export { ToggleStatusDto } from './toggle-status.dto';
+export { PreviewZipFileQueryDto } from './preview-zip-file-query.dto';

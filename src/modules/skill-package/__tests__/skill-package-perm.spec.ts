@@ -46,6 +46,10 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('getItem')).toBeUndefined();
   });
 
+  it('previewZipFile has no RequirePermission metadata (auth-only, same as download)', () => {
+    expect(getPerm('previewZipFile')).toBeUndefined();
+  });
+
   it('listReviews carries skill_approve', () => {
     expect(getPerm('listReviews')).toEqual(['skill_approve']);
   });
@@ -70,6 +74,7 @@ describe('SkillPackageController — perm mapping', () => {
   const allMethods = [
     'listItems',
     'getItem',
+    'previewZipFile',
     'listReviews',
     'listReviewSubmitters',
     'getVersion',

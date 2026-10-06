@@ -10,6 +10,7 @@ import { SkillPackageController } from './skill-package.controller';
 import { SkillPackageQueryService } from './skill-package-query.service';
 import { SkillPackageUploadService } from './skill-package-upload.service';
 import { SkillFileFetchService } from './skill-file-fetch.util';
+import { SkillZipPreviewService } from './skill-zip-preview.service';
 import { CategoryModule } from '@modules/category/category.module';
 
 // AuthorizationModule is @Global(), so PermissionQueryService, PermissionGuard,
@@ -23,6 +24,6 @@ import { CategoryModule } from '@modules/category/category.module';
     AssetHubCatalogModule,
   ],
   controllers: [SkillPackageController],
-  providers: [SkillPackageQueryService, SkillPackageUploadService, SkillFileFetchService],
+  providers: [SkillPackageQueryService, SkillPackageUploadService, SkillFileFetchService, SkillZipPreviewService],
 })
 export class SkillPackageModule {}
