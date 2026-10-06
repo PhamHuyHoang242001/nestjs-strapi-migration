@@ -23,12 +23,12 @@ describe('SkillZipPreviewService', () => {
 
   it('resolves active zip then returns the named text entry', async () => {
     files.downloadZip.mockResolvedValue({
-      buffer: zipOf({ 'scripts/run.sh': 'echo hi\n', 'skill.md': 'md' }),
+      buffer: zipOf({ 'README.md': '# hi\n', 'skill.md': 'md' }),
     });
-    const res = await service.preview(7, 99, '  scripts/run.sh  ');
+    const res = await service.preview(7, 99, '  README.md  ');
     expect(query.resolveActiveZip).toHaveBeenCalledWith(7, 99);
     expect(files.downloadZip).toHaveBeenCalledWith('/uploads/a.zip');
-    expect(res).toEqual({ path: 'scripts/run.sh', content: 'echo hi\n' });
+    expect(res).toEqual({ path: 'README.md', content: '# hi\n' });
   });
 
   it('propagates resolveActiveZip 404 (same as download)', async () => {
@@ -39,8 +39,8 @@ describe('SkillZipPreviewService', () => {
 
   it('400 when the zip entry is binary', async () => {
     files.downloadZip.mockResolvedValue({
-      buffer: zipOf({ 'icon.png': Buffer.from([0x89, 0x50, 0x00]), 'skill.md': 'md' }),
+      buffer: zipOf({ 'README.md': Buffer.from([0x89, 0x50, 0x00]), 'skill.md': 'md' }),
     });
-    await expect(service.preview(7, 99, 'icon.png')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.preview(7, 99, 'README.md')).rejects.toBeInstanceOf(BadRequestException);
   });
 });

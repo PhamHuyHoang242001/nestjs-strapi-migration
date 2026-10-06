@@ -3,6 +3,16 @@ import { BadRequestException, NotFoundException, UnprocessableEntityException } 
 
 const MAX_ENTRY_UNCOMPRESSED_BYTES = 5 * 1024 * 1024;
 
+/** Basenames allowed at zip root or one wrapper folder. Add lowercase names to extend. */
+export const PREVIEWABLE_ROOT_FILES = ['skill.md', 'readme.md'] as const;
+
+export function isPreviewableZipPath(path: string): boolean {
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length === 0 || parts.length > 2) return false;
+  const base = parts[parts.length - 1].toLowerCase();
+  return (PREVIEWABLE_ROOT_FILES as readonly string[]).includes(base);
+}
+
 export function normalizeZipEntryPath(raw: string | undefined | null): string {
   const trimmed = (raw ?? '').trim().replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
   return trimmed;
@@ -12,6 +22,9 @@ export function readZipTextEntry(buffer: Buffer, rawPath: string | undefined | n
   const path = normalizeZipEntryPath(rawPath);
   if (!path || path.split('/').some((seg) => seg === '..')) {
     throw new NotFoundException('File not found');
+  }
+  if (!isPreviewableZipPath(path)) {
+    throw new BadRequestException('File is not previewable');
   }
 
   let zip: AdmZip;

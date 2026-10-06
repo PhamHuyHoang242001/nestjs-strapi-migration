@@ -7,11 +7,11 @@ Auth: cùng quyền download zip active.
 
 Trước khi gọi API: `filePath = zipNode.path.trim()`. Không gửi string rỗng.
 
-`file` phải **đúng** `zip_tree[].path` (path đầy đủ, không chỉ basename). Encode query: `encodeURIComponent(filePath)`.
+`file` phải **đúng** `zip_tree[].path`. Chỉ preview được **skill.md** và **README.md** ở folder ngoài cùng (`skill.md` hoặc `my-skill/README.md`). File khác / sâu hơn → 400.
 
-## Không preview skill.md
+Encode query: `encodeURIComponent(filePath)`.
 
-Nếu basename (sau trim, lowercase) === `skill.md` → dùng `skill_md_content` trên detail/version. **Không** gọi preview.
+Skill.md trên detail vẫn dùng `skill_md_content` nếu FE không muốn gọi preview.
 
 ## Cache (tránh spam unzip)
 
@@ -33,4 +33,4 @@ In-memory (Map / react-query `staleTime` vài phút). Không cần HTTP cache t�
 | 400 | Không preview được (không phải text) |
 | 403 | Không có quyền download |
 
-Chỉ enable preview trên `zip_tree` node `isDir === false`.
+Chỉ enable preview khi `isDir === false` và path là `skill.md`/`README.md` (root hoặc 1 wrapper folder).
