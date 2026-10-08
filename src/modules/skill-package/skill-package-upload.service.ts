@@ -30,6 +30,9 @@ const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
 const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
 
+/** Fields skipped on an approver pending-edit. Push names here to lock more. Body still requires them. */
+export const SKILL_APPROVER_PENDING_LOCKED_FIELDS = ['file'] as const;
+
 function isPgUniqueViolation(error: unknown): boolean {
   return (
     error instanceof QueryFailedError && (error as QueryFailedError & { code?: string }).code === PG_UNIQUE_VIOLATION
@@ -243,8 +246,8 @@ export class SkillPackageUploadService {
     }
   }
 
-  // Resubmit the latest rejected version in place (same body as a package bump). Keeps
-  // version_no / old_version; flips state back to pending so the one-pending rule still holds.
+  // Resubmit the latest rejected version in place, or let an approver patch a pending version.
+  // Approver pending-edit ignores SKILL_APPROVER_PENDING_LOCKED_FIELDS (body still sends them).
   async editVersion(versionId: number, dto: CreateSkillVersionDto, userId: number) {
     const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
     if (!version) throw new NotFoundException('Skill version not found');
@@ -253,32 +256,43 @@ export class SkillPackageUploadService {
     if (!pkg) throw new NotFoundException('Skill package not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    if (
-      !codes.includes('skill_upload') ||
-      (version.submitted_by !== userId && pkg.created_by !== userId)
-    ) {
-      throw new ForbiddenException('You can only edit versions you submitted or packages you created');
+    const approverPending = codes.includes('skill_approve') && version.state === SkillVersionState.PENDING;
+
+    if (!approverPending) {
+      const canUpload = codes.includes('skill_upload');
+      const isAuthor = version.submitted_by === userId || pkg.created_by === userId;
+      if (!canUpload || !isAuthor) {
+        throw new ForbiddenException('You can only edit versions you submitted or packages you created');
+      }
+
+      const pendingVersion = await this.versionRepo.findOne({
+        where: { skill_package_id: pkg.id, state: SkillVersionState.PENDING, is_deleted: false },
+        select: { id: true },
+      });
+      if (pendingVersion) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+      }
+
+      const newest = await this.versionRepo.findOne({
+        where: { skill_package_id: pkg.id, is_deleted: false },
+        order: { id: 'DESC' },
+        select: { id: true, state: true },
+      });
+      if (!newest || newest.id !== versionId || newest.state !== SkillVersionState.REJECTED) {
+        throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+      }
     }
 
-    const pendingVersion = await this.versionRepo.findOne({
-      where: { skill_package_id: pkg.id, state: SkillVersionState.PENDING, is_deleted: false },
-      select: { id: true },
-    });
-    if (pendingVersion) {
-      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+    const skipFile = approverPending && SKILL_APPROVER_PENDING_LOCKED_FIELDS.includes('file');
+    let zipFile: FetchedFile | undefined;
+    let skillMdContent: string | undefined;
+    let zipTree: SkillVersion['zip_tree'];
+    if (!skipFile) {
+      zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
+      const extracted = extractSkillZip(zipFile.buffer);
+      skillMdContent = extracted.skillMd;
+      zipTree = extracted.zipTree;
     }
-
-    const newest = await this.versionRepo.findOne({
-      where: { skill_package_id: pkg.id, is_deleted: false },
-      order: { id: 'DESC' },
-      select: { id: true, state: true },
-    });
-    if (!newest || newest.id !== versionId || newest.state !== SkillVersionState.REJECTED) {
-      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
-    }
-
-    const zipFile = await this.fileFetch.downloadZip(dto.file.fileUrl);
-    const { skillMd: skillMdContent, zipTree } = extractSkillZip(zipFile.buffer);
     if (dto.avatar_url) this.fileFetch.assertStrapiUrl(dto.avatar_url);
     const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
 
@@ -286,24 +300,26 @@ export class SkillPackageUploadService {
       return await this.dataSource.transaction(async (manager) => {
         await manager.query('SELECT id FROM skill_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
 
-        const pendingRows = await manager.query<{ id: number }[]>(
-          `SELECT id FROM skill_versions
-           WHERE skill_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
-           LIMIT 1`,
-          [pkg.id],
-        );
-        if (pendingRows[0]) {
-          throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
-        }
+        if (!approverPending) {
+          const pendingRows = await manager.query<{ id: number }[]>(
+            `SELECT id FROM skill_versions
+             WHERE skill_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
+             LIMIT 1`,
+            [pkg.id],
+          );
+          if (pendingRows[0]) {
+            throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+          }
 
-        const newestRows = await manager.query<{ id: number; state: string }[]>(
-          `SELECT id, state FROM skill_versions
-           WHERE skill_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
-           ORDER BY id DESC LIMIT 1`,
-          [pkg.id],
-        );
-        if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== SkillVersionState.REJECTED) {
-          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          const newestRows = await manager.query<{ id: number; state: string }[]>(
+            `SELECT id, state FROM skill_versions
+             WHERE skill_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
+             ORDER BY id DESC LIMIT 1`,
+            [pkg.id],
+          );
+          if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== SkillVersionState.REJECTED) {
+            throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          }
         }
 
         const locked = await manager.findOne(SkillVersion, {
@@ -311,7 +327,11 @@ export class SkillPackageUploadService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!locked) throw new NotFoundException('Skill version not found');
-        if (locked.state !== SkillVersionState.REJECTED) {
+        if (approverPending) {
+          if (locked.state !== SkillVersionState.PENDING) {
+            throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          }
+        } else if (locked.state !== SkillVersionState.REJECTED) {
           throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
         }
 
@@ -334,24 +354,30 @@ export class SkillPackageUploadService {
         locked.usage_guide_html = usageGuideHtml;
         locked.kind = dto.kind;
         locked.avatar_url = dto.avatar_url ?? null;
-        locked.skill_md_content = skillMdContent;
-        locked.zip_tree = zipTree;
         locked.changelog_note = dto.changelog_note ?? null;
-        locked.submitted_by = userId;
-        locked.state = SkillVersionState.PENDING;
-        locked.reject_reason = null;
-        locked.reviewed_by = null;
-        locked.reviewed_at = null;
+        if (skillMdContent !== undefined) {
+          locked.skill_md_content = skillMdContent;
+          locked.zip_tree = zipTree ?? null;
+        }
+        if (!approverPending) {
+          locked.submitted_by = userId;
+          locked.state = SkillVersionState.PENDING;
+          locked.reject_reason = null;
+          locked.reviewed_by = null;
+          locked.reviewed_at = null;
+        }
         await manager.save(SkillVersion, locked);
 
         await this.itemMeta.replaceVersionTags(manager, 'skill', locked.id, tagIds);
 
-        await manager.update(
-          SkillVersionFile,
-          { skill_version_id: locked.id, is_deleted: false },
-          { is_deleted: true, deleted_at: new Date() },
-        );
-        await this.saveZipFile(manager, locked.id, dto.file, zipFile);
+        if (zipFile) {
+          await manager.update(
+            SkillVersionFile,
+            { skill_version_id: locked.id, is_deleted: false },
+            { is_deleted: true, deleted_at: new Date() },
+          );
+          await this.saveZipFile(manager, locked.id, dto.file, zipFile);
+        }
 
         return { version: { id: locked.id, version_no: locked.version_no } };
       });

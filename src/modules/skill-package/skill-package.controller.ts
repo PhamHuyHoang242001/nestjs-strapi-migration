@@ -228,12 +228,14 @@ export class SkillPackageController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
-  // PUT /v1/skill/versions/:vid — resubmit the latest rejected version (same body as a bump).
-  // Caller must hold skill_upload and be that version's submitter (not package owner / approver).
-  @ApiOperation({ summary: 'Edit the latest rejected skill version (submitter + upload only)' })
+  // PUT /v1/skill/versions/:vid — submitter resubmits latest rejected, or approver patches pending
+  // (zip `file` is locked for the approver path via SKILL_APPROVER_PENDING_LOCKED_FIELDS).
+  @ApiOperation({
+    summary: 'Edit a skill version (submitter: latest rejected; approver: pending, zip locked)',
+  })
   @Put('versions/:vid')
   @UseGuards(PermissionGuard)
-  @RequirePermission('skill_upload')
+  @RequirePermission('skill_upload', 'skill_approve')
   async editVersion(
     @Param('vid', ParseIntPipe) vid: number,
     @Body() dto: CreateSkillVersionDto,

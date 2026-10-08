@@ -58,6 +58,10 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('getDiff')).toEqual(['prompt_upload', 'prompt_approve']);
   });
 
+  it('editVersion carries prompt_upload or prompt_approve', () => {
+    expect(getPerm('editVersion')).toEqual(['prompt_upload', 'prompt_approve']);
+  });
+
   it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {
     expect(getPerm('getVersion')).toBeUndefined();
   });
@@ -77,6 +81,7 @@ describe('PromptLibraryController — perm mapping', () => {
     'myPermissions',
     'createItem',
     'createVersion',
+    'editVersion',
     'approveVersion',
     'rejectVersion',
     'toggleStatus',

@@ -62,6 +62,10 @@ describe('ApiCatalogController — perm mapping', () => {
     expect(getPerm('getDiff')).toEqual(['api_upload', 'api_approve']);
   });
 
+  it('editVersion carries api_upload or api_approve', () => {
+    expect(getPerm('editVersion')).toEqual(['api_upload', 'api_approve']);
+  });
+
   it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {
     expect(getPerm('getVersion')).toBeUndefined();
   });
@@ -81,6 +85,7 @@ describe('ApiCatalogController — perm mapping', () => {
     'myPermissions',
     'createItem',
     'createVersion',
+    'editVersion',
     'approveVersion',
     'rejectVersion',
     'toggleStatus',

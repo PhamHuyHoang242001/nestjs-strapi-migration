@@ -27,6 +27,9 @@ const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
 const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
 
+/** Fields skipped on an approver pending-edit. Push names here to lock more. Body still requires them. */
+export const PROMPT_APPROVER_PENDING_LOCKED_FIELDS: readonly string[] = [];
+
 function isPgUniqueViolation(error: unknown): boolean {
   return (
     error instanceof QueryFailedError && (error as QueryFailedError & { code?: string }).code === PG_UNIQUE_VIOLATION
@@ -222,7 +225,8 @@ export class PromptLibraryUploadService {
     }
   }
 
-  // Resubmit the latest rejected version in place (same body as a package bump).
+  // Resubmit the latest rejected version in place, or let an approver patch a pending version.
+  // Approver pending-edit ignores PROMPT_APPROVER_PENDING_LOCKED_FIELDS (empty — nothing skipped).
   async editVersion(versionId: number, dto: CreatePromptVersionDto, userId: number) {
     const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
     if (!version) throw new NotFoundException('Prompt version not found');
@@ -231,28 +235,31 @@ export class PromptLibraryUploadService {
     if (!pkg) throw new NotFoundException('Prompt package not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    if (
-      !codes.includes('prompt_upload') ||
-      (version.submitted_by !== userId && pkg.created_by !== userId)
-    ) {
-      throw new ForbiddenException('You can only edit versions you submitted or packages you created');
-    }
+    const approverPending = codes.includes('prompt_approve') && version.state === PromptVersionState.PENDING;
 
-    const pendingVersion = await this.versionRepo.findOne({
-      where: { prompt_package_id: pkg.id, state: PromptVersionState.PENDING, is_deleted: false },
-      select: { id: true },
-    });
-    if (pendingVersion) {
-      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
-    }
+    if (!approverPending) {
+      const canUpload = codes.includes('prompt_upload');
+      const isAuthor = version.submitted_by === userId || pkg.created_by === userId;
+      if (!canUpload || !isAuthor) {
+        throw new ForbiddenException('You can only edit versions you submitted or packages you created');
+      }
 
-    const newest = await this.versionRepo.findOne({
-      where: { prompt_package_id: pkg.id, is_deleted: false },
-      order: { id: 'DESC' },
-      select: { id: true, state: true },
-    });
-    if (!newest || newest.id !== versionId || newest.state !== PromptVersionState.REJECTED) {
-      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+      const pendingVersion = await this.versionRepo.findOne({
+        where: { prompt_package_id: pkg.id, state: PromptVersionState.PENDING, is_deleted: false },
+        select: { id: true },
+      });
+      if (pendingVersion) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+      }
+
+      const newest = await this.versionRepo.findOne({
+        where: { prompt_package_id: pkg.id, is_deleted: false },
+        order: { id: 'DESC' },
+        select: { id: true, state: true },
+      });
+      if (!newest || newest.id !== versionId || newest.state !== PromptVersionState.REJECTED) {
+        throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+      }
     }
 
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
@@ -262,24 +269,26 @@ export class PromptLibraryUploadService {
       return await this.dataSource.transaction(async (manager) => {
         await manager.query('SELECT id FROM prompt_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
 
-        const pendingRows = await manager.query<{ id: number }[]>(
-          `SELECT id FROM prompt_versions
-           WHERE prompt_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
-           LIMIT 1`,
-          [pkg.id],
-        );
-        if (pendingRows[0]) {
-          throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
-        }
+        if (!approverPending) {
+          const pendingRows = await manager.query<{ id: number }[]>(
+            `SELECT id FROM prompt_versions
+             WHERE prompt_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
+             LIMIT 1`,
+            [pkg.id],
+          );
+          if (pendingRows[0]) {
+            throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+          }
 
-        const newestRows = await manager.query<{ id: number; state: string }[]>(
-          `SELECT id, state FROM prompt_versions
-           WHERE prompt_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
-           ORDER BY id DESC LIMIT 1`,
-          [pkg.id],
-        );
-        if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== PromptVersionState.REJECTED) {
-          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          const newestRows = await manager.query<{ id: number; state: string }[]>(
+            `SELECT id, state FROM prompt_versions
+             WHERE prompt_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
+             ORDER BY id DESC LIMIT 1`,
+            [pkg.id],
+          );
+          if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== PromptVersionState.REJECTED) {
+            throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          }
         }
 
         const locked = await manager.findOne(PromptVersion, {
@@ -287,7 +296,11 @@ export class PromptLibraryUploadService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!locked) throw new NotFoundException('Prompt version not found');
-        if (locked.state !== PromptVersionState.REJECTED) {
+        if (approverPending) {
+          if (locked.state !== PromptVersionState.PENDING) {
+            throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          }
+        } else if (locked.state !== PromptVersionState.REJECTED) {
           throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
         }
 
@@ -312,11 +325,13 @@ export class PromptLibraryUploadService {
         locked.avatar_url = dto.avatar_url ?? null;
         locked.prompt_content = dto.prompt_content;
         locked.changelog_note = dto.changelog_note ?? null;
-        locked.submitted_by = userId;
-        locked.state = PromptVersionState.PENDING;
-        locked.reject_reason = null;
-        locked.reviewed_by = null;
-        locked.reviewed_at = null;
+        if (!approverPending) {
+          locked.submitted_by = userId;
+          locked.state = PromptVersionState.PENDING;
+          locked.reject_reason = null;
+          locked.reviewed_by = null;
+          locked.reviewed_at = null;
+        }
         await manager.save(PromptVersion, locked);
 
         await this.itemMeta.replaceVersionTags(manager, 'prompt', locked.id, tagIds);

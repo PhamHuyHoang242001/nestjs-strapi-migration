@@ -706,6 +706,60 @@ describe('SkillPackageUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
       expect(fileFetch.downloadZip).not.toHaveBeenCalled();
     });
+
+    it('approver may edit pending with full body; zip is skipped, submitted_by unchanged', async () => {
+      stubLookups({
+        state: SkillVersionState.PENDING,
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: ['skill_approve'],
+      });
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValueOnce([]),
+          findOne: jest.fn().mockResolvedValue({
+            id: VERSION_ID,
+            skill_package_id: PACKAGE_ID,
+            state: SkillVersionState.PENDING,
+            version_no: 1,
+            old_version: null,
+            submitted_by: OTHER_USER_ID,
+            skill_md_content: 'orig-md',
+            zip_tree: [{ path: 'orig' }],
+          }),
+          update: jest.fn(),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push(obj);
+            return obj;
+          }),
+        };
+        return cb(manager);
+      });
+      service = new SkillPackageUploadService(
+        packageRepo,
+        versionRepo,
+        dataSource,
+        fileFetch,
+        permissionQuery,
+        itemMeta,
+      );
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+      expect(fileFetch.downloadZip).not.toHaveBeenCalled();
+      const row = saved[0];
+      expect(row.state).toBe(SkillVersionState.PENDING);
+      expect(row.submitted_by).toBe(OTHER_USER_ID);
+      expect(row.name).toBe('v2-fixed');
+      expect(row.skill_md_content).toBe('orig-md');
+      expect(row.zip_tree).toEqual([{ path: 'orig' }]);
+    });
+
+    it('upload-only author on pending → ConflictException', async () => {
+      stubLookups({ state: SkillVersionState.PENDING, pending: true });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
+      expect(fileFetch.downloadZip).not.toHaveBeenCalled();
+    });
   });
 
   // ---- toggleStatus ----

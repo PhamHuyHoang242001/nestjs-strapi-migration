@@ -28,6 +28,9 @@ const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
 const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
 
+/** Fields skipped on an approver pending-edit. Push names here to lock more. Body still requires them. */
+export const API_APPROVER_PENDING_LOCKED_FIELDS = ['mock_req', 'mock_res'] as const;
+
 function isPgUniqueViolation(error: unknown): boolean {
   return (
     error instanceof QueryFailedError && (error as QueryFailedError & { code?: string }).code === PG_UNIQUE_VIOLATION
@@ -224,7 +227,8 @@ export class ApiCatalogUploadService {
     }
   }
 
-  // Resubmit the latest rejected version in place (same body as a package bump).
+  // Resubmit the latest rejected version in place, or let an approver patch a pending version.
+  // Approver pending-edit ignores API_APPROVER_PENDING_LOCKED_FIELDS (body still sends them).
   async editVersion(versionId: number, dto: CreateApiVersionDto, userId: number) {
     const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
     if (!version) throw new NotFoundException('API version not found');
@@ -235,56 +239,67 @@ export class ApiCatalogUploadService {
     if (!pkg) throw new NotFoundException('API package not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    if (
-      !codes.includes('api_upload') ||
-      (version.submitted_by !== userId && pkg.created_by !== userId)
-    ) {
-      throw new ForbiddenException('You can only edit versions you submitted or packages you created');
-    }
+    const approverPending = codes.includes('api_approve') && version.state === ApiVersionState.PENDING;
 
-    const pendingVersion = await this.versionRepo.findOne({
-      where: { api_catalog_package_id: pkg.id, state: ApiVersionState.PENDING, is_deleted: false },
-      select: { id: true },
-    });
-    if (pendingVersion) {
-      throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
-    }
+    if (!approverPending) {
+      const canUpload = codes.includes('api_upload');
+      const isAuthor = version.submitted_by === userId || pkg.created_by === userId;
+      if (!canUpload || !isAuthor) {
+        throw new ForbiddenException('You can only edit versions you submitted or packages you created');
+      }
 
-    const newest = await this.versionRepo.findOne({
-      where: { api_catalog_package_id: pkg.id, is_deleted: false },
-      order: { id: 'DESC' },
-      select: { id: true, state: true },
-    });
-    if (!newest || newest.id !== versionId || newest.state !== ApiVersionState.REJECTED) {
-      throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+      const pendingVersion = await this.versionRepo.findOne({
+        where: { api_catalog_package_id: pkg.id, state: ApiVersionState.PENDING, is_deleted: false },
+        select: { id: true },
+      });
+      if (pendingVersion) {
+        throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+      }
+
+      const newest = await this.versionRepo.findOne({
+        where: { api_catalog_package_id: pkg.id, is_deleted: false },
+        order: { id: 'DESC' },
+        select: { id: true, state: true },
+      });
+      if (!newest || newest.id !== versionId || newest.state !== ApiVersionState.REJECTED) {
+        throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+      }
     }
 
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
     const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
-    const spec = validateAndNormalizeSpec(dto);
+    const specInput = { ...dto };
+    if (approverPending) {
+      for (const field of API_APPROVER_PENDING_LOCKED_FIELDS) {
+        (specInput as Record<string, unknown>)[field] = version[field];
+      }
+    }
+    const spec = validateAndNormalizeSpec(specInput);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
         await manager.query('SELECT id FROM api_catalog_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
 
-        const pendingRows = await manager.query<{ id: number }[]>(
-          `SELECT id FROM api_catalog_versions
-           WHERE api_catalog_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
-           LIMIT 1`,
-          [pkg.id],
-        );
-        if (pendingRows[0]) {
-          throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
-        }
+        if (!approverPending) {
+          const pendingRows = await manager.query<{ id: number }[]>(
+            `SELECT id FROM api_catalog_versions
+             WHERE api_catalog_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
+             LIMIT 1`,
+            [pkg.id],
+          );
+          if (pendingRows[0]) {
+            throw new ConflictException(PENDING_VERSION_CONFLICT_MESSAGE);
+          }
 
-        const newestRows = await manager.query<{ id: number; state: string }[]>(
-          `SELECT id, state FROM api_catalog_versions
-           WHERE api_catalog_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
-           ORDER BY id DESC LIMIT 1`,
-          [pkg.id],
-        );
-        if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== ApiVersionState.REJECTED) {
-          throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          const newestRows = await manager.query<{ id: number; state: string }[]>(
+            `SELECT id, state FROM api_catalog_versions
+             WHERE api_catalog_package_id = $1 AND is_deleted = false AND deleted_at IS NULL
+             ORDER BY id DESC LIMIT 1`,
+            [pkg.id],
+          );
+          if (Number(newestRows[0]?.id) !== versionId || newestRows[0]?.state !== ApiVersionState.REJECTED) {
+            throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          }
         }
 
         const locked = await manager.findOne(ApiVersion, {
@@ -292,7 +307,11 @@ export class ApiCatalogUploadService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!locked) throw new NotFoundException('API version not found');
-        if (locked.state !== ApiVersionState.REJECTED) {
+        if (approverPending) {
+          if (locked.state !== ApiVersionState.PENDING) {
+            throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
+          }
+        } else if (locked.state !== ApiVersionState.REJECTED) {
           throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
         }
 
@@ -317,11 +336,13 @@ export class ApiCatalogUploadService {
         locked.avatar_url = dto.avatar_url ?? null;
         Object.assign(locked, specColumns(spec));
         locked.changelog_note = dto.changelog_note ?? null;
-        locked.submitted_by = userId;
-        locked.state = ApiVersionState.PENDING;
-        locked.reject_reason = null;
-        locked.reviewed_by = null;
-        locked.reviewed_at = null;
+        if (!approverPending) {
+          locked.submitted_by = userId;
+          locked.state = ApiVersionState.PENDING;
+          locked.reject_reason = null;
+          locked.reviewed_by = null;
+          locked.reviewed_at = null;
+        }
         await manager.save(ApiVersion, locked);
 
         await this.itemMeta.replaceVersionTags(manager, 'api-catalog', locked.id, tagIds);

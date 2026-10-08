@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Phân quyền Skill — 3 code</title>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    </script>
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        max-width: 920px;
+        margin: 24px auto;
+        padding: 0 16px 48px;
+        line-height: 1.45;
+        color: #111;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+      h2 {
+        font-size: 1.15rem;
+        margin-top: 2rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f4f4f4;
+      }
+      .mermaid {
+        background: #fff;
+        padding: 8px 0;
+      }
+      @media print {
+        body {
+          margin: 0;
+          max-width: none;
+        }
+        a[href]::after {
+          content: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Phân quyền Skill (định hướng — 3 code)</h1>
+    <p>
+      Tách <code>skill_upload</code> thành <strong>3 code</strong>:
+      <code>skill_create</code>, <code>skill_edit</code>, <code>skill_approve</code>. Không có
+      <code>skill_view</code> / <code>skill_delete</code>.
+    </p>
+    <p>
+      <strong>Edit skill = tạo version mới</strong> (<code>PUT /items/:id/versions</code>). Approver
+      <strong>không</strong> sửa pending. Người nghỉ: <strong>chuyển owner</strong>, không đẩy SO sửa
+      nội dung.
+    </p>
+
+    <h2>Phân bổ code theo role</h2>
+    <pre class="mermaid">
+flowchart TB
+  subgraph codes["3 code"]
+    C[skill_create]
+    E[skill_edit]
+    A[skill_approve]
+  end
+
+  subgraph roles["Role"]
+    V["Skill Viewer - khong code"]
+    Up["Skill Uploader - create + edit"]
+    Ap["Skill Approver - chi approve"]
+  end
+
+  V --> Bearer[Bearer login]
+  Up --> C
+  Up --> E
+  Ap --> A
+
+  Bearer --> R[Doc catalog active, download, preview, danh sach version cua minh]
+  C --> W1[Tao skill]
+  E --> W2[Edit skill = tao version moi - chi package minh tao]
+  E --> W3[Sua version rejected newest - cua minh]
+  A --> Rev[Hang cho duyet, approve/reject, an/hien package]
+    </pre>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Role</th>
+          <th>Code</th>
+          <th>Được làm</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Skill Viewer</td>
+          <td>không</td>
+          <td>Đọc skill <strong>active</strong></td>
+        </tr>
+        <tr>
+          <td>Skill Uploader</td>
+          <td><code>skill_create</code> và <code>skill_edit</code></td>
+          <td>
+            Tạo skill; <strong>edit skill</strong> (tạo version mới) trên package mình tạo; sửa
+            version <strong>rejected</strong> newest (mình submit hoặc mình tạo package)
+          </td>
+        </tr>
+        <tr>
+          <td>Skill Approver</td>
+          <td><code>skill_approve</code> (không create, không edit)</td>
+          <td>Hàng chờ, approve/reject, ẩn/hiện, xem inactive. <strong>Không</strong> sửa pending, không bump skill người khác</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Nếu không gắn guard <code>skill_create</code> trên POST: mọi login đều tạo được; Uploader chỉ cần
+      <code>skill_edit</code>. Hai code còn lại giữ nguyên.
+    </p>
+
+    <h2>Đọc — chỉ Bearer</h2>
+    <pre class="mermaid">
+flowchart TB
+  subgraph read["GET - Bearer"]
+    L[GET /items] --> L1[Active: moi login]
+    L --> L2[inactive: skill_approve]
+    D[GET /items/:id] --> D1[Active: moi login]
+    D --> D2[Inactive: nguoi tao package hoac approve]
+    DL[GET download / preview] --> Same[Cung rule inactive nhu detail]
+    V[GET /versions] --> V1[Chi version minh submit hoac package minh tao]
+    VD[GET /versions/:vid] --> VD1[Submitter / nguoi tao package / approve]
+    DF[GET /versions/:vid/diff] --> DF1[Guard edit OR approve. Service: owner / submitter / approve]
+    RV[GET /reviews] --> RV1[Guard skill_approve]
+  end
+    </pre>
+
+    <h2>Ghi</h2>
+    <pre class="mermaid">
+flowchart TB
+  subgraph write["Ghi"]
+    P[POST /items] --> PC[Guard skill_create]
+    U[PUT /items/:id/versions] --> UE[Guard skill_edit]
+    U --> UO[Service: nguoi tao package. 409 neu dang pending]
+    UV[PUT /versions/:vid] --> UVE[Guard skill_edit]
+    UV --> UVS[Service: rejected + newest + submitter hoac nguoi tao package]
+    AP[POST approve / reject] --> AA[Guard skill_approve]
+    ST[PATCH /items/:id/status] --> SA[Guard skill_approve]
+    OW[PATCH /items/:id/owner] --> O1[Author tu chi dinh / manager / SO gan]
+  end
+    </pre>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Việc</th>
+          <th>API</th>
+          <th>Guard</th>
+          <th>Service còn chặn</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Tạo skill</td>
+          <td><code>POST /items</code></td>
+          <td><code>skill_create</code></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>Edit skill = tạo version mới</strong></td>
+          <td><code>PUT /items/:id/versions</code></td>
+          <td><code>skill_edit</code></td>
+          <td>Người tạo package. 409 nếu đang có pending</td>
+        </tr>
+        <tr>
+          <td>Sửa version rejected</td>
+          <td><code>PUT /versions/:vid</code></td>
+          <td><code>skill_edit</code></td>
+          <td>Newest rejected; submitter hoặc người tạo package</td>
+        </tr>
+        <tr>
+          <td>Sửa version pending</td>
+          <td><code>PUT /versions/:vid</code></td>
+          <td>—</td>
+          <td><strong>Không cho</strong>. Approver reject; author (hoặc owner mới) sửa lại</td>
+        </tr>
+        <tr>
+          <td>Approve / reject</td>
+          <td><code>POST .../approve</code>, <code>.../reject</code></td>
+          <td><code>skill_approve</code></td>
+          <td>Chỉ version pending</td>
+        </tr>
+        <tr>
+          <td>Ẩn/hiện package</td>
+          <td><code>PATCH /items/:id/status</code></td>
+          <td><code>skill_approve</code></td>
+          <td><code>active</code> / <code>inactive</code></td>
+        </tr>
+        <tr>
+          <td>Chuyển owner</td>
+          <td><code>PATCH /items/:id/owner</code></td>
+          <td>author / manager / SO</td>
+          <td>Đổi <code>created_by</code>. Không sửa nội dung skill</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Người nghỉ việc</h2>
+    <pre class="mermaid">
+flowchart TD
+  Gone[Author nghi viec] --> Serve[Ban active van chay]
+  Serve --> Need{Can doi skill?}
+  Need -->|Khong| Idle[Khong ai phai lam]
+  Need -->|Co| Xfer[Chuyen owner - doi created_by]
+  Xfer --> New[Owner moi + skill_edit<br/>PUT tao version moi]
+  New --> Pend[Version pending]
+  Pend --> Ap[Approver chi duyet / tu choi]
+    </pre>
+
+    <h2>Tầng quyết định</h2>
+    <pre class="mermaid">
+flowchart TD
+  Req[Request] --> Auth{Bearer?}
+  Auth -->|Khong| N401[401]
+  Auth -->|Co| Meta{Endpoint co RequirePermission?}
+  Meta -->|Khong| Svc[Service: owner / state]
+  Meta -->|Co| Hold{User co dung 1 code cua endpoint?}
+  Hold -->|Khong| N403[403]
+  Hold -->|Co| Svc
+  Svc --> Own{Nguoi tao package / submitter / state OK?}
+  Own -->|Khong| N403b[403 hoac 404 inactive]
+  Own -->|Co| OK[200]
+    </pre>
+
+    <p style="color: #555; font-size: 0.9rem">
+      Bản hiện tại 2 code: <a href="./skill-permission-flow.html">skill-permission-flow.html</a>. Xuất
+      PDF: trình duyệt → In → Save as PDF.
+    </p>
+  </body>
+</html>

@@ -7,6 +7,10 @@
 
 This repository is a NestJS backend with authorization, data access, BI Payment, user/role management, reporting, and seeder/migration support. The current work centers on the BI Payment permission rebuild and the shared authorization layer that gates program, template, document, checklist, comment, and other-file flows.
 
+## AI Hub version edit (PUT `versions/:vid`)
+
+Submitter/creator with `*_upload` still resubmits only the latest **rejected** version (state flips back to pending). Holder of `*_approve` may also edit a **pending** version in place: state stays pending, `submitted_by` unchanged. Body is the same as bump; locked fields are **ignored** (stored values kept): skill `file`; api-catalog `mock_req`/`mock_res`; prompt none.
+
 ## Major Areas
 
 | Area | Notes |

@@ -557,6 +557,8 @@ describe('ApiCatalogUploadService', () => {
             version_no: 1,
             old_version: null,
             submitted_by: opts?.submittedBy ?? USER_ID,
+            mock_req: { orig: true },
+            mock_res: { orig: 'res' },
           };
         }
         if (where.state === ApiVersionState.PENDING) return opts?.pending ? { id: 88 } : null;
@@ -621,6 +623,64 @@ describe('ApiCatalogUploadService', () => {
     it('submitter without api_upload → ForbiddenException', async () => {
       stubLookups({ codes: ['api_approve'] });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('approver may edit pending with full body; mock_req/mock_res stay original', async () => {
+      stubLookups({
+        state: ApiVersionState.PENDING,
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: ['api_approve'],
+      });
+      const origReq = { orig: true };
+      const origRes = { orig: 'res' };
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValueOnce([]),
+          findOne: jest.fn().mockResolvedValue({
+            id: VERSION_ID,
+            api_catalog_package_id: PACKAGE_ID,
+            state: ApiVersionState.PENDING,
+            version_no: 1,
+            old_version: null,
+            submitted_by: OTHER_USER_ID,
+            mock_req: origReq,
+            mock_res: origRes,
+          }),
+          update: jest.fn(),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push(obj);
+            return obj;
+          }),
+        };
+        return cb(manager);
+      });
+      service = new ApiCatalogUploadService(
+        packageRepo,
+        versionRepo,
+        dataSource,
+        avatarUrl,
+        permissionQuery,
+        itemMeta,
+      );
+      const result = await service.editVersion(
+        VERSION_ID,
+        { ...dto, mock_req: { changed: 1 }, mock_res: { changed: true } } as any,
+        USER_ID,
+      );
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+      const row = saved[0];
+      expect(row.state).toBe(ApiVersionState.PENDING);
+      expect(row.submitted_by).toBe(OTHER_USER_ID);
+      expect(row.name).toBe('v2-fixed');
+      expect(row.mock_req).toEqual(origReq);
+      expect(row.mock_res).toEqual(origRes);
+    });
+
+    it('upload-only author on pending → ConflictException', async () => {
+      stubLookups({ state: ApiVersionState.PENDING, pending: true });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
     });
   });
 

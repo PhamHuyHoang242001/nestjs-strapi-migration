@@ -621,6 +621,56 @@ describe('PromptLibraryUploadService', () => {
       stubLookups({ codes: ['prompt_approve'] });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
+
+    it('approver may edit pending (not author); prompt_content updates, submitted_by unchanged', async () => {
+      stubLookups({
+        state: PromptVersionState.PENDING,
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: ['prompt_approve'],
+      });
+      const saved: any[] = [];
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest.fn().mockResolvedValueOnce([]),
+          findOne: jest.fn().mockResolvedValue({
+            id: VERSION_ID,
+            prompt_package_id: PACKAGE_ID,
+            state: PromptVersionState.PENDING,
+            version_no: 1,
+            old_version: null,
+            submitted_by: OTHER_USER_ID,
+            prompt_content: 'orig',
+          }),
+          update: jest.fn(),
+          save: jest.fn(async (_E: any, obj: any) => {
+            saved.push(obj);
+            return obj;
+          }),
+        };
+        return cb(manager);
+      });
+      service = new PromptLibraryUploadService(
+        packageRepo,
+        versionRepo,
+        dataSource,
+        avatarUrl,
+        permissionQuery,
+        itemMeta,
+      );
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+      const row = saved[0];
+      expect(row.state).toBe(PromptVersionState.PENDING);
+      expect(row.submitted_by).toBe(OTHER_USER_ID);
+      expect(row.prompt_content).toBe('fixed');
+      expect(row.name).toBe('v2-fixed');
+    });
+
+    it('upload-only author on pending → ConflictException', async () => {
+      stubLookups({ state: PromptVersionState.PENDING, pending: true });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ConflictException);
+    });
   });
 
   // ---- toggleStatus ----

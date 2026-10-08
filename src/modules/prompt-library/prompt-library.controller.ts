@@ -186,12 +186,14 @@ export class PromptLibraryController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
-  // PUT /v1/prompt/versions/:vid — resubmit the latest rejected version (same body as a bump).
-  // Caller must hold prompt_upload and be that version's submitter (not package owner / approver).
-  @ApiOperation({ summary: 'Edit the latest rejected prompt version (submitter + upload only)' })
+  // PUT /v1/prompt/versions/:vid — submitter resubmits latest rejected, or approver patches pending
+  // (PROMPT_APPROVER_PENDING_LOCKED_FIELDS is empty — no field locks).
+  @ApiOperation({
+    summary: 'Edit a prompt version (submitter: latest rejected; approver: pending, no locked fields)',
+  })
   @Put('versions/:vid')
   @UseGuards(PermissionGuard)
-  @RequirePermission('prompt_upload')
+  @RequirePermission('prompt_upload', 'prompt_approve')
   async editVersion(
     @Param('vid', ParseIntPipe) vid: number,
     @Body() dto: CreatePromptVersionDto,

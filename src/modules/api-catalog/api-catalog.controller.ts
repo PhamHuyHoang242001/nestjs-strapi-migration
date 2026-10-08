@@ -163,12 +163,14 @@ export class ApiCatalogController {
     return this.uploadService.createVersion(id, dto, userId);
   }
 
-  // PUT /v1/ai-hub/api-catalog/versions/:vid — resubmit the latest rejected version (same body as a bump).
-  // Caller must hold api_upload and be that version's submitter (not package owner / approver).
-  @ApiOperation({ summary: 'Edit the latest rejected API version (submitter + upload only)' })
+  // PUT /v1/ai-hub/api-catalog/versions/:vid — submitter resubmits latest rejected, or approver
+  // patches pending (mock_req/mock_res locked via API_APPROVER_PENDING_LOCKED_FIELDS).
+  @ApiOperation({
+    summary: 'Edit an API version (submitter: latest rejected; approver: pending, mocks locked)',
+  })
   @Put('versions/:vid')
   @UseGuards(PermissionGuard)
-  @RequirePermission('api_upload')
+  @RequirePermission('api_upload', 'api_approve')
   async editVersion(
     @Param('vid', ParseIntPipe) vid: number,
     @Body() dto: CreateApiVersionDto,

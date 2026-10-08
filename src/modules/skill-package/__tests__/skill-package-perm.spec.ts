@@ -62,6 +62,10 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('getDiff')).toEqual(['skill_upload', 'skill_approve']);
   });
 
+  it('editVersion carries skill_upload or skill_approve', () => {
+    expect(getPerm('editVersion')).toEqual(['skill_upload', 'skill_approve']);
+  });
+
   it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {
     expect(getPerm('getVersion')).toBeUndefined();
   });
@@ -82,6 +86,7 @@ describe('SkillPackageController — perm mapping', () => {
     'myPermissions',
     'createItem',
     'createVersion',
+    'editVersion',
     'approveVersion',
     'rejectVersion',
     'toggleStatus',
