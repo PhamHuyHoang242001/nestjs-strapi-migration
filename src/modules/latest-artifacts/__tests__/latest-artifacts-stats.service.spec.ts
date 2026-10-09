@@ -15,6 +15,7 @@ const USER_ID = 42;
 const SKILL_AGGREGATE = { total: '7', pending: '2', approved: '4', rejected: '1', published: '5', my_versions: '3' };
 const PROMPT_AGGREGATE = { total: '9', pending: '3', approved: '5', rejected: '1', published: '6', my_versions: '2' };
 const API_AGGREGATE = { total: '4', pending: '1', approved: '2', rejected: '1', published: '3', my_versions: '1' };
+const COWORKER_AGGREGATE = { total: '2', pending: '1', approved: '1', rejected: '0', published: '1', my_versions: '1' };
 
 describe('LatestArtifactsService.listStats', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -24,20 +25,22 @@ describe('LatestArtifactsService.listStats', () => {
     query
       .mockResolvedValueOnce([SKILL_AGGREGATE])
       .mockResolvedValueOnce([PROMPT_AGGREGATE])
-      .mockResolvedValueOnce([API_AGGREGATE]);
+      .mockResolvedValueOnce([API_AGGREGATE])
+      .mockResolvedValueOnce([COWORKER_AGGREGATE]);
 
     await expect(service.listStats(USER_ID)).resolves.toEqual({
       data: [
         { type: 'skill', total: 7, pending: 2, approved: 4, rejected: 1, published: 5, my_versions: 3 },
         { type: 'prompt', total: 9, pending: 3, approved: 5, rejected: 1, published: 6, my_versions: 2 },
         { type: 'api-catalog', total: 4, pending: 1, approved: 2, rejected: 1, published: 3, my_versions: 1 },
+        { type: 'coworker', total: 2, pending: 1, approved: 1, rejected: 0, published: 1, my_versions: 1 },
       ],
     });
   });
 
   it('reports zeros for a workspace whose aggregate returns no row', async () => {
     const { service, query } = makeService();
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const result = await service.listStats(USER_ID);
 
@@ -45,6 +48,7 @@ describe('LatestArtifactsService.listStats', () => {
       { type: 'skill', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
       { type: 'prompt', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
       { type: 'api-catalog', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
+      { type: 'coworker', total: 0, pending: 0, approved: 0, rejected: 0, published: 0, my_versions: 0 },
     ]);
   });
 
@@ -54,6 +58,7 @@ describe('LatestArtifactsService.listStats', () => {
     ['skill', 0, 'skill_package_id', 'skill_versions', 'skill_packages'],
     ['prompt', 1, 'prompt_package_id', 'prompt_versions', 'prompt_packages'],
     ['api-catalog', 2, 'api_catalog_package_id', 'api_catalog_versions', 'api_catalog_packages'],
+    ['coworker', 3, 'coworker_package_id', 'coworker_versions', 'coworker_packages'],
   ])('classifies %s by latest live version per package', async (_type, callIndex, fk, versionTable, packageTable) => {
     const { service, query } = makeService();
     query.mockResolvedValue([SKILL_AGGREGATE]);
@@ -86,6 +91,7 @@ describe('LatestArtifactsService.listStats', () => {
     expect(query.mock.calls[0][1]).toEqual([USER_ID]);
     expect(query.mock.calls[1][1]).toEqual([USER_ID]);
     expect(query.mock.calls[2][1]).toEqual([USER_ID]);
+    expect(query.mock.calls[3][1]).toEqual([USER_ID]);
   });
 });
 

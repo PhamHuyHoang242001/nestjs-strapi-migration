@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import {
   AssetHubItemMetaService,
   MAX_RESPONSIBLE_USERS,
+  MAX_SUPPORTERS,
   MAX_VERSION_TAGS,
   packageOwningFields,
 } from '../asset-hub-item-meta.service';
@@ -115,6 +116,48 @@ describe('AssetHubItemMetaService.assertUsers', () => {
     expect(sql).toContain('deleted_at IS NULL');
     expect(sql).toContain('COALESCE(is_deleted, false) = false');
     expect(params).toEqual([[11]]);
+  });
+});
+
+describe('AssetHubItemMetaService.assertSupporterUsers', () => {
+  it('allows an empty list', async () => {
+    const { manager } = makeManager();
+    await expect(new AssetHubItemMetaService().assertSupporterUsers(manager as never, [])).resolves.toEqual([]);
+    expect(manager.query).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than the cap', async () => {
+    const { manager } = makeManager();
+    const tooMany = Array.from({ length: MAX_SUPPORTERS + 1 }, (_, i) => i + 1);
+    await expect(new AssetHubItemMetaService().assertSupporterUsers(manager as never, tooMany)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('returns deduped ids when every user resolves', async () => {
+    const { manager } = makeManager({ userRows: [{ id: 11 }, { id: 12 }] });
+    await expect(new AssetHubItemMetaService().assertSupporterUsers(manager as never, [11, 12, 11])).resolves.toEqual([
+      11, 12,
+    ]);
+  });
+});
+
+describe('AssetHubItemMetaService.replaceSupporters', () => {
+  it('hard-deletes then inserts', async () => {
+    const { manager, deletes, savedBatches } = makeManager();
+    await new AssetHubItemMetaService().replaceSupporters(manager as never, 'prompt', 5, [11, 12]);
+    expect(deletes).toEqual([{ entity: 'AiHubSupporter', criteria: { type: 'prompt', data_id: 5 } }]);
+    expect(savedBatches[0]).toEqual([
+      { type: 'prompt', data_id: 5, user_id: 11 },
+      { type: 'prompt', data_id: 5, user_id: 12 },
+    ]);
+  });
+
+  it('clears all when ids empty', async () => {
+    const { manager, deletes, savedBatches } = makeManager();
+    await new AssetHubItemMetaService().replaceSupporters(manager as never, 'skill', 5, []);
+    expect(deletes).toEqual([{ entity: 'AiHubSupporter', criteria: { type: 'skill', data_id: 5 } }]);
+    expect(savedBatches).toHaveLength(0);
   });
 });
 

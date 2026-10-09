@@ -177,6 +177,7 @@ describe('OwnerScopeResolverService', () => {
       expect(result.has('bh_report_create')).toBe(true);
       const sql = dsQuery.mock.calls[1][0] as string;
       expect(sql).toMatch(/NOT \(sub\.id = root_mod\.id AND p\.action = 'create'\)/);
+      expect(sql).toMatch(/p\.action IN \('upload', 'approve'\)/);
     });
 
     it('warms verbs cache on miss', async () => {

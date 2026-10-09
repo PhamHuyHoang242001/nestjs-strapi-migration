@@ -30,6 +30,9 @@ function makeItemMeta() {
     assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceResponsibles: jest.fn().mockResolvedValue(undefined),
     replaceVersionTags: jest.fn().mockResolvedValue(undefined),
+    listSupporterIds: jest.fn().mockResolvedValue([]),
+    assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    replaceSupporters: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -477,9 +480,16 @@ describe('PromptLibraryUploadService', () => {
       expect(versionRow.version_no).toBe(1);
     });
 
-    it('non-owner with prompt_approve (approver) → allowed', async () => {
+    it('non-owner with prompt_approve (approver) → ForbiddenException', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
+      await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('non-owner supporter with prompt_upload → allowed', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
+      itemMeta.listSupporterIds.mockResolvedValue([USER_ID]);
 
       const saved: any[] = [];
       dataSource.transaction = jest.fn(async (cb: any) => {
@@ -498,7 +508,6 @@ describe('PromptLibraryUploadService', () => {
 
       const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
       expect(result.version).toBeDefined();
-      // latest approved = 2 → placeholder version_no = 2 (approve later → 3).
       expect(result.version.version_no).toBe(2);
     });
 
@@ -622,31 +631,39 @@ describe('PromptLibraryUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('approver may edit pending (not author); prompt_content updates, submitted_by unchanged', async () => {
+    it('approver cannot edit pending (SO-only)', async () => {
       stubLookups({
         state: PromptVersionState.PENDING,
         submittedBy: OTHER_USER_ID,
         createdBy: OTHER_USER_ID,
         codes: ['prompt_approve'],
       });
-      const saved: any[] = [];
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('workspace SO can edit pending', async () => {
+      stubLookups({
+        state: PromptVersionState.PENDING,
+        submittedBy: OTHER_USER_ID,
+        createdBy: OTHER_USER_ID,
+        codes: [],
+      });
+      const ownerScope = {
+        getUserOwnerScope: jest.fn().mockResolvedValue([{ rootTable: 'prompt_packages', rootId: 0 }]),
+      };
       dataSource.transaction = jest.fn(async (cb: any) => {
+        const locked = {
+          id: VERSION_ID,
+          prompt_package_id: PACKAGE_ID,
+          state: PromptVersionState.PENDING,
+          version_no: 1,
+          old_version: null,
+        };
         const manager = {
-          query: jest.fn().mockResolvedValueOnce([]),
-          findOne: jest.fn().mockResolvedValue({
-            id: VERSION_ID,
-            prompt_package_id: PACKAGE_ID,
-            state: PromptVersionState.PENDING,
-            version_no: 1,
-            old_version: null,
-            submitted_by: OTHER_USER_ID,
-            prompt_content: 'orig',
-          }),
+          query: jest.fn().mockResolvedValue([]),
+          findOne: jest.fn().mockResolvedValue(locked),
           update: jest.fn(),
-          save: jest.fn(async (_E: any, obj: any) => {
-            saved.push(obj);
-            return obj;
-          }),
+          save: jest.fn(async (_E: any, obj: any) => obj),
         };
         return cb(manager);
       });
@@ -657,14 +674,11 @@ describe('PromptLibraryUploadService', () => {
         avatarUrl,
         permissionQuery,
         itemMeta,
+        undefined,
+        ownerScope as never,
       );
       const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
       expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
-      const row = saved[0];
-      expect(row.state).toBe(PromptVersionState.PENDING);
-      expect(row.submitted_by).toBe(OTHER_USER_ID);
-      expect(row.prompt_content).toBe('fixed');
-      expect(row.name).toBe('v2-fixed');
     });
 
     it('upload-only author on pending → ConflictException', async () => {
@@ -676,11 +690,12 @@ describe('PromptLibraryUploadService', () => {
   // ---- toggleStatus ----
   describe('toggleStatus — active/inactive visibility toggle', () => {
     it('updates the package status and returns {id, status}', async () => {
-      const pkg: any = { id: PACKAGE_ID, status: PromptPackageStatus.ACTIVE, is_deleted: false };
+      const pkg: any = { id: PACKAGE_ID, status: PromptPackageStatus.ACTIVE, is_deleted: false, created_by: USER_ID };
       packageRepo.findOne = jest.fn().mockResolvedValue(pkg);
       packageRepo.save = jest.fn(async (p: any) => p);
+      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
 
-      const result = await service.toggleStatus(PACKAGE_ID, { status: PromptPackageStatus.INACTIVE } as any);
+      const result = await service.toggleStatus(PACKAGE_ID, { status: PromptPackageStatus.INACTIVE } as any, USER_ID);
 
       expect(packageRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ id: PACKAGE_ID, status: PromptPackageStatus.INACTIVE }),
@@ -692,8 +707,20 @@ describe('PromptLibraryUploadService', () => {
       packageRepo.findOne = jest.fn().mockResolvedValue(null);
 
       await expect(
-        service.toggleStatus(999, { status: PromptPackageStatus.INACTIVE } as any),
+        service.toggleStatus(999, { status: PromptPackageStatus.INACTIVE } as any, USER_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('stranger with approve-only → ForbiddenException', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        status: PromptPackageStatus.ACTIVE,
+        is_deleted: false,
+        created_by: OTHER_USER_ID,
+      });
+      await expect(
+        service.toggleStatus(PACKAGE_ID, { status: PromptPackageStatus.INACTIVE } as any, USER_ID),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 
@@ -702,19 +729,19 @@ describe('PromptLibraryUploadService', () => {
     it('returns canUpload=true when prompt_upload held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: true, canApprove: false });
+      expect(result).toEqual({ canUpload: true, canApprove: false, isWorkspaceSO: false });
     });
 
     it('returns canApprove=true when prompt_approve held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: false, canApprove: true });
+      expect(result).toEqual({ canUpload: false, canApprove: true, isWorkspaceSO: false });
     });
 
     it('returns both false when no prompt codes held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['some_other_code']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: false, canApprove: false });
+      expect(result).toEqual({ canUpload: false, canApprove: false, isWorkspaceSO: false });
     });
   });
 });

@@ -38,6 +38,9 @@ function makeItemMeta() {
     assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceResponsibles: jest.fn().mockResolvedValue(undefined),
     replaceVersionTags: jest.fn().mockResolvedValue(undefined),
+    listSupporterIds: jest.fn().mockResolvedValue([]),
+    assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    replaceSupporters: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -505,29 +508,10 @@ describe('SkillPackageUploadService', () => {
       expect(result.version.version_no).toBe(1);
     });
 
-    it('non-owner with skill_approve (approver) → allowed', async () => {
+    it('non-owner with skill_approve (approver) → ForbiddenException', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
-
-      const saved: any[] = [];
-      dataSource.transaction = jest.fn(async (cb: any) => {
-        const manager = {
-          query: jest.fn().mockResolvedValue([{ max: '2' }]),
-          create: jest.fn((_E: any, data: any) => ({ ...data })),
-          update: jest.fn(),
-          save: jest.fn(async (_E: any, obj: any) => {
-            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
-            return { ...obj, id: 99 };
-          }),
-        };
-        return cb(manager);
-      });
-      service = new SkillPackageUploadService(packageRepo, versionRepo, dataSource, fileFetch, permissionQuery, itemMeta);
-
-      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
-      expect(result.version).toBeDefined();
-      // latest approved = 2 → placeholder version_no = 2 (approve later → 3).
-      expect(result.version.version_no).toBe(2);
+      await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('owner + approver → allowed (both conditions satisfied)', async () => {
@@ -707,52 +691,15 @@ describe('SkillPackageUploadService', () => {
       expect(fileFetch.downloadZip).not.toHaveBeenCalled();
     });
 
-    it('approver may edit pending with full body; zip is skipped, submitted_by unchanged', async () => {
+    it('approver cannot edit pending (SO-only)', async () => {
       stubLookups({
         state: SkillVersionState.PENDING,
         submittedBy: OTHER_USER_ID,
         createdBy: OTHER_USER_ID,
         codes: ['skill_approve'],
       });
-      const saved: any[] = [];
-      dataSource.transaction = jest.fn(async (cb: any) => {
-        const manager = {
-          query: jest.fn().mockResolvedValueOnce([]),
-          findOne: jest.fn().mockResolvedValue({
-            id: VERSION_ID,
-            skill_package_id: PACKAGE_ID,
-            state: SkillVersionState.PENDING,
-            version_no: 1,
-            old_version: null,
-            submitted_by: OTHER_USER_ID,
-            skill_md_content: 'orig-md',
-            zip_tree: [{ path: 'orig' }],
-          }),
-          update: jest.fn(),
-          save: jest.fn(async (_E: any, obj: any) => {
-            saved.push(obj);
-            return obj;
-          }),
-        };
-        return cb(manager);
-      });
-      service = new SkillPackageUploadService(
-        packageRepo,
-        versionRepo,
-        dataSource,
-        fileFetch,
-        permissionQuery,
-        itemMeta,
-      );
-      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
-      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
       expect(fileFetch.downloadZip).not.toHaveBeenCalled();
-      const row = saved[0];
-      expect(row.state).toBe(SkillVersionState.PENDING);
-      expect(row.submitted_by).toBe(OTHER_USER_ID);
-      expect(row.name).toBe('v2-fixed');
-      expect(row.skill_md_content).toBe('orig-md');
-      expect(row.zip_tree).toEqual([{ path: 'orig' }]);
     });
 
     it('upload-only author on pending → ConflictException', async () => {
@@ -765,11 +712,11 @@ describe('SkillPackageUploadService', () => {
   // ---- toggleStatus ----
   describe('toggleStatus — active/inactive visibility toggle', () => {
     it('updates the package status and returns {id, status}', async () => {
-      const pkg: any = { id: PACKAGE_ID, status: SkillPackageStatus.ACTIVE, is_deleted: false };
+      const pkg: any = { id: PACKAGE_ID, status: SkillPackageStatus.ACTIVE, is_deleted: false, created_by: USER_ID };
       packageRepo.findOne = jest.fn().mockResolvedValue(pkg);
       packageRepo.save = jest.fn(async (p: any) => p);
 
-      const result = await service.toggleStatus(PACKAGE_ID, { status: SkillPackageStatus.INACTIVE } as any);
+      const result = await service.toggleStatus(PACKAGE_ID, { status: SkillPackageStatus.INACTIVE } as any, USER_ID);
 
       expect(packageRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ id: PACKAGE_ID, status: SkillPackageStatus.INACTIVE }),
@@ -781,7 +728,7 @@ describe('SkillPackageUploadService', () => {
       packageRepo.findOne = jest.fn().mockResolvedValue(null);
 
       await expect(
-        service.toggleStatus(999, { status: SkillPackageStatus.INACTIVE } as any),
+        service.toggleStatus(999, { status: SkillPackageStatus.INACTIVE } as any, USER_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
@@ -791,19 +738,19 @@ describe('SkillPackageUploadService', () => {
     it('returns canUpload=true when skill_upload held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: true, canApprove: false });
+      expect(result).toEqual({ canUpload: true, canApprove: false, isWorkspaceSO: false });
     });
 
     it('returns canApprove=true when skill_approve held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: false, canApprove: true });
+      expect(result).toEqual({ canUpload: false, canApprove: true, isWorkspaceSO: false });
     });
 
     it('returns both false when no skill codes held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['some_other_code']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: false, canApprove: false });
+      expect(result).toEqual({ canUpload: false, canApprove: false, isWorkspaceSO: false });
     });
   });
 });

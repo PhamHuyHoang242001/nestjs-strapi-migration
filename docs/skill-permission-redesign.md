@@ -1,49 +1,31 @@
-# Định hướng phân quyền Skill
+# Phân quyền AI Hub (4 workspace, 2 code)
 
-Giả định: **không check quyền tạo** — ai login cũng `POST /items`. Tách việc ghi còn lại thành **edit** và **approve**. SO là owner **cả workspace Skill** (`skill_packages`), không phải từng package. Prompt / API catalog cùng pattern, SO tách từng workspace.
+Nguồn sự thật sau plan `plans/261009-1424-ai-hub-coworker/`. Bản vẽ cũ 3-code: [skill-permission-redesign.html](./skill-permission-redesign.html) — **không** shipped. Flow seed cũ: [skill-permission-flow.md](./skill-permission-flow.md).
 
-**Edit skill = tạo version mới** (`PUT /items/:id/versions`). **Sửa version** = `PUT /versions/:vid`.
+4 workspace: skill, prompt, api-catalog, coworker. Mỗi WS **2 code**: `*_upload` + `*_approve`.
 
-Bản vẽ: [skill-permission-redesign.html](./skill-permission-redesign.html). Hiện tại: [skill-permission-flow.html](./skill-permission-flow.html).
-
-## Giả định: ai cũng tạo được
-
-Hai nhánh edit sau khi bỏ `skill_create` / `skill_upload` trên POST.
-
-### Nhánh 1 — chỉ edit của mình
-
-Người A tạo skill X → chỉ A edit skill X và sửa version rejected của A.
-
-**Vấn đề:** A nghỉ việc → skill mồ côi, không ai `PUT /items/:id/versions`.
-
-**Xử lý:** không mở edit-all. **SO Skill** edit mọi package (kể cả người đã nghỉ). Có thể thêm chuyển `created_by` sau.
-
-### Nhánh 2 — edit được của nhau
-
-Đồng nghiệp bump được skill người nghỉ — không mồ côi.
-
-**Vấn đề:** nhiều người sửa cùng skill → 409 một pending, đè ý nhau, hàng chờ Approver phình, Approver phải check loạn.
-
-**Kết luận:** không mở edit-all cho mọi user. Chỉ SO được edit chéo.
-
-## Approver sửa pending — rủi ro
-
-Hiện Approver `PUT /versions/:vid` khi pending, bỏ qua field cấm, `submitted_by` giữ author, **không audit log**.
-
-Approver không đủ năng lực → sửa linh tinh, catalog sau approve trông như author viết, không truy được.
-
-**Nên:** Approver chỉ approve / reject / ẩn-hiện. Sửa pending → reject cho author, hoặc **chỉ SO sửa** (và nên log editor).
-
-## Mô hình đề xuất
+## Quyền runtime (sau helper)
 
 | Việc | API | Ai được |
 |---|---|---|
-| Tạo skill | `POST /items` | Mọi user login |
-| Edit skill = tạo version mới | `PUT /items/:id/versions` | Người tạo package, hoặc SO Skill |
-| Sửa version rejected | `PUT /versions/:vid` | Submitter / người tạo package (newest), hoặc SO |
-| Sửa version pending | `PUT /versions/:vid` | **Chỉ SO Skill** |
-| Approve / reject | `POST approve` / `reject` | Approver hoặc SO |
-| Ẩn/hiện | `PATCH /items/:id/status` | Approver hoặc SO |
-| Đọc catalog active | GET items / download / preview | Bearer. Inactive / hàng chờ: Approver hoặc SO |
+| Tạo package | `POST /items` | `*_upload` |
+| Bump = version mới | `PUT /items/:id/versions` | `(creator ∨ supporter) ∧ upload`. Approver **không**. SO **không** bump package người khác |
+| Sửa version rejected newest | `PUT /versions/:vid` | Cùng `canBump` |
+| Sửa version pending | `PUT /versions/:vid` | **Chỉ SO** workspace đó (`rootId===0`) |
+| Approve / reject | `POST approve` / `reject` | `*_approve` |
+| Ẩn/hiện | `PATCH /items/:id/status` | creator ∨ supporter ∨ SO (guard: upload ∨ approve) |
+| Đọc catalog active | GET items | Bearer. Inactive: own/supporter, hoặc approve/SO |
 
-SO Prompt / SO API catalog tách workspace, không đụng skill. Dù chỉ SO sửa pending, vẫn nên ghi `edited_by` / audit — thiếu log thì SO sửa cũng không truy được.
+`supporter_ids` full-replace trên create/bump/editVersion (không PATCH riêng). Bảng `ai_hub_supporters`. Tác giả (`responsible_user_ids`) ≠ supporter.
+
+SO: child module `/asset-hub/skill|prompt|api-catalog|coworker`, `ROOT_OWNER_CONFIG` + `OWNER_ALL`, **không** `HIERARCHY_MAP` / records browser.
+
+## Coworker
+
+Prefix `/v1/ai-hub/coworker`. Clone prompt, **không** download / usage_guide / tags / category.
+
+- Create: `code` user nhập, unique live (409 nếu trùng), immutable.
+- Artifact: `channel_ids[]`, `model_id`, `link` origin `https://teams.microsoft.com`.
+- Lookup GET `/channels` `/models` Bearer, seed migration.
+
+Seed test: `coworker_uploader` = `coworker_upload`; `coworker_approver` = `coworker_approve` **không** upload.

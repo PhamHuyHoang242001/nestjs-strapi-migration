@@ -6,7 +6,7 @@ import { LATEST_ARTIFACTS_LIMIT } from '@configuration/env.config';
 
 // The literal artifact kinds surfaced by the feed. Kept as a string union so the `type` field is a
 // stable public discriminator ('skill' | 'prompt') the client can switch on.
-export type ArtifactType = 'skill' | 'prompt' | 'api-catalog';
+export type ArtifactType = 'skill' | 'prompt' | 'api-catalog' | 'coworker';
 
 // Public shape of one feed item — exactly the fields the request asks for and nothing else.
 // `created_at` is the LATEST version's creation timestamp ("ngày tạo"); `created_by` is that
@@ -167,7 +167,7 @@ export class LatestArtifactsService {
   // the SQL was moved here rather than injected, because neither library module exports its query
   // service. The classification is unchanged — only the transport and the response shape differ.
   async listStats(userId: number): Promise<{ data: WorkspaceStatRow[] }> {
-    const [skills, prompts, apiCatalogs] = await Promise.all([
+    const [skills, prompts, apiCatalogs, coworkers] = await Promise.all([
       this.fetchWorkspaceStats('skill', 'skill_versions', 'skill_packages', 'skill_package_id', userId),
       this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id', userId),
       this.fetchWorkspaceStats(
@@ -177,29 +177,37 @@ export class LatestArtifactsService {
         'api_catalog_package_id',
         userId,
       ),
+      this.fetchWorkspaceStats('coworker', 'coworker_versions', 'coworker_packages', 'coworker_package_id', userId),
     ]);
-    return { data: [skills, prompts, apiCatalogs] };
+    return { data: [skills, prompts, apiCatalogs, coworkers] };
   }
 
   // GET /v1/asset-hub/latest — the N newest skills + N newest prompts, each carrying its latest
   // version's fields. N = the optional per-request override, else the configured default. Returns
   // both groups so the client can render "Skill mới nhất" and "Prompt mới nhất" sections separately.
   async listLatest(limitOverride?: number): Promise<{
-    data: { skills: LatestArtifactItem[]; prompts: LatestArtifactItem[]; apiCatalogs: LatestArtifactItem[] };
+    data: {
+      skills: LatestArtifactItem[];
+      prompts: LatestArtifactItem[];
+      apiCatalogs: LatestArtifactItem[];
+      coworkers: LatestArtifactItem[];
+    };
     meta: { limit: number };
   }> {
     const limit = limitOverride ?? LATEST_ARTIFACTS_LIMIT;
 
-    const [skillRows, promptRows, apiRows] = await Promise.all([
+    const [skillRows, promptRows, apiRows, coworkerRows] = await Promise.all([
       this.fetchLatestPerPackage('skill_versions', 'skill_packages', 'skill_package_id', limit),
       this.fetchLatestPerPackage('prompt_versions', 'prompt_packages', 'prompt_package_id', limit),
       this.fetchLatestPerPackage('api_catalog_versions', 'api_catalog_packages', 'api_catalog_package_id', limit),
+      this.fetchLatestPerPackage('coworker_versions', 'coworker_packages', 'coworker_package_id', limit),
     ]);
 
     const emailMap = await this.resolveEmails([
       ...skillRows.map((r) => r.submitted_by),
       ...promptRows.map((r) => r.submitted_by),
       ...apiRows.map((r) => r.submitted_by),
+      ...coworkerRows.map((r) => r.submitted_by),
     ]);
 
     const shape = (row: LatestVersionRow, type: ArtifactType): LatestArtifactItem => ({
@@ -218,6 +226,7 @@ export class LatestArtifactsService {
         skills: skillRows.map((r) => shape(r, 'skill')),
         prompts: promptRows.map((r) => shape(r, 'prompt')),
         apiCatalogs: apiRows.map((r) => shape(r, 'api-catalog')),
+        coworkers: coworkerRows.map((r) => shape(r, 'coworker')),
       },
       meta: { limit },
     };

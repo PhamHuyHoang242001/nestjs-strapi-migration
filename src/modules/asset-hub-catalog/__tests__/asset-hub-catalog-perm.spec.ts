@@ -10,7 +10,7 @@ const getPerm = (prop: string): string[] | undefined =>
 
 describe('AssetHubCatalogController — perm mapping', () => {
   it('gates the user directory behind any upload or approve grant', () => {
-    // PermissionGuard is OR across codes: holding one of the four is enough.
+    // PermissionGuard is OR across codes: holding one of the eight is enough.
     expect(getPerm('listUsers')).toEqual([
       'skill_upload',
       'prompt_upload',
@@ -18,6 +18,8 @@ describe('AssetHubCatalogController — perm mapping', () => {
       'prompt_approve',
       'api_upload',
       'api_approve',
+      'coworker_upload',
+      'coworker_approve',
     ]);
   });
 

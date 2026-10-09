@@ -211,8 +211,10 @@ export class ApiCatalogController {
   @ApiOperation({ summary: 'Toggle API package active/inactive status' })
   @Patch('items/:id/status')
   @UseGuards(PermissionGuard)
-  @RequirePermission('api_approve')
-  async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto) {
-    return this.uploadService.toggleStatus(id, dto);
+  @RequirePermission('api_upload', 'api_approve')
+  async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.uploadService.toggleStatus(id, dto, userId);
   }
 }

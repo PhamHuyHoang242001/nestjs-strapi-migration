@@ -28,8 +28,8 @@ describe('PromptLibraryController — perm mapping', () => {
     expect(getPerm('rejectVersion')).toEqual(['prompt_approve']);
   });
 
-  it('toggleStatus carries prompt_approve', () => {
-    expect(getPerm('toggleStatus')).toEqual(['prompt_approve']);
+  it('toggleStatus carries prompt_upload or prompt_approve', () => {
+    expect(getPerm('toggleStatus')).toEqual(['prompt_upload', 'prompt_approve']);
   });
 
   // BearerGuard-only routes must NOT have @RequirePermission (no guard code).

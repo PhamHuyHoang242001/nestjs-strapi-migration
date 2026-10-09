@@ -40,6 +40,7 @@ describe('LatestArtifactsService', () => {
       .mockResolvedValueOnce([SKILL_ROW])
       .mockResolvedValueOnce([PROMPT_ROW])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 85, email: 'skill.uploader@vpbank.com.vn' },
         { id: 218, email: 'prompt.uploader@vpbank.com.vn' },
@@ -54,11 +55,17 @@ describe('LatestArtifactsService', () => {
     // Skill SQL targets skill_versions/skill_packages; prompt SQL targets the prompt tables.
     expect(query.mock.calls[0][0]).toContain('skill_versions');
     expect(query.mock.calls[1][0]).toContain('prompt_versions');
+    expect(query.mock.calls[3][0]).toContain('coworker_versions');
   });
 
   it('honours a per-request limit override', async () => {
     const { service, query } = makeService();
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    query
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const res = await service.listLatest(5);
 
@@ -72,6 +79,7 @@ describe('LatestArtifactsService', () => {
     query
       .mockResolvedValueOnce([SKILL_ROW])
       .mockResolvedValueOnce([PROMPT_ROW])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 85, email: 'skill.uploader@vpbank.com.vn' },
@@ -104,12 +112,14 @@ describe('LatestArtifactsService', () => {
         created_by: 'prompt.uploader@vpbank.com.vn',
       },
     ]);
+    expect(res.data.coworkers).toEqual([]);
   });
 
   it('returns created_by=null when the submitter has no matching user row', async () => {
     const { service, query } = makeService();
     query
       .mockResolvedValueOnce([SKILL_ROW])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);

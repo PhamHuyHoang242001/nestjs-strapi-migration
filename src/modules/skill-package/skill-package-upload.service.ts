@@ -23,6 +23,8 @@ import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
 import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
+import { canBumpPackage, canTogglePackage, isAiHubWorkspaceSO } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
 const PG_UNIQUE_VIOLATION = '23505';
@@ -51,7 +53,34 @@ export class SkillPackageUploadService {
     private readonly permissionQuery: PermissionQueryService,
     private readonly itemMeta: AssetHubItemMetaService,
     @Optional() private readonly categoryService?: CategoryService,
+    @Optional() private readonly ownerScope?: OwnerScopeResolverService,
   ) {}
+
+  private async isSkillSo(userId: number): Promise<boolean> {
+    if (!this.ownerScope) return false;
+    return isAiHubWorkspaceSO(await this.ownerScope.getUserOwnerScope(userId), 'skill_packages');
+  }
+
+  private async assertCanBump(userId: number, createdBy: number, packageId: number): Promise<void> {
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const supporterIds = await this.itemMeta.listSupporterIds(this.dataSource.manager, 'skill', packageId);
+    if (
+      !canBumpPackage({
+        userId,
+        createdBy,
+        hasUpload: codes.includes('skill_upload'),
+        supporterIds,
+      })
+    ) {
+      throw new ForbiddenException('You can only update skill packages you created or support');
+    }
+  }
+
+  private async applySupporters(manager: EntityManager, packageId: number, supporterIds: number[] | undefined): Promise<void> {
+    if (supporterIds === undefined) return;
+    const ids = await this.itemMeta.assertSupporterUsers(manager, supporterIds);
+    await this.itemMeta.replaceSupporters(manager, 'skill', packageId, ids);
+  }
 
   // Sanitize the submitted guide once, before any transaction is opened. `requireContent` is on for
   // a create (a new artifact must document itself) and off for a bump, where an author revising an
@@ -101,6 +130,7 @@ export class SkillPackageUploadService {
       );
 
       await this.itemMeta.replaceResponsibles(manager, 'skill', savedPkg.id, responsibleUserIds);
+      await this.applySupporters(manager, savedPkg.id, dto.supporter_ids ?? []);
 
       // code = 'skill_<id>' — set post-insert (id known only now) in the SAME tx.
       await manager.update(SkillPackage, savedPkg.id, { code: `skill_${savedPkg.id}` });
@@ -145,11 +175,7 @@ export class SkillPackageUploadService {
     // cannot force a server-side download of an attacker-influenced URL. PermissionGuard already
     // guarantees skill_upload; this adds only the ownership delta: an approver may bump any package,
     // an uploader only their own.
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('skill_approve');
-    if (!canApprove && pkg.created_by !== userId) {
-      throw new ForbiddenException('You can only update skill packages you created');
-    }
+    await this.assertCanBump(userId, pkg.created_by, packageId);
 
     // Fail fast before reading/parsing the submitted ZIP. The partial unique index remains the
     // concurrency authority; this preflight enforces the business rule with deterministic error
@@ -209,6 +235,7 @@ export class SkillPackageUploadService {
 
         await manager.update(SkillPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', packageId, responsibleUserIds);
+        await this.applySupporters(manager, packageId, dto.supporter_ids);
 
         const version = manager.create(SkillVersion, {
           skill_package_id: packageId,
@@ -255,15 +282,11 @@ export class SkillPackageUploadService {
     const pkg = await this.packageRepo.findOne({ where: { id: version.skill_package_id, is_deleted: false } });
     if (!pkg) throw new NotFoundException('Skill package not found');
 
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const approverPending = codes.includes('skill_approve') && version.state === SkillVersionState.PENDING;
+    const soPending = version.state === SkillVersionState.PENDING && (await this.isSkillSo(userId));
+    const approverPending = soPending;
 
     if (!approverPending) {
-      const canUpload = codes.includes('skill_upload');
-      const isAuthor = version.submitted_by === userId || pkg.created_by === userId;
-      if (!canUpload || !isAuthor) {
-        throw new ForbiddenException('You can only edit versions you submitted or packages you created');
-      }
+      await this.assertCanBump(userId, pkg.created_by, pkg.id);
 
       const pendingVersion = await this.versionRepo.findOne({
         where: { skill_package_id: pkg.id, state: SkillVersionState.PENDING, is_deleted: false },
@@ -347,6 +370,9 @@ export class SkillPackageUploadService {
 
         await manager.update(SkillPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', pkg.id, responsibleUserIds);
+        if (!approverPending) {
+          await this.applySupporters(manager, pkg.id, dto.supporter_ids);
+        }
 
         locked.name = dto.name;
         locked.short_description = dto.short_description;
@@ -455,9 +481,15 @@ export class SkillPackageUploadService {
   }
 
   // Toggle package active/inactive status. Only approvers can call this endpoint.
-  async toggleStatus(packageId: number, dto: ToggleStatusDto) {
+  async toggleStatus(packageId: number, dto: ToggleStatusDto, userId: number) {
     const pkg = await this.packageRepo.findOne({ where: { id: packageId, is_deleted: false } });
     if (!pkg) throw new NotFoundException('Skill package not found');
+
+    const isSo = await this.isSkillSo(userId);
+    const supporterIds = await this.itemMeta.listSupporterIds(this.dataSource.manager, 'skill', packageId);
+    if (!canTogglePackage({ userId, createdBy: pkg.created_by, supporterIds, isSo })) {
+      throw new ForbiddenException('You can only toggle skill packages you created or support');
+    }
 
     pkg.status = dto.status;
     await this.packageRepo.save(pkg);
@@ -495,6 +527,7 @@ export class SkillPackageUploadService {
     return {
       canUpload: codes.includes('skill_upload'),
       canApprove: codes.includes('skill_approve'),
+      isWorkspaceSO: await this.isSkillSo(userId),
     };
   }
 }

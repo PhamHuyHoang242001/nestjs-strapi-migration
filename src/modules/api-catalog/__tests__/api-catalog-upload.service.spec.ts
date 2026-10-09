@@ -37,6 +37,9 @@ function makeItemMeta() {
     assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceResponsibles: jest.fn().mockResolvedValue(undefined),
     replaceVersionTags: jest.fn().mockResolvedValue(undefined),
+    listSupporterIds: jest.fn().mockResolvedValue([]),
+    assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    replaceSupporters: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -479,29 +482,10 @@ describe('ApiCatalogUploadService', () => {
       expect(versionRow.version_no).toBe(1);
     });
 
-    it('non-owner with api_approve (approver) → allowed', async () => {
+    it('non-owner with api_approve (approver) → ForbiddenException', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue(['api_approve']);
-
-      const saved: any[] = [];
-      dataSource.transaction = jest.fn(async (cb: any) => {
-        const manager = {
-          query: jest.fn().mockResolvedValue([{ max: '2' }]),
-          create: jest.fn((_E: any, data: any) => ({ ...data })),
-          update: jest.fn(),
-          save: jest.fn(async (_E: any, obj: any) => {
-            saved.push({ entity: _E?.name, row: { ...obj, id: 99 } });
-            return { ...obj, id: 99 };
-          }),
-        };
-        return cb(manager);
-      });
-      service = new ApiCatalogUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
-
-      const result = await service.createVersion(PACKAGE_ID, dto as any, USER_ID);
-      expect(result.version).toBeDefined();
-      // latest approved = 2 → placeholder version_no = 2 (approve later → 3).
-      expect(result.version.version_no).toBe(2);
+      await expect(service.createVersion(PACKAGE_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('owner + approver → allowed (both conditions satisfied)', async () => {
@@ -625,57 +609,14 @@ describe('ApiCatalogUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('approver may edit pending with full body; mock_req/mock_res stay original', async () => {
+    it('approver cannot edit pending (SO-only)', async () => {
       stubLookups({
         state: ApiVersionState.PENDING,
         submittedBy: OTHER_USER_ID,
         createdBy: OTHER_USER_ID,
         codes: ['api_approve'],
       });
-      const origReq = { orig: true };
-      const origRes = { orig: 'res' };
-      const saved: any[] = [];
-      dataSource.transaction = jest.fn(async (cb: any) => {
-        const manager = {
-          query: jest.fn().mockResolvedValueOnce([]),
-          findOne: jest.fn().mockResolvedValue({
-            id: VERSION_ID,
-            api_catalog_package_id: PACKAGE_ID,
-            state: ApiVersionState.PENDING,
-            version_no: 1,
-            old_version: null,
-            submitted_by: OTHER_USER_ID,
-            mock_req: origReq,
-            mock_res: origRes,
-          }),
-          update: jest.fn(),
-          save: jest.fn(async (_E: any, obj: any) => {
-            saved.push(obj);
-            return obj;
-          }),
-        };
-        return cb(manager);
-      });
-      service = new ApiCatalogUploadService(
-        packageRepo,
-        versionRepo,
-        dataSource,
-        avatarUrl,
-        permissionQuery,
-        itemMeta,
-      );
-      const result = await service.editVersion(
-        VERSION_ID,
-        { ...dto, mock_req: { changed: 1 }, mock_res: { changed: true } } as any,
-        USER_ID,
-      );
-      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
-      const row = saved[0];
-      expect(row.state).toBe(ApiVersionState.PENDING);
-      expect(row.submitted_by).toBe(OTHER_USER_ID);
-      expect(row.name).toBe('v2-fixed');
-      expect(row.mock_req).toEqual(origReq);
-      expect(row.mock_res).toEqual(origRes);
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('upload-only author on pending → ConflictException', async () => {
@@ -687,11 +628,11 @@ describe('ApiCatalogUploadService', () => {
   // ---- toggleStatus ----
   describe('toggleStatus — active/inactive visibility toggle', () => {
     it('updates the package status and returns {id, status}', async () => {
-      const pkg: any = { id: PACKAGE_ID, status: ApiPackageStatus.ACTIVE, is_deleted: false };
+      const pkg: any = { id: PACKAGE_ID, status: ApiPackageStatus.ACTIVE, is_deleted: false, created_by: USER_ID };
       packageRepo.findOne = jest.fn().mockResolvedValue(pkg);
       packageRepo.save = jest.fn(async (p: any) => p);
 
-      const result = await service.toggleStatus(PACKAGE_ID, { status: ApiPackageStatus.INACTIVE } as any);
+      const result = await service.toggleStatus(PACKAGE_ID, { status: ApiPackageStatus.INACTIVE } as any, USER_ID);
 
       expect(packageRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ id: PACKAGE_ID, status: ApiPackageStatus.INACTIVE }),
@@ -703,7 +644,7 @@ describe('ApiCatalogUploadService', () => {
       packageRepo.findOne = jest.fn().mockResolvedValue(null);
 
       await expect(
-        service.toggleStatus(999, { status: ApiPackageStatus.INACTIVE } as any),
+        service.toggleStatus(999, { status: ApiPackageStatus.INACTIVE } as any, USER_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
@@ -713,19 +654,19 @@ describe('ApiCatalogUploadService', () => {
     it('returns canUpload=true when api_upload held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: true, canApprove: false });
+      expect(result).toEqual({ canUpload: true, canApprove: false, isWorkspaceSO: false });
     });
 
     it('returns canApprove=true when api_approve held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['api_approve']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: false, canApprove: true });
+      expect(result).toEqual({ canUpload: false, canApprove: true, isWorkspaceSO: false });
     });
 
     it('returns both false when no prompt codes held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['some_other_code']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: false, canApprove: false });
+      expect(result).toEqual({ canUpload: false, canApprove: false, isWorkspaceSO: false });
     });
   });
 });

@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AssetHubTag, AssetHubTagKind } from '@modules/databases/asset-hub-tag.entity';
-import type { AssetHubWorkspace } from './asset-hub-item-meta.service';
+import type { AssetHubPicWorkspace, AssetHubWorkspace } from './asset-hub-item-meta.service';
+import type { AiHubArtifactType } from './ai-hub-package-access.helper';
 
 // Public shape of a tag on any read surface. Replaces the freeform string the jsonb column used to
 // carry: the client needs the id to drive filters and the kind to colour the chip.
@@ -30,10 +31,11 @@ const VERSION_TAG_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }
   'api-catalog': { table: 'api_catalog_version_tags', fk: 'api_catalog_version_id' },
 };
 
-const RESPONSIBLE_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
+const RESPONSIBLE_TABLE: Record<AssetHubPicWorkspace, { table: string; fk: string }> = {
   skill: { table: 'skill_package_responsibles', fk: 'skill_package_id' },
   prompt: { table: 'prompt_package_responsibles', fk: 'prompt_package_id' },
   'api-catalog': { table: 'api_catalog_package_responsibles', fk: 'api_catalog_package_id' },
+  coworker: { table: 'coworker_package_responsibles', fk: 'coworker_package_id' },
 };
 
 const liveIds = (ids: Array<number | null | undefined>): number[] =>
@@ -80,7 +82,7 @@ export class AssetHubItemMetaReadService {
 
   // packageId → its people in charge (id + email only, matching the picker's projection).
   async getResponsiblesByPackageIds(
-    workspace: AssetHubWorkspace,
+    workspace: AssetHubPicWorkspace,
     packageIds: Array<number | null | undefined>,
   ): Promise<Map<number, ResponsibleUserRef[]>> {
     const map = new Map<number, ResponsibleUserRef[]>();
@@ -116,5 +118,39 @@ export class AssetHubItemMetaReadService {
       [ids],
     );
     return new Map(rows.map((row) => [Number(row.id), { id: Number(row.id), name: row.name }]));
+  }
+
+  async getSupportersByPackageIds(
+    type: AiHubArtifactType,
+    packageIds: Array<number | null | undefined>,
+  ): Promise<Map<number, ResponsibleUserRef[]>> {
+    const map = new Map<number, ResponsibleUserRef[]>();
+    const ids = liveIds(packageIds);
+    if (!ids.length) return map;
+
+    const rows: Array<{ package_id: number; id: number; email: string }> = await this.tagRepo.manager.query(
+      `SELECT s.data_id AS package_id, u.id, u.email
+       FROM ai_hub_supporters s
+       INNER JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL
+       WHERE s.type = $1 AND s.data_id = ANY($2)
+         AND s.deleted_at IS NULL AND COALESCE(s.is_deleted, false) = false
+       ORDER BY s.data_id, u.email`,
+      [type, ids],
+    );
+    for (const row of rows) {
+      const list = map.get(Number(row.package_id)) ?? [];
+      list.push({ id: Number(row.id), email: row.email });
+      map.set(Number(row.package_id), list);
+    }
+    return map;
+  }
+
+  async listSupportedPackageIds(type: AiHubArtifactType, userId: number): Promise<number[]> {
+    const rows: Array<{ data_id: number }> = await this.tagRepo.manager.query(
+      `SELECT data_id FROM ai_hub_supporters
+       WHERE type = $1 AND user_id = $2 AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false`,
+      [type, userId],
+    );
+    return rows.map((r) => Number(r.data_id));
   }
 }

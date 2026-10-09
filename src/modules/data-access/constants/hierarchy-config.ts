@@ -85,7 +85,15 @@ export const RULE_TARGET_TABLES = new Set<string>([
  * or EXISTS predicate, so the read API (applyDataScope) stays record-scoped —
  * own-all visibility is resolved explicitly in getScopedRecords only.
  */
-export const OWNER_ALL_TABLES = new Set<string>(['ma_tool_cstb_rpt_properties']);
+export const OWNER_ALL_TABLES = new Set<string>([
+  'ma_tool_cstb_rpt_properties',
+  // AI Hub whole-table SO. Intentionally NOT in HIERARCHY_MAP / ALLOWED_TABLES /
+  // RULE_TARGET_TABLES — owner_assignments + implied verbs only; no records browser.
+  'skill_packages',
+  'prompt_packages',
+  'api_catalog_packages',
+  'coworker_packages',
+]);
 
 /**
  * Tables where record-level "grant authority" is derived from an existing edit grant.
@@ -136,6 +144,10 @@ export const NAME_COLUMN_MAP: Record<string, string> = {
   bi_payment_program_log_changes: 'workstep',
   bi_payment_project_histories: 'id',
   ma_tool_cstb_rpt_properties: 'rpt_code',
+  skill_packages: 'code',
+  prompt_packages: 'code',
+  api_catalog_packages: 'code',
+  coworker_packages: 'code',
 };
 
 /** Maps root table → resource_type discriminator for polymorphic owner scoping */
@@ -150,6 +162,10 @@ export const ROOT_OWNER_CONFIG: Record<string, RootOwnerEntry> = {
   // Registered here so owner_assignments accepts the type and SO members receive
   // ma_tool_report_view as an implied verb (module-path derivation). See OWNER_ALL_TABLES.
   ma_tool_cstb_rpt_properties: { resourceType: 'ma_tool_report' },
+  skill_packages: { resourceType: 'ai_hub_skill' },
+  prompt_packages: { resourceType: 'ai_hub_prompt' },
+  api_catalog_packages: { resourceType: 'ai_hub_api_catalog' },
+  coworker_packages: { resourceType: 'ai_hub_coworker' },
 };
 
 /**

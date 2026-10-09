@@ -28,8 +28,8 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('rejectVersion')).toEqual(['skill_approve']);
   });
 
-  it('toggleStatus carries skill_approve', () => {
-    expect(getPerm('toggleStatus')).toEqual(['skill_approve']);
+  it('toggleStatus carries skill_upload or skill_approve', () => {
+    expect(getPerm('toggleStatus')).toEqual(['skill_upload', 'skill_approve']);
   });
 
   // BearerGuard-only routes must NOT have @RequirePermission (no guard code).

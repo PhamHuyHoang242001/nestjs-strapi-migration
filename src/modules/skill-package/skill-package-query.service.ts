@@ -19,6 +19,13 @@ import {
   TagRef,
 } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
 import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hub-list-filters';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import {
+  canBumpPackage,
+  canSeeInactivePackage,
+  inactiveListMode,
+  isAiHubWorkspaceSO,
+} from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 
 @Injectable()
 export class SkillPackageQueryService {
@@ -30,7 +37,13 @@ export class SkillPackageQueryService {
     private readonly permissionQuery: PermissionQueryService,
     private readonly metaRead: AssetHubItemMetaReadService,
     @Optional() private readonly categoryService?: CategoryService,
+    @Optional() private readonly ownerScope?: OwnerScopeResolverService,
   ) {}
+
+  private async isSkillSo(userId: number): Promise<boolean> {
+    if (!this.ownerScope) return false;
+    return isAiHubWorkspaceSO(await this.ownerScope.getUserOwnerScope(userId), 'skill_packages');
+  }
 
   // Attach publisher / people in charge / tags to a set of packages, using one batched query per
   // dimension for the whole page (no N+1). Returns lookup maps the callers fold into their payloads.
@@ -41,16 +54,21 @@ export class SkillPackageQueryService {
     publishers: Map<number, PublisherRef>;
     responsibles: Map<number, ResponsibleUserRef[]>;
     tags: Map<number, TagRef[]>;
+    supporters: Map<number, ResponsibleUserRef[]>;
   }> {
-    const [publishers, responsibles, tags] = await Promise.all([
+    const [publishers, responsibles, tags, supporters] = await Promise.all([
       this.metaRead.getPublishersByIds(packages.map((p) => p.publisher_id)),
       this.metaRead.getResponsiblesByPackageIds(
         'skill',
         packages.map((p) => p.id),
       ),
       this.metaRead.getTagsByVersionIds('skill', versionIds),
+      this.metaRead.getSupportersByPackageIds(
+        'skill',
+        packages.map((p) => p.id),
+      ),
     ]);
-    return { publishers, responsibles, tags };
+    return { publishers, responsibles, tags, supporters };
   }
 
   private async resolveCategories(ids: Array<number | null | undefined>) {
@@ -145,10 +163,10 @@ export class SkillPackageQueryService {
     // ordinary callers even though the route carries no owner scope.
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('skill_approve');
+    const isSo = await this.isSkillSo(userId);
+    const listMode = inactiveListMode(query.status === SkillPackageStatus.INACTIVE, canApprove, isSo);
     const statusFilter =
-      query.status === SkillPackageStatus.INACTIVE && canApprove
-        ? SkillPackageStatus.INACTIVE
-        : SkillPackageStatus.ACTIVE;
+      listMode === 'active' ? SkillPackageStatus.ACTIVE : SkillPackageStatus.INACTIVE;
 
     const qb = this.packageRepo
       .createQueryBuilder('pkg')
@@ -166,6 +184,15 @@ export class SkillPackageQueryService {
       .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
       .andWhere('pkg.active_version_id IS NOT NULL');
+
+    const supportedIds =
+      listMode === 'own-inactive' ? await this.metaRead.listSupportedPackageIds('skill', userId) : [];
+    if (listMode === 'own-inactive') {
+      qb.andWhere('(pkg.created_by = :viewerId OR pkg.id = ANY(:supportedIds))', {
+        viewerId: userId,
+        supportedIds: supportedIds.length ? supportedIds : [0],
+      });
+    }
 
     // Keyword + catalog filters (search includes tag name; category; publisher) — applied through
     // one helper so the data query and the count query below carry byte-identical predicates.
@@ -190,6 +217,13 @@ export class SkillPackageQueryService {
       .andWhere('pkg.active_version_id IS NOT NULL')
       .select('COUNT(pkg.id)', 'count');
 
+    if (listMode === 'own-inactive') {
+      countQb.andWhere('(pkg.created_by = :viewerId OR pkg.id = ANY(:supportedIds))', {
+        viewerId: userId,
+        supportedIds: supportedIds.length ? supportedIds : [0],
+      });
+    }
+
     applyAssetHubCatalogFilters(countQb, 'skill', query);
 
     const [data, countRow] = await Promise.all([qb.getMany(), countQb.getRawOne<{ count: string }>()]);
@@ -208,6 +242,7 @@ export class SkillPackageQueryService {
       ...pkg,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
+      supporters: meta.supporters.get(pkg.id) ?? [],
       owning_unit_name: pkg.owning_unit_name ?? null,
       active_version: pkg.active_version
         ? {
@@ -242,10 +277,15 @@ export class SkillPackageQueryService {
     const canApprove = codes.includes('skill_approve');
     const canUpload = codes.includes('skill_upload');
     const isOwner = pkg.created_by === userId;
+    const isSo = await this.isSkillSo(userId);
+    const supporterRows = await this.metaRead.getSupportersByPackageIds('skill', [pkg.id]);
+    const supporterIds = (supporterRows.get(pkg.id) ?? []).map((s) => s.id);
+    const isSupporter = supporterIds.includes(userId);
 
-    // Inactive packages are visible only to the owner or an approver; everyone else gets 404
-    // (no anonymous callers — BearerGuard blocks them before the handler).
-    if (pkg.status === SkillPackageStatus.INACTIVE && !isOwner && !canApprove) {
+    if (
+      pkg.status === SkillPackageStatus.INACTIVE &&
+      !canSeeInactivePackage({ isOwner, isSupporter, canApprove, isSo })
+    ) {
       throw new NotFoundException('Skill package not found or inactive');
     }
 
@@ -264,8 +304,12 @@ export class SkillPackageQueryService {
       pkg.active_version.files = pkg.active_version.files.filter(notDeleted);
     }
 
-    // Edit gate: approver may edit any package; an uploader may edit only their own.
-    const isUpdate = canApprove || (canUpload && isOwner);
+    const isUpdate = canBumpPackage({
+      userId,
+      createdBy: pkg.created_by,
+      hasUpload: canUpload,
+      supporterIds,
+    });
     // hasPendingVersion MUST be sourced from a separate query — the versions[] above is approved-only
     // now, so deriving it from that array would always report false and never disable the Edit button.
     const hasPendingVersion =
@@ -298,6 +342,7 @@ export class SkillPackageQueryService {
       ...pkg,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
+      supporters: meta.supporters.get(pkg.id) ?? supporterRows.get(pkg.id) ?? [],
       owning_unit_name: pkg.owning_unit_name ?? null,
       active_version: formattedActive,
       versions: versions.map((v) =>
@@ -563,6 +608,7 @@ export class SkillPackageQueryService {
         created_by: pkg.created_by,
         publisher: meta.publishers.get(pkg.publisher_id) ?? null,
         responsible_users: meta.responsibles.get(pkg.id) ?? [],
+        supporters: meta.supporters.get(pkg.id) ?? [],
         owning_unit_name: pkg.owning_unit_name ?? null,
       },
       version: formattedVersion
@@ -662,7 +708,13 @@ export class SkillPackageQueryService {
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('skill_approve');
     const isOwner = pkg.created_by === userId;
-    if (pkg.status === SkillPackageStatus.INACTIVE && !isOwner && !canApprove) {
+    const isSo = await this.isSkillSo(userId);
+    const supporterIds =
+      (await this.metaRead.getSupportersByPackageIds('skill', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
+    if (
+      pkg.status === SkillPackageStatus.INACTIVE &&
+      !canSeeInactivePackage({ isOwner, isSupporter: supporterIds.includes(userId), canApprove, isSo })
+    ) {
       throw new NotFoundException('Skill package not found or inactive');
     }
 

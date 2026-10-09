@@ -28,8 +28,8 @@ describe('ApiCatalogController — perm mapping', () => {
     expect(getPerm('rejectVersion')).toEqual(['api_approve']);
   });
 
-  it('toggleStatus carries api_approve', () => {
-    expect(getPerm('toggleStatus')).toEqual(['api_approve']);
+  it('toggleStatus carries api_upload or api_approve', () => {
+    expect(getPerm('toggleStatus')).toEqual(['api_upload', 'api_approve']);
   });
 
   // BearerGuard-only routes must NOT have @RequirePermission (no guard code).

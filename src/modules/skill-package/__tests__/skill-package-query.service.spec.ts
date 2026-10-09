@@ -64,6 +64,8 @@ function makeMetaRead(overrides: Record<string, unknown> = {}) {
     getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
     getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
     getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
+    getSupportersByPackageIds: jest.fn().mockResolvedValue(new Map()),
+    listSupportedPackageIds: jest.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -146,15 +148,15 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.status).toBe(SkillPackageStatus.INACTIVE);
     });
 
-    it('non-approver requesting status=inactive is forced back to active (no leak)', async () => {
+    it('non-approver requesting status=inactive is scoped to own/supporter packages', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']); // not an approver
 
       await service.list({ page: 1, limit: 10, status: SkillPackageStatus.INACTIVE }, USER_ID);
 
-      // Inactive is approver-only; a non-approver never sees inactive packages via the list.
-      expect(qb.capturedParams.status).toBe(SkillPackageStatus.ACTIVE);
+      expect(qb.capturedParams.status).toBe(SkillPackageStatus.INACTIVE);
+      expect(qb.capturedParams.viewerId).toBe(USER_ID);
     });
 
     it('search filter is parameter-bound (not string-concatenated)', async () => {
@@ -482,7 +484,7 @@ describe('SkillPackageQueryService', () => {
       expect(result.isUpdate).toBe(true);
     });
 
-    it('returns isUpdate=true when caller is an approver', async () => {
+    it('returns isUpdate=false when caller is an approver but not owner/supporter', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: SkillPackageStatus.ACTIVE,
@@ -491,6 +493,21 @@ describe('SkillPackageQueryService', () => {
       });
       versionRepo.find = jest.fn().mockResolvedValue([]);
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
+
+      const result = await service.detail(1, USER_ID);
+      expect(result.isUpdate).toBe(false);
+    });
+
+    it('returns isUpdate=true when caller is a supporter with skill_upload', async () => {
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: 1,
+        status: SkillPackageStatus.ACTIVE,
+        created_by: OTHER_USER_ID,
+        active_version: { id: 10, files: [] },
+      });
+      versionRepo.find = jest.fn().mockResolvedValue([]);
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      metaRead.getSupportersByPackageIds.mockResolvedValue(new Map([[1, [{ id: USER_ID, email: 's@x.com' }]]]));
 
       const result = await service.detail(1, USER_ID);
       expect(result.isUpdate).toBe(true);
@@ -771,6 +788,7 @@ describe('SkillPackageQueryService', () => {
         // Package metadata rides every read surface; empty here because the mock resolves no rows.
         publisher: null,
         responsible_users: [],
+        supporters: [],
         owning_unit_name: null,
       });
       expect(versionRepo.findOne).toHaveBeenLastCalledWith({

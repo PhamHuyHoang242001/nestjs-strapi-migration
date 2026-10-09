@@ -276,8 +276,10 @@ export class SkillPackageController {
   @ApiOperation({ summary: 'Toggle skill package active/inactive status' })
   @Patch('items/:id/status')
   @UseGuards(PermissionGuard)
-  @RequirePermission('skill_approve')
-  async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto) {
-    return this.uploadService.toggleStatus(id, dto);
+  @RequirePermission('skill_upload', 'skill_approve')
+  async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.uploadService.toggleStatus(id, dto, userId);
   }
 }

@@ -234,8 +234,10 @@ export class PromptLibraryController {
   @ApiOperation({ summary: 'Toggle prompt package active/inactive status' })
   @Patch('items/:id/status')
   @UseGuards(PermissionGuard)
-  @RequirePermission('prompt_approve')
-  async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto) {
-    return this.uploadService.toggleStatus(id, dto);
+  @RequirePermission('prompt_upload', 'prompt_approve')
+  async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.uploadService.toggleStatus(id, dto, userId);
   }
 }

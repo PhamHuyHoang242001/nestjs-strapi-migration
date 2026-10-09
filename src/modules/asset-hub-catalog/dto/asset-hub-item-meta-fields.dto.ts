@@ -42,6 +42,21 @@ export abstract class AssetHubItemMetaFieldsDto {
   readonly responsible_user_ids: number[];
 
   @ApiProperty({
+    description: 'Supporter user IDs (full replace). Omit on bump keeps previous; [] clears.',
+    type: [Number],
+    required: false,
+    maxItems: MAX_RESPONSIBLE_USERS,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_RESPONSIBLE_USERS)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Type(() => Number)
+  readonly supporter_ids?: number[];
+
+  @ApiProperty({
     required: false,
     description: 'Trung tâm/phòng ban chủ quản (freetext). Omit on bump keeps previous; empty string clears.',
     maxLength: 500,

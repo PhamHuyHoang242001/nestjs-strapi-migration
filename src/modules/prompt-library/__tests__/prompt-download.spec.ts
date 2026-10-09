@@ -41,6 +41,7 @@ describe('PromptLibraryQueryService.resolveActiveForExport', () => {
       getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
       getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
       getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
+      getSupportersByPackageIds: jest.fn().mockResolvedValue(new Map()),
     };
     service = new PromptLibraryQueryService(packageRepo, versionRepo, permissionQuery, metaRead as never);
   });

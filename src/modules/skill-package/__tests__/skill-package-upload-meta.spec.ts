@@ -49,6 +49,9 @@ function makeHarness(overrides: { itemMeta?: Record<string, jest.Mock> } = {}) {
     replaceVersionTags: jest.fn(async () => {
       order.push('version-tags');
     }),
+    listSupporterIds: jest.fn().mockResolvedValue([]),
+    assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    replaceSupporters: jest.fn().mockResolvedValue(undefined),
     ...overrides.itemMeta,
   };
 

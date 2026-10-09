@@ -8,6 +8,7 @@ import {
   RESOURCE_TYPE_TO_ROOT_TABLE,
   ROOT_OWNER_CONFIG,
 } from '@modules/data-access/constants/hierarchy-config';
+import { AI_HUB_PACKAGE_TABLES } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 import { findRootTable } from '@modules/data-access/helpers/owner-scope-helpers';
 import { PermissionCacheService } from './permission-cache.service';
 
@@ -113,8 +114,12 @@ export class OwnerScopeResolverService {
       WHERE root_mod.table_name = ANY($1)
         AND root_mod.deleted_at IS NULL
         AND NOT (sub.id = root_mod.id AND p.action = 'create')
+        AND (
+          NOT (root_mod.table_name = ANY($2))
+          OR p.action IN ('upload', 'approve')
+        )
       `,
-      [rootTables],
+      [rootTables, [...AI_HUB_PACKAGE_TABLES]],
     );
 
     const codes = rows.map((r) => r.code);

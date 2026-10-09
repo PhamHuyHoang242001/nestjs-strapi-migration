@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AssetHubTag } from '@modules/databases/asset-hub-tag.entity';
 import { AssetHubPublisher } from '@modules/databases/asset-hub-publisher.entity';
 import { User } from '@modules/databases/user.entity';
+import { AiHubSupporter } from '@modules/databases/ai-hub-supporter.entity';
 import { AssetHubCatalogController } from './asset-hub-catalog.controller';
 import { AssetHubCatalogService } from './asset-hub-catalog.service';
 import { AssetHubUserDirectoryService } from './asset-hub-user-directory.service';
@@ -14,7 +15,7 @@ import { AssetHubItemMetaReadService } from './asset-hub-item-meta-read.service'
 // AssetHubItemMetaService is exported because the skill and prompt write paths both persist the
 // same publisher/PIC/tag metadata — it operates purely on the caller's transaction manager.
 @Module({
-  imports: [TypeOrmModule.forFeature([AssetHubTag, AssetHubPublisher, User])],
+  imports: [TypeOrmModule.forFeature([AssetHubTag, AssetHubPublisher, User, AiHubSupporter])],
   controllers: [AssetHubCatalogController],
   providers: [
     AssetHubCatalogService,

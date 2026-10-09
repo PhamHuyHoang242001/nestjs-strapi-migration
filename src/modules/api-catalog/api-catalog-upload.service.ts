@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { ApiPackage, ApiPackageStatus } from '@modules/databases/api-catalog-package.entity';
 import { ApiVersion, ApiVersionState } from '@modules/databases/api-catalog-version.entity';
 import { CreateApiPackageDto } from './dto/create-api-package.dto';
@@ -20,6 +20,8 @@ import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
 import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
+import { canBumpPackage, canTogglePackage, isAiHubWorkspaceSO } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
+import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import { specColumns, validateAndNormalizeSpec } from './api-spec.util';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
@@ -49,7 +51,34 @@ export class ApiCatalogUploadService {
     private readonly permissionQuery: PermissionQueryService,
     private readonly itemMeta: AssetHubItemMetaService,
     @Optional() private readonly categoryService?: CategoryService,
+    @Optional() private readonly ownerScope?: OwnerScopeResolverService,
   ) {}
+
+  private async isApiSo(userId: number): Promise<boolean> {
+    if (!this.ownerScope) return false;
+    return isAiHubWorkspaceSO(await this.ownerScope.getUserOwnerScope(userId), 'api_catalog_packages');
+  }
+
+  private async assertCanBump(userId: number, createdBy: number, packageId: number): Promise<void> {
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const supporterIds = await this.itemMeta.listSupporterIds(this.dataSource.manager, 'api-catalog', packageId);
+    if (
+      !canBumpPackage({
+        userId,
+        createdBy,
+        hasUpload: codes.includes('api_upload'),
+        supporterIds,
+      })
+    ) {
+      throw new ForbiddenException('You can only update API packages you created or support');
+    }
+  }
+
+  private async applySupporters(manager: EntityManager, packageId: number, supporterIds: number[] | undefined): Promise<void> {
+    if (supporterIds === undefined) return;
+    const ids = await this.itemMeta.assertSupporterUsers(manager, supporterIds);
+    await this.itemMeta.replaceSupporters(manager, 'api-catalog', packageId, ids);
+  }
 
   // Sanitize the submitted guide once, before any transaction is opened. `requireContent` is on for
   // a create (a new artifact must document itself) and off for a bump, where an author revising an
@@ -96,6 +125,7 @@ export class ApiCatalogUploadService {
       );
 
       await this.itemMeta.replaceResponsibles(manager, 'api-catalog', savedPkg.id, responsibleUserIds);
+      await this.applySupporters(manager, savedPkg.id, dto.supporter_ids ?? []);
 
       // code = 'api_catalog_<id>' — set post-insert (id known only now) in the SAME tx.
       await manager.update(ApiPackage, savedPkg.id, { code: `api_catalog_${savedPkg.id}` });
@@ -134,11 +164,7 @@ export class ApiCatalogUploadService {
 
     // Ownership guard: PermissionGuard already guarantees api_upload; this adds only the
     // ownership delta: an approver may bump any package, an uploader only their own.
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('api_approve');
-    if (!canApprove && pkg.created_by !== userId) {
-      throw new ForbiddenException('You can only update API packages you created');
-    }
+    await this.assertCanBump(userId, pkg.created_by, packageId);
 
     // Fail fast before validating payload URLs. The partial unique index remains the concurrency
     // authority; this preflight gives existing-pending requests deterministic 409 behavior while
@@ -194,6 +220,7 @@ export class ApiCatalogUploadService {
 
         await manager.update(ApiPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', packageId, responsibleUserIds);
+        await this.applySupporters(manager, packageId, dto.supporter_ids);
 
         const version = manager.create(ApiVersion, {
           api_catalog_package_id: packageId,
@@ -238,15 +265,11 @@ export class ApiCatalogUploadService {
     });
     if (!pkg) throw new NotFoundException('API package not found');
 
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const approverPending = codes.includes('api_approve') && version.state === ApiVersionState.PENDING;
+    const soPending = version.state === ApiVersionState.PENDING && (await this.isApiSo(userId));
+    const approverPending = soPending;
 
     if (!approverPending) {
-      const canUpload = codes.includes('api_upload');
-      const isAuthor = version.submitted_by === userId || pkg.created_by === userId;
-      if (!canUpload || !isAuthor) {
-        throw new ForbiddenException('You can only edit versions you submitted or packages you created');
-      }
+      await this.assertCanBump(userId, pkg.created_by, pkg.id);
 
       const pendingVersion = await this.versionRepo.findOne({
         where: { api_catalog_package_id: pkg.id, state: ApiVersionState.PENDING, is_deleted: false },
@@ -327,6 +350,9 @@ export class ApiCatalogUploadService {
 
         await manager.update(ApiPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', pkg.id, responsibleUserIds);
+        if (!approverPending) {
+          await this.applySupporters(manager, pkg.id, dto.supporter_ids);
+        }
 
         locked.name = dto.name;
         locked.short_description = dto.short_description;
@@ -422,9 +448,15 @@ export class ApiCatalogUploadService {
   }
 
   // Toggle package active/inactive status. Only approvers can call this endpoint.
-  async toggleStatus(packageId: number, dto: ToggleStatusDto) {
+  async toggleStatus(packageId: number, dto: ToggleStatusDto, userId: number) {
     const pkg = await this.packageRepo.findOne({ where: { id: packageId, is_deleted: false } });
     if (!pkg) throw new NotFoundException('API package not found');
+
+    const isSo = await this.isApiSo(userId);
+    const supporterIds = await this.itemMeta.listSupporterIds(this.dataSource.manager, 'api-catalog', packageId);
+    if (!canTogglePackage({ userId, createdBy: pkg.created_by, supporterIds, isSo })) {
+      throw new ForbiddenException('You can only toggle API packages you created or support');
+    }
 
     pkg.status = dto.status;
     await this.packageRepo.save(pkg);
@@ -438,6 +470,7 @@ export class ApiCatalogUploadService {
     return {
       canUpload: codes.includes('api_upload'),
       canApprove: codes.includes('api_approve'),
+      isWorkspaceSO: await this.isApiSo(userId),
     };
   }
 }

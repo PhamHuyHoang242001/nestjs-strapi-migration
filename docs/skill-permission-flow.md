@@ -1,5 +1,7 @@
 # Phân quyền Skill (hiện tại)
 
+> Định hướng đã implement: [skill-permission-redesign.md](./skill-permission-redesign.md) (plan `261009-1424-ai-hub-coworker`). File này giữ mô tả seed Skill cũ; 4 WS dùng 2 code + SO pending-only + supporter.
+
 Skill chỉ có **2 code**: `skill_upload`, `skill_approve`. Không có `skill_view` / `skill_edit` / `skill_delete`.
 
 **Edit skill = tạo version mới** (`PUT /items/:id/versions`), không phải PATCH package.

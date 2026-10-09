@@ -9,7 +9,9 @@ This repository is a NestJS backend with authorization, data access, BI Payment,
 
 ## AI Hub version edit (PUT `versions/:vid`)
 
-Submitter/creator with `*_upload` still resubmits only the latest **rejected** version (state flips back to pending). Holder of `*_approve` may also edit a **pending** version in place: state stays pending, `submitted_by` unchanged. Body is the same as bump; locked fields are **ignored** (stored values kept): skill `file`; api-catalog `mock_req`/`mock_res`; prompt none.
+Submitter/creator/supporter with `*_upload` resubmits only the latest **rejected** version (state flips back to pending). Approver **cannot** bump or edit pending. **Workspace SO** (`rootId===0` on that WS table) may edit pending in place. Four workspaces: skill, prompt, api-catalog, coworker. Each keeps 2 codes (`*_upload` + `*_approve`). Supporter field: `ai_hub_supporters`.
+
+Coworker module: `src/modules/coworker/` mounted at `/v1/ai-hub/coworker`. Clone of prompt without download/usage_guide/tags/category. User-provided unique `code`, Teams `link`, channel/model lookups.
 
 ## Major Areas
 

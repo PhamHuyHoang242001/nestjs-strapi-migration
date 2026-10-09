@@ -150,6 +150,14 @@ describe('saveOwnerAssignments()', () => {
     expect(mockQuery.mock.calls[1][1]).toContain(0); // sentinel = whole-table ownership
   });
 
+  it('accepts AI Hub skill sentinel resource_id', async () => {
+    const service = createService();
+    mockQuery.mockResolvedValue([]);
+    await service.saveOwnerAssignments(99, [{ resource_type: 'ai_hub_skill', resource_ids: [0] }]);
+    expect(mockQuery.mock.calls[1][1]).toContain('ai_hub_skill');
+    expect(mockQuery.mock.calls[1][1]).toContain(0);
+  });
+
   it('clears all SO (soft-delete, no insert) when assignments is an empty array', async () => {
     const service = createService();
     mockQuery.mockResolvedValue([]);

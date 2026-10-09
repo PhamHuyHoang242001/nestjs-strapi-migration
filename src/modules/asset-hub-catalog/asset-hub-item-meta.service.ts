@@ -5,22 +5,29 @@ import { AssetHubTag, AssetHubTagArtifactType } from '@modules/databases/asset-h
 import { SkillPackageResponsible } from '@modules/databases/skill-package-responsible.entity';
 import { PromptPackageResponsible } from '@modules/databases/prompt-package-responsible.entity';
 import { ApiPackageResponsible } from '@modules/databases/api-catalog-package-responsible.entity';
+import { CoworkerPackageResponsible } from '@modules/databases/coworker-package-responsible.entity';
 import { SkillVersionTag } from '@modules/databases/skill-version-tag.entity';
 import { PromptVersionTag } from '@modules/databases/prompt-version-tag.entity';
 import { ApiVersionTag } from '@modules/databases/api-catalog-version-tag.entity';
+import { AiHubSupporter } from '@modules/databases/ai-hub-supporter.entity';
+import type { AiHubArtifactType } from './ai-hub-package-access.helper';
+import { AI_HUB_ARTIFACT_TYPES } from './ai-hub-package-access.helper';
 
 // Upper bounds shared by the create and bump DTOs; re-asserted here so a caller that bypasses
 // the DTO layer (a seeder, a future internal caller) cannot write an unbounded fan-out.
 export const MAX_RESPONSIBLE_USERS = 20;
+export const MAX_SUPPORTERS = MAX_RESPONSIBLE_USERS;
 export const MAX_VERSION_TAGS = 20;
 
 // Which workspace a write belongs to. Picks the join entities and the tag artifact_type.
 export type AssetHubWorkspace = 'skill' | 'prompt' | 'api-catalog';
+export type AssetHubPicWorkspace = AssetHubWorkspace | 'coworker';
 
 const RESPONSIBLE_ENTITY = {
   skill: SkillPackageResponsible,
   prompt: PromptPackageResponsible,
   'api-catalog': ApiPackageResponsible,
+  coworker: CoworkerPackageResponsible,
 } as const;
 
 const VERSION_TAG_ENTITY = {
@@ -35,10 +42,11 @@ const ARTIFACT_TYPE: Record<AssetHubWorkspace, AssetHubTagArtifactType> = {
   'api-catalog': AssetHubTagArtifactType.API_CATALOG,
 };
 
-const PACKAGE_OWNER: Record<AssetHubWorkspace, string> = {
+const PACKAGE_OWNER: Record<AssetHubPicWorkspace, string> = {
   skill: 'skill_package_id',
   prompt: 'prompt_package_id',
   'api-catalog': 'api_catalog_package_id',
+  coworker: 'coworker_package_id',
 };
 
 const VERSION_OWNER: Record<AssetHubWorkspace, string> = {
@@ -108,6 +116,25 @@ export class AssetHubItemMetaService {
     return ids;
   }
 
+  // Empty list is valid (no extra editors). Same live-user check as PIC, different error key.
+  async assertSupporterUsers(manager: EntityManager, userIds: number[]): Promise<number[]> {
+    const ids = unique(userIds);
+    if (ids.length === 0) return [];
+    if (ids.length > MAX_SUPPORTERS) {
+      throw new BadRequestException(`INVALID_SUPPORTERS: at most ${MAX_SUPPORTERS} allowed`);
+    }
+
+    const rows: Array<{ id: number }> = await manager.query(
+      `SELECT id FROM users
+       WHERE id = ANY($1) AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false`,
+      [ids],
+    );
+    if (rows.length !== ids.length) {
+      throw new BadRequestException('INVALID_SUPPORTERS: one or more users do not exist');
+    }
+    return ids;
+  }
+
   // Tags must be live AND belong to this workspace — a prompt tag on a skill version is rejected
   // rather than silently stored, since the pickers and filters are scoped by artifact_type.
   async assertTags(manager: EntityManager, tagIds: number[], workspace: AssetHubWorkspace): Promise<number[]> {
@@ -136,7 +163,7 @@ export class AssetHubItemMetaService {
   // Same shape the diagnostic report uses for its PIC links.
   async replaceResponsibles(
     manager: EntityManager,
-    workspace: AssetHubWorkspace,
+    workspace: AssetHubPicWorkspace,
     packageId: number,
     userIds: number[],
   ): Promise<void> {
@@ -164,5 +191,30 @@ export class AssetHubItemMetaService {
     const ids = unique(tagIds);
     if (!ids.length) return;
     await manager.save(ids.map((tag_id) => manager.create(entity, { [ownerColumn]: versionId, tag_id })));
+  }
+
+  // Hard-delete prior rows then insert — same as PIC. `[]` clears. Omit handled by caller (undefined skip).
+  async replaceSupporters(
+    manager: EntityManager,
+    type: AiHubArtifactType,
+    dataId: number,
+    userIds: number[],
+  ): Promise<void> {
+    if (!AI_HUB_ARTIFACT_TYPES.includes(type)) {
+      throw new BadRequestException('INVALID_SUPPORTERS: unknown workspace type');
+    }
+    await manager.delete(AiHubSupporter, { type, data_id: dataId });
+    const ids = unique(userIds);
+    if (!ids.length) return;
+    await manager.save(ids.map((user_id) => manager.create(AiHubSupporter, { type, data_id: dataId, user_id })));
+  }
+
+  async listSupporterIds(manager: EntityManager, type: AiHubArtifactType, dataId: number): Promise<number[]> {
+    const rows: Array<{ user_id: number }> = await manager.query(
+      `SELECT user_id FROM ai_hub_supporters
+       WHERE type = $1 AND data_id = $2 AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
+      [type, dataId],
+    );
+    return rows.map((r) => r.user_id);
   }
 }
