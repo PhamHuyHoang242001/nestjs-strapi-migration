@@ -685,6 +685,14 @@ describe('SkillPackageUploadService', () => {
       expect(fileFetch.downloadZip).not.toHaveBeenCalled();
     });
 
+    it('package supporter with skill_upload may resubmit latest rejected', async () => {
+      stubLookups({ submittedBy: OTHER_USER_ID, createdBy: OTHER_USER_ID, codes: ['skill_upload'] });
+      itemMeta.listSupporterIds.mockResolvedValue([USER_ID]);
+      captureEditTx();
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+    });
+
     it('submitter without skill_upload → ForbiddenException', async () => {
       stubLookups({ codes: ['skill_approve'] });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);

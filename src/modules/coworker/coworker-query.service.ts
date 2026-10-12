@@ -16,10 +16,12 @@ import {
 import { escapeIlike } from '@modules/asset-hub-catalog/asset-hub-list-filters';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import {
+  canAccessAiHubVersion,
   canBumpPackage,
   canSeeInactivePackage,
   inactiveListMode,
   isAiHubWorkspaceSO,
+  ownVersionScopeSql,
 } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 
 @Injectable()
@@ -313,7 +315,7 @@ export class CoworkerQueryService {
     const params: unknown[] = [];
     const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
     params.push(userId);
-    where.push(`(v.submitted_by = $${params.length} OR p.created_by = $${params.length})`);
+    where.push(ownVersionScopeSql(params.length, 'coworker'));
     if (query.coworker_package_id?.length) {
       params.push(query.coworker_package_id);
       where.push(`p.id = ANY($${params.length})`);
@@ -458,7 +460,15 @@ export class CoworkerQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('coworker_approve');
-    const canAccess = version.submitted_by === userId || pkg.created_by === userId || canApprove;
+    const supporterIds =
+      (await this.metaRead.getSupportersByPackageIds('coworker', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
+    const canAccess = canAccessAiHubVersion({
+      userId,
+      submittedBy: version.submitted_by,
+      createdBy: pkg.created_by,
+      canApprove,
+      supporterIds,
+    });
     if (!canAccess) throw new ForbiddenException('You do not have access to this coworker version');
 
     let comparison: {
@@ -534,7 +544,16 @@ export class CoworkerQueryService {
     const pkg = await this.packageRepo.findOne({
       where: { id: version.coworker_package_id },
     });
-    const canAccess = version.submitted_by === userId || pkg?.created_by === userId || canApprove;
+    const supporterIds = pkg
+      ? ((await this.metaRead.getSupportersByPackageIds('coworker', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [])
+      : [];
+    const canAccess = canAccessAiHubVersion({
+      userId,
+      submittedBy: version.submitted_by,
+      createdBy: pkg?.created_by,
+      canApprove,
+      supporterIds,
+    });
     if (!canAccess) {
       throw new ForbiddenException('You do not have access to this version diff');
     }

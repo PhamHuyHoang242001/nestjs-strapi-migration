@@ -19,10 +19,12 @@ import { stripGuide } from '@modules/asset-hub-catalog/asset-hub-response.helper
 import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hub-list-filters';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import {
+  canAccessAiHubVersion,
   canBumpPackage,
   canSeeInactivePackage,
   inactiveListMode,
   isAiHubWorkspaceSO,
+  ownVersionScopeSql,
 } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 
 @Injectable()
@@ -163,8 +165,7 @@ export class PromptLibraryQueryService {
     const canApprove = codes.includes('prompt_approve');
     const isSo = await this.isPromptSo(userId);
     const listMode = inactiveListMode(query.status === PromptPackageStatus.INACTIVE, canApprove, isSo);
-    const statusFilter =
-      listMode === 'active' ? PromptPackageStatus.ACTIVE : PromptPackageStatus.INACTIVE;
+    const statusFilter = listMode === 'active' ? PromptPackageStatus.ACTIVE : PromptPackageStatus.INACTIVE;
 
     const qb = this.packageRepo
       .createQueryBuilder('pkg')
@@ -336,8 +337,8 @@ export class PromptLibraryQueryService {
 
   // "My Version" list: flat 1-row-per-version across pending + approved + rejected, always scoped to
   // the caller. Every caller — INCLUDING approvers — sees only the versions they personally submitted
-  // (v.submitted_by) OR that belong to a package they created (p.created_by). There is no role-based
-  // "see all" here; an approver's org-wide view lives in the review queue, not this personal list.
+  // (v.submitted_by), a package they created (p.created_by), or a package they support.
+  // There is no role-based "see all" here; an approver's org-wide view lives in the review queue.
   // Thin projection (NO content columns). codesOnly=true short-circuits to the distinct-code list for
   // the filter multi-select under the IDENTICAL visibility predicate so the options can never drift.
   async listVersions(query: ListVersionsDto, userId: number) {
@@ -346,7 +347,7 @@ export class PromptLibraryQueryService {
     const params: unknown[] = [];
     const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
     params.push(userId);
-    where.push(`(v.submitted_by = $${params.length} OR p.created_by = $${params.length})`);
+    where.push(ownVersionScopeSql(params.length, 'prompt'));
     if (query.prompt_package_id?.length) {
       params.push(query.prompt_package_id);
       where.push(`p.id = ANY($${params.length})`);
@@ -514,8 +515,9 @@ export class PromptLibraryQueryService {
   }
 
   // Full version detail shared by review and "My Version". Access is the union of those screens:
-  // submitter, package creator, or approver. Pending comparison uses the stored approved predecessor
-  // rather than active_version_id, keeping the result stable after later publication changes.
+  // submitter, package creator, package supporter, or approver. Pending comparison uses the stored
+  // approved predecessor rather than active_version_id, keeping the result stable after later
+  // publication changes.
   async versionDetail(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
@@ -529,7 +531,15 @@ export class PromptLibraryQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('prompt_approve');
-    const canAccess = version.submitted_by === userId || pkg.created_by === userId || canApprove;
+    const supporterIds =
+      (await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
+    const canAccess = canAccessAiHubVersion({
+      userId,
+      submittedBy: version.submitted_by,
+      createdBy: pkg.created_by,
+      canApprove,
+      supporterIds,
+    });
     if (!canAccess) throw new ForbiddenException('You do not have access to this prompt version');
 
     let comparison: {
@@ -566,7 +576,7 @@ export class PromptLibraryQueryService {
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
     const categories = await this.resolveCategories([version.category_id]);
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
-    // submitter, the package creator, or an approver, so no extra scrub is needed here.
+    // submitter, the package creator, a supporter, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
     const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('prompt_upload'));
     return {
@@ -585,7 +595,7 @@ export class PromptLibraryQueryService {
         ...this.decorateCategory(version, categories),
         tags: meta.tags.get(version.id) ?? [],
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
-        reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
+        reviewed_by_email: version.reviewed_by ? (emailMap.get(version.reviewed_by) ?? null) : null,
         isUpdate,
       },
       comparison,
@@ -596,7 +606,7 @@ export class PromptLibraryQueryService {
 
   // Diff: return base (active version prompt_content or null) and incoming (target version content).
   // Controller already requires prompt_upload OR prompt_approve. This method only applies
-  // row-ownership: upload-only → submitter or package creator; approver → any version.
+  // row-ownership: upload-only → submitter, package creator, or supporter; approver → any version.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
@@ -608,7 +618,16 @@ export class PromptLibraryQueryService {
     const pkg = await this.packageRepo.findOne({
       where: { id: version.prompt_package_id },
     });
-    const canAccess = version.submitted_by === userId || pkg?.created_by === userId || canApprove;
+    const supporterIds = pkg
+      ? ((await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [])
+      : [];
+    const canAccess = canAccessAiHubVersion({
+      userId,
+      submittedBy: version.submitted_by,
+      createdBy: pkg?.created_by,
+      canApprove,
+      supporterIds,
+    });
     if (!canAccess) {
       throw new ForbiddenException('You do not have access to this version diff');
     }
@@ -623,9 +642,7 @@ export class PromptLibraryQueryService {
 
     // Resolve the submitter email so the review screen shows "Submitted by" as email, not a raw id.
     const emailMap = await this.resolveEmails([version.submitted_by]);
-    const isUpdate = pkg
-      ? await this.resolveIsUpdate(pkg.id, version, codes.includes('prompt_upload'))
-      : false;
+    const isUpdate = pkg ? await this.resolveIsUpdate(pkg.id, version, codes.includes('prompt_upload')) : false;
 
     return {
       base: baseContent,
@@ -677,7 +694,8 @@ export class PromptLibraryQueryService {
     const canApprove = codes.includes('prompt_approve');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isPromptSo(userId);
-    const supporterIds = (await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
+    const supporterIds =
+      (await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
     if (
       pkg.status === PromptPackageStatus.INACTIVE &&
       !canSeeInactivePackage({ isOwner, isSupporter: supporterIds.includes(userId), canApprove, isSo })

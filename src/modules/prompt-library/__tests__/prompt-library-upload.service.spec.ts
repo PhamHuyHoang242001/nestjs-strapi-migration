@@ -626,6 +626,33 @@ describe('PromptLibraryUploadService', () => {
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it('package supporter with prompt_upload may resubmit latest rejected', async () => {
+      stubLookups({ submittedBy: OTHER_USER_ID, createdBy: OTHER_USER_ID, codes: ['prompt_upload'] });
+      itemMeta.listSupporterIds.mockResolvedValue([USER_ID]);
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = {
+          query: jest
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ id: VERSION_ID, state: PromptVersionState.REJECTED }]),
+          findOne: jest.fn().mockResolvedValue({
+            id: VERSION_ID,
+            prompt_package_id: PACKAGE_ID,
+            state: PromptVersionState.REJECTED,
+            version_no: 1,
+            old_version: null,
+          }),
+          update: jest.fn(),
+          save: jest.fn(async (_E: any, obj: any) => obj),
+        };
+        return cb(manager);
+      });
+      service = new PromptLibraryUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+    });
+
     it('submitter without prompt_upload → ForbiddenException', async () => {
       stubLookups({ codes: ['prompt_approve'] });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);

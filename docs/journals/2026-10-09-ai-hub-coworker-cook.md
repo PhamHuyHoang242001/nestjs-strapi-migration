@@ -13,7 +13,7 @@ Verify: tsc clean; 47 AI Hub suites / 731 tests; coworker eslint clean after rev
 
 ## Unresolved
 
-- Supporter can bump but `listVersions`/`versionDetail` still submitter|creator|approver (cloned prompt).
+- Supporter `listVersions`/`versionDetail` — **fixed** 2026-10-12 (`docs/journals/2026-10-12-ai-hub-supporter-version-read.md`).
 - `listVersions` `isUpdate` is upload+newest-rejected, not full canBump.
 - Concurrent reject vs approve still unlocked (cloned).
 - No commit this cook; user pushes by hand.

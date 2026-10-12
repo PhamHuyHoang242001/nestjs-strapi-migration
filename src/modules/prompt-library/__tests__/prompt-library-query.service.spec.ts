@@ -442,9 +442,7 @@ describe('PromptLibraryQueryService', () => {
         active_version: { id: 10 },
       });
       // History is approved-only now — the pending version is NOT in this array.
-      versionRepo.find = jest.fn().mockResolvedValue([
-        { id: 10, version_no: 1, state: PromptVersionState.APPROVED },
-      ]);
+      versionRepo.find = jest.fn().mockResolvedValue([{ id: 10, version_no: 1, state: PromptVersionState.APPROVED }]);
       versionRepo.count = jest.fn().mockResolvedValue(1);
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
 
@@ -708,6 +706,22 @@ describe('PromptLibraryQueryService', () => {
       await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it('allows package supporter without approve', async () => {
+      versionRepo.findOne = jest
+        .fn()
+        .mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID, old_version: null }));
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+      metaRead.getSupportersByPackageIds.mockResolvedValue(
+        new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]),
+      );
+
+      const result = await service.versionDetail(VERSION_ID, USER_ID);
+
+      expect(result.can_review).toBe(false);
+      expect(result.comparison?.incoming).toBe('# incoming');
+    });
+
     it('returns first pending with null base and no predecessor lookup', async () => {
       versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: USER_ID, old_version: null }));
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
@@ -725,7 +739,10 @@ describe('PromptLibraryQueryService', () => {
     });
 
     it('fails closed when a declared approved predecessor is missing', async () => {
-      versionRepo.findOne = jest.fn().mockResolvedValueOnce(makeVersion({ submitted_by: USER_ID })).mockResolvedValueOnce(null);
+      versionRepo.findOne = jest
+        .fn()
+        .mockResolvedValueOnce(makeVersion({ submitted_by: USER_ID }))
+        .mockResolvedValueOnce(null);
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue([]);
 
@@ -735,9 +752,15 @@ describe('PromptLibraryQueryService', () => {
     it.each([PromptVersionState.APPROVED, PromptVersionState.REJECTED])(
       '%s returns full detail without comparison or review capability',
       async (state) => {
-        versionRepo.findOne = jest.fn().mockResolvedValue(
-          makeVersion({ submitted_by: USER_ID, state, reject_reason: state === PromptVersionState.REJECTED ? 'Fix it' : null }),
-        );
+        versionRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            makeVersion({
+              submitted_by: USER_ID,
+              state,
+              reject_reason: state === PromptVersionState.REJECTED ? 'Fix it' : null,
+            }),
+          );
         packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
         permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
 
@@ -794,6 +817,21 @@ describe('PromptLibraryQueryService', () => {
         created_by: USER_ID,
         active_version_id: null,
       });
+
+      await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
+    });
+
+    it('package supporter without submitter/approver → allowed', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID }));
+      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        created_by: OTHER_USER_ID,
+        active_version_id: null,
+      });
+      metaRead.getSupportersByPackageIds.mockResolvedValue(
+        new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]),
+      );
 
       await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
     });
@@ -916,6 +954,18 @@ describe('PromptLibraryQueryService', () => {
 
       const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
       expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
+    });
+
+    it('own-scope also includes live package supporters', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_upload']);
+      const query = stub({ count: 0, rows: [] });
+
+      await service.listVersions({ state: 'all' }, USER_ID);
+
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      expect(sqls).toContain('FROM ai_hub_supporters s');
+      expect(sqls).toContain("s.type = 'prompt'");
+      expect(sqls).toContain('s.user_id = $1');
     });
 
     it('approver → STILL own-scoped ("My Version" — role does not widen visibility)', async () => {
@@ -1046,5 +1096,4 @@ describe('PromptLibraryQueryService', () => {
       expect((result.data[0] as any).isUpdate).toBe(false);
     });
   });
-
 });

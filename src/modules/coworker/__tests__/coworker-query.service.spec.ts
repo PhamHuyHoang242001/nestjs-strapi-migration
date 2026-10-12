@@ -128,4 +128,57 @@ describe('CoworkerQueryService', () => {
     packageRepo.findOne.mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID, is_deleted: false });
     await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('versionDetail allows a package supporter without approve', async () => {
+    versionRepo.findOne.mockResolvedValue({
+      id: VERSION_ID,
+      coworker_package_id: PACKAGE_ID,
+      submitted_by: OTHER_USER_ID,
+      is_deleted: false,
+      state: CoworkerVersionState.APPROVED,
+      model_id: 1,
+    });
+    packageRepo.findOne.mockResolvedValue({
+      id: PACKAGE_ID,
+      created_by: OTHER_USER_ID,
+      is_deleted: false,
+      publisher_id: 1,
+    });
+    metaRead.getSupportersByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]));
+    const result = await service.versionDetail(VERSION_ID, USER_ID);
+    expect(result.can_review).toBe(false);
+    expect(result.package.supporters).toEqual([{ id: USER_ID, email: 's@x.com' }]);
+  });
+
+  it('listVersions own-scope includes live package supporters', async () => {
+    const query = jest.fn().mockImplementation(async (sql: string) => {
+      if (/COUNT\(\*\)::int/.test(sql)) return [{ total: 0 }];
+      return [];
+    });
+    versionRepo.manager = { query };
+    await service.listVersions({ state: 'all' }, USER_ID);
+    const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+    expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
+    expect(sqls).toContain('FROM ai_hub_supporters s');
+    expect(sqls).toContain("s.type = 'coworker'");
+  });
+
+  it('getDiff allows a package supporter', async () => {
+    versionRepo.findOne.mockResolvedValue({
+      id: VERSION_ID,
+      coworker_package_id: PACKAGE_ID,
+      submitted_by: OTHER_USER_ID,
+      is_deleted: false,
+      state: CoworkerVersionState.APPROVED,
+      model_id: 1,
+      link: 'https://teams.microsoft.com/l/x',
+    });
+    packageRepo.findOne.mockResolvedValue({
+      id: PACKAGE_ID,
+      created_by: OTHER_USER_ID,
+      active_version_id: null,
+    });
+    metaRead.getSupportersByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]));
+    await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
+  });
 });

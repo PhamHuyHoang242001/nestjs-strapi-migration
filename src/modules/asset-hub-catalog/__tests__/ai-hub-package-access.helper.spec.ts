@@ -1,9 +1,11 @@
 import {
+  canAccessAiHubVersion,
   canBumpPackage,
   canSeeInactivePackage,
   canTogglePackage,
   inactiveListMode,
   isAiHubWorkspaceSO,
+  ownVersionScopeSql,
 } from '../ai-hub-package-access.helper';
 
 describe('canBumpPackage', () => {
@@ -51,6 +53,53 @@ describe('canTogglePackage', () => {
 
   it('false for stranger', () => {
     expect(canTogglePackage({ ...base, createdBy: 99, supporterIds: [11] })).toBe(false);
+  });
+});
+
+describe('canAccessAiHubVersion', () => {
+  const base = {
+    userId: 10,
+    submittedBy: 99,
+    createdBy: 88,
+    canApprove: false,
+    supporterIds: [] as number[],
+  };
+
+  it('true for submitter', () => {
+    expect(canAccessAiHubVersion({ ...base, submittedBy: 10 })).toBe(true);
+  });
+
+  it('true for package creator', () => {
+    expect(canAccessAiHubVersion({ ...base, createdBy: 10 })).toBe(true);
+  });
+
+  it('true for approver', () => {
+    expect(canAccessAiHubVersion({ ...base, canApprove: true })).toBe(true);
+  });
+
+  it('true for package supporter', () => {
+    expect(canAccessAiHubVersion({ ...base, supporterIds: [10, 11] })).toBe(true);
+  });
+
+  it('false for stranger even with empty createdBy', () => {
+    expect(canAccessAiHubVersion({ ...base, createdBy: undefined, supporterIds: [11] })).toBe(false);
+  });
+});
+
+describe('ownVersionScopeSql', () => {
+  it('keeps submitter/creator binds and adds live supporter EXISTS', () => {
+    const sql = ownVersionScopeSql(1, 'prompt');
+    expect(sql).toContain('v.submitted_by = $1 OR p.created_by = $1');
+    expect(sql).toContain('FROM ai_hub_supporters s');
+    expect(sql).toContain("s.type = 'prompt'");
+    expect(sql).toContain('s.user_id = $1');
+    expect(sql).toContain('s.deleted_at IS NULL');
+    expect(sql).toContain('COALESCE(s.is_deleted, false) = false');
+  });
+
+  it('binds api-catalog type with hyphen', () => {
+    expect(ownVersionScopeSql(2, 'api-catalog')).toContain("s.type = 'api-catalog'");
+    expect(ownVersionScopeSql(2, 'api-catalog')).toContain('$2');
   });
 });
 

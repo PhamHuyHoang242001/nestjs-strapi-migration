@@ -245,7 +245,10 @@ describe('SkillPackageQueryService', () => {
     });
 
     it('decorates rows with publisher, people in charge and tags — one batched query each', async () => {
-      const qb = makeQueryBuilder([{ id: PACKAGE_ID, publisher_id: 9, active_version_id: 7, active_version: { id: 7 } }], '1');
+      const qb = makeQueryBuilder(
+        [{ id: PACKAGE_ID, publisher_id: 9, active_version_id: 7, active_version: { id: 7 } }],
+        '1',
+      );
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
       metaRead.getPublishersByIds.mockResolvedValue(new Map([[9, { id: 9, name: 'Khối CNTT' }]]));
       metaRead.getResponsiblesByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: 2, email: 'a@x.vn' }]]]));
@@ -265,7 +268,14 @@ describe('SkillPackageQueryService', () => {
 
     it('never puts the usage guide on a list row', async () => {
       const qb = makeQueryBuilder(
-        [{ id: PACKAGE_ID, publisher_id: 9, active_version_id: 7, active_version: { id: 7, usage_guide_html: '<p>x</p>' } }],
+        [
+          {
+            id: PACKAGE_ID,
+            publisher_id: 9,
+            active_version_id: 7,
+            active_version: { id: 7, usage_guide_html: '<p>x</p>' },
+          },
+        ],
         '1',
       );
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
@@ -375,9 +385,7 @@ describe('SkillPackageQueryService', () => {
         active_version: activeVersion,
       });
       const reviewedAt = new Date('2026-01-15T00:00:00.000Z');
-      versionRepo.find = jest
-        .fn()
-        .mockResolvedValue([{ id: 11, version_no: 1, reviewed_at: reviewedAt }]);
+      versionRepo.find = jest.fn().mockResolvedValue([{ id: 11, version_no: 1, reviewed_at: reviewedAt }]);
       permissionQuery.getUserPermissions.mockResolvedValue([]);
 
       const result = await service.detail(1, USER_ID);
@@ -535,9 +543,9 @@ describe('SkillPackageQueryService', () => {
         active_version: { id: 10, files: [] },
       });
       // History is approved-only now — the pending version is NOT in this array.
-      versionRepo.find = jest.fn().mockResolvedValue([
-        { id: 10, version_no: 1, state: SkillVersionState.APPROVED, files: [] },
-      ]);
+      versionRepo.find = jest
+        .fn()
+        .mockResolvedValue([{ id: 10, version_no: 1, state: SkillVersionState.APPROVED, files: [] }]);
       // The separate EXISTS/COUNT query reports the pending version.
       versionRepo.count = jest.fn().mockResolvedValue(1);
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
@@ -814,6 +822,22 @@ describe('SkillPackageQueryService', () => {
       await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it('allows package supporter without approve', async () => {
+      versionRepo.findOne = jest
+        .fn()
+        .mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID, old_version: null }));
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
+      metaRead.getSupportersByPackageIds.mockResolvedValue(
+        new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]),
+      );
+
+      const result = await service.versionDetail(VERSION_ID, USER_ID);
+
+      expect(result.can_review).toBe(false);
+      expect(result.comparison?.incoming).toBe('# incoming');
+    });
+
     it('returns first pending with null base and no predecessor lookup', async () => {
       versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: USER_ID, old_version: null }));
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
@@ -831,7 +855,10 @@ describe('SkillPackageQueryService', () => {
     });
 
     it('fails closed when a declared approved predecessor is missing', async () => {
-      versionRepo.findOne = jest.fn().mockResolvedValueOnce(makeVersion({ submitted_by: USER_ID })).mockResolvedValueOnce(null);
+      versionRepo.findOne = jest
+        .fn()
+        .mockResolvedValueOnce(makeVersion({ submitted_by: USER_ID }))
+        .mockResolvedValueOnce(null);
       packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
       permissionQuery.getUserPermissions.mockResolvedValue([]);
 
@@ -841,9 +868,15 @@ describe('SkillPackageQueryService', () => {
     it.each([SkillVersionState.APPROVED, SkillVersionState.REJECTED])(
       '%s returns full detail without comparison or review capability',
       async (state) => {
-        versionRepo.findOne = jest.fn().mockResolvedValue(
-          makeVersion({ submitted_by: USER_ID, state, reject_reason: state === SkillVersionState.REJECTED ? 'Fix it' : null }),
-        );
+        versionRepo.findOne = jest
+          .fn()
+          .mockResolvedValue(
+            makeVersion({
+              submitted_by: USER_ID,
+              state,
+              reject_reason: state === SkillVersionState.REJECTED ? 'Fix it' : null,
+            }),
+          );
         packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, created_by: USER_ID });
         permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
 
@@ -900,6 +933,21 @@ describe('SkillPackageQueryService', () => {
         created_by: USER_ID,
         active_version_id: null,
       });
+
+      await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
+    });
+
+    it('package supporter without submitter/approver → allowed', async () => {
+      versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID }));
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      packageRepo.findOne = jest.fn().mockResolvedValue({
+        id: PACKAGE_ID,
+        created_by: OTHER_USER_ID,
+        active_version_id: null,
+      });
+      metaRead.getSupportersByPackageIds.mockResolvedValue(
+        new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]),
+      );
 
       await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
     });
@@ -1024,6 +1072,18 @@ describe('SkillPackageQueryService', () => {
 
       const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
       expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
+    });
+
+    it('own-scope also includes live package supporters', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
+      const query = stub({ count: 0, rows: [] });
+
+      await service.listVersions({ state: 'all' }, USER_ID);
+
+      const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
+      expect(sqls).toContain('FROM ai_hub_supporters s');
+      expect(sqls).toContain("s.type = 'skill'");
+      expect(sqls).toContain('s.user_id = $1');
     });
 
     it('approver → STILL own-scoped ("My Version" — role does not widen visibility)', async () => {
@@ -1155,5 +1215,4 @@ describe('SkillPackageQueryService', () => {
       expect((result.data[0] as any).isUpdate).toBe(false);
     });
   });
-
 });

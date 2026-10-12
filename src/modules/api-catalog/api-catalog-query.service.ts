@@ -20,10 +20,12 @@ import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hu
 import { stringifyApiSpec } from './api-spec.util';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import {
+  canAccessAiHubVersion,
   canBumpPackage,
   canSeeInactivePackage,
   inactiveListMode,
   isAiHubWorkspaceSO,
+  ownVersionScopeSql,
 } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 
 function stripCatalogListVersion<T extends { usage_guide_html?: string; mock_req?: unknown; mock_res?: unknown }>(
@@ -173,8 +175,7 @@ export class ApiCatalogQueryService {
     const canApprove = codes.includes('api_approve');
     const isSo = await this.isApiSo(userId);
     const listMode = inactiveListMode(query.status === ApiPackageStatus.INACTIVE, canApprove, isSo);
-    const statusFilter =
-      listMode === 'active' ? ApiPackageStatus.ACTIVE : ApiPackageStatus.INACTIVE;
+    const statusFilter = listMode === 'active' ? ApiPackageStatus.ACTIVE : ApiPackageStatus.INACTIVE;
 
     const qb = this.packageRepo
       .createQueryBuilder('pkg')
@@ -214,11 +215,7 @@ export class ApiCatalogQueryService {
     const countQb = this.packageRepo
       .createQueryBuilder('pkg')
       // Match the data query's soft-delete filter exactly (both markers) so total never overcounts.
-      .innerJoin(
-        ApiVersion,
-        'av',
-        'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false',
-      )
+      .innerJoin(ApiVersion, 'av', 'av.id = pkg.active_version_id AND av.deleted_at IS NULL AND av.is_deleted = false')
       .where('pkg.deleted_at IS NULL')
       .andWhere('COALESCE(pkg.is_deleted, false) = false')
       .andWhere('pkg.status = :status', { status: statusFilter })
@@ -352,8 +349,8 @@ export class ApiCatalogQueryService {
 
   // "My Version" list: flat 1-row-per-version across pending + approved + rejected, always scoped to
   // the caller. Every caller — INCLUDING approvers — sees only the versions they personally submitted
-  // (v.submitted_by) OR that belong to a package they created (p.created_by). There is no role-based
-  // "see all" here; an approver's org-wide view lives in the review queue, not this personal list.
+  // (v.submitted_by), a package they created (p.created_by), or a package they support.
+  // There is no role-based "see all" here; an approver's org-wide view lives in the review queue.
   // Thin projection (NO content columns). codesOnly=true short-circuits to the distinct-code list for
   // the filter multi-select under the IDENTICAL visibility predicate so the options can never drift.
   async listVersions(query: ListVersionsDto, userId: number) {
@@ -362,7 +359,7 @@ export class ApiCatalogQueryService {
     const params: unknown[] = [];
     const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
     params.push(userId);
-    where.push(`(v.submitted_by = $${params.length} OR p.created_by = $${params.length})`);
+    where.push(ownVersionScopeSql(params.length, 'api-catalog'));
     if (query.api_catalog_package_id?.length) {
       params.push(query.api_catalog_package_id);
       where.push(`p.id = ANY($${params.length})`);
@@ -530,8 +527,9 @@ export class ApiCatalogQueryService {
   }
 
   // Full version detail shared by review and "My Version". Access is the union of those screens:
-  // submitter, package creator, or approver. Pending comparison uses the stored approved predecessor
-  // rather than active_version_id, keeping the result stable after later publication changes.
+  // submitter, package creator, package supporter, or approver. Pending comparison uses the stored
+  // approved predecessor rather than active_version_id, keeping the result stable after later
+  // publication changes.
   async versionDetail(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
@@ -545,7 +543,15 @@ export class ApiCatalogQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('api_approve');
-    const canAccess = version.submitted_by === userId || pkg.created_by === userId || canApprove;
+    const supporterIds =
+      (await this.metaRead.getSupportersByPackageIds('api-catalog', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
+    const canAccess = canAccessAiHubVersion({
+      userId,
+      submittedBy: version.submitted_by,
+      createdBy: pkg.created_by,
+      canApprove,
+      supporterIds,
+    });
     if (!canAccess) throw new ForbiddenException('You do not have access to this API version');
 
     let comparison: {
@@ -582,7 +588,7 @@ export class ApiCatalogQueryService {
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
     const categories = await this.resolveCategories([version.category_id]);
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
-    // submitter, the package creator, or an approver, so no extra scrub is needed here.
+    // submitter, the package creator, a supporter, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
     const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('api_upload'));
     return {
@@ -601,7 +607,7 @@ export class ApiCatalogQueryService {
         ...this.decorateCategory(version, categories),
         tags: meta.tags.get(version.id) ?? [],
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
-        reviewed_by_email: version.reviewed_by ? emailMap.get(version.reviewed_by) ?? null : null,
+        reviewed_by_email: version.reviewed_by ? (emailMap.get(version.reviewed_by) ?? null) : null,
         isUpdate,
       },
       comparison,
@@ -612,7 +618,7 @@ export class ApiCatalogQueryService {
 
   // Diff: return base (active version spec or null) and incoming (target version content).
   // Controller already requires api_upload OR api_approve. This method only applies
-  // row-ownership: upload-only → submitter or package creator; approver → any version.
+  // row-ownership: upload-only → submitter, package creator, or supporter; approver → any version.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
@@ -624,7 +630,16 @@ export class ApiCatalogQueryService {
     const pkg = await this.packageRepo.findOne({
       where: { id: version.api_catalog_package_id },
     });
-    const canAccess = version.submitted_by === userId || pkg?.created_by === userId || canApprove;
+    const supporterIds = pkg
+      ? ((await this.metaRead.getSupportersByPackageIds('api-catalog', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [])
+      : [];
+    const canAccess = canAccessAiHubVersion({
+      userId,
+      submittedBy: version.submitted_by,
+      createdBy: pkg?.created_by,
+      canApprove,
+      supporterIds,
+    });
     if (!canAccess) {
       throw new ForbiddenException('You do not have access to this version diff');
     }
@@ -639,9 +654,7 @@ export class ApiCatalogQueryService {
 
     // Resolve the submitter email so the review screen shows "Submitted by" as email, not a raw id.
     const emailMap = await this.resolveEmails([version.submitted_by]);
-    const isUpdate = pkg
-      ? await this.resolveIsUpdate(pkg.id, version, codes.includes('api_upload'))
-      : false;
+    const isUpdate = pkg ? await this.resolveIsUpdate(pkg.id, version, codes.includes('api_upload')) : false;
 
     return {
       base: baseContent,

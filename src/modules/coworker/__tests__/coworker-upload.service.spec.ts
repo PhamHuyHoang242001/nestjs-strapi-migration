@@ -124,6 +124,47 @@ describe('CoworkerUploadService', () => {
   describe('editVersion — pending is SO-only', () => {
     const dto = { ...META, name: 'fix', short_description: 'desc', changelog_note: 'edit' };
 
+    it('package supporter with coworker_upload may resubmit latest rejected', async () => {
+      versionRepo.findOne = jest.fn().mockImplementation(async ({ where }: any) => {
+        if (where.id === VERSION_ID) {
+          return {
+            id: VERSION_ID,
+            coworker_package_id: PACKAGE_ID,
+            state: CoworkerVersionState.REJECTED,
+            version_no: 1,
+            submitted_by: OTHER_USER_ID,
+          };
+        }
+        if (where.state === CoworkerVersionState.PENDING) return null;
+        if (where.coworker_package_id && !where.state && !where.id) {
+          return { id: VERSION_ID, state: CoworkerVersionState.REJECTED };
+        }
+        return null;
+      });
+      packageRepo.findOne.mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: OTHER_USER_ID });
+      itemMeta.listSupporterIds.mockResolvedValue([USER_ID]);
+      dataSource.transaction = jest.fn(async (cb: any) => {
+        const manager = lookupManager();
+        manager.query = jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('ai_hub_coworker_channels')) return [{ id: 1 }];
+          if (sql.includes('ai_hub_coworker_models')) return [{ id: 2 }];
+          if (sql.includes("state = 'pending'")) return [];
+          if (sql.includes('ORDER BY id DESC')) return [{ id: VERSION_ID, state: 'rejected' }];
+          return [];
+        });
+        manager.findOne = jest.fn().mockResolvedValue({
+          id: VERSION_ID,
+          coworker_package_id: PACKAGE_ID,
+          state: CoworkerVersionState.REJECTED,
+          version_no: 1,
+        });
+        return cb(manager);
+      });
+      service = new CoworkerUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
+      const result = await service.editVersion(VERSION_ID, { ...dto } as any, USER_ID);
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
+    });
+
     it('approver cannot edit pending', async () => {
       versionRepo.findOne.mockResolvedValue({
         id: VERSION_ID,
