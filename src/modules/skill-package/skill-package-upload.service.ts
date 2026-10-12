@@ -115,7 +115,7 @@ export class SkillPackageUploadService {
       const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'create');
       await this.itemMeta.assertPublisher(manager, owning.publisher_id);
       const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
-      const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
+      const coworkerIds = await this.itemMeta.assertCoworkerPackages(manager, dto.coworker_package_ids ?? []);
 
       const savedPkg = await manager.save(
         SkillPackage,
@@ -156,7 +156,7 @@ export class SkillPackageUploadService {
         }),
       );
 
-      await this.itemMeta.replaceVersionTags(manager, 'skill', savedVersion.id, tagIds);
+      await this.itemMeta.replaceVersionCoworkers(manager, 'skill', savedVersion.id, coworkerIds);
 
       // Persist the zip file row (with metadata) in the same tx. Avatar is inline above.
       await this.saveZipFile(manager, savedVersion.id, dto.file, zipFile);
@@ -231,7 +231,7 @@ export class SkillPackageUploadService {
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
-        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
+        const coworkerIds = await this.itemMeta.assertCoworkerPackages(manager, dto.coworker_package_ids ?? []);
 
         await manager.update(SkillPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', packageId, responsibleUserIds);
@@ -255,7 +255,7 @@ export class SkillPackageUploadService {
         });
         const saved = await manager.save(SkillVersion, version);
 
-        await this.itemMeta.replaceVersionTags(manager, 'skill', saved.id, tagIds);
+        await this.itemMeta.replaceVersionCoworkers(manager, 'skill', saved.id, coworkerIds);
 
         // Persist the zip file row (with metadata) in the same tx. Avatar is inline above.
         await this.saveZipFile(manager, saved.id, dto.file, zipFile);
@@ -366,7 +366,7 @@ export class SkillPackageUploadService {
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
-        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'skill');
+        const coworkerIds = await this.itemMeta.assertCoworkerPackages(manager, dto.coworker_package_ids ?? []);
 
         await manager.update(SkillPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', pkg.id, responsibleUserIds);
@@ -394,7 +394,7 @@ export class SkillPackageUploadService {
         }
         await manager.save(SkillVersion, locked);
 
-        await this.itemMeta.replaceVersionTags(manager, 'skill', locked.id, tagIds);
+        await this.itemMeta.replaceVersionCoworkers(manager, 'skill', locked.id, coworkerIds);
 
         if (zipFile) {
           await manager.update(

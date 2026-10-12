@@ -4,12 +4,14 @@ import type { AssetHubWorkspace } from './asset-hub-item-meta.service';
 // Live-row predicates shared by list filters and the batch tag loaders.
 export const LIVE_VERSION_TAG = 'vt.deleted_at IS NULL AND COALESCE(vt.is_deleted, false) = false';
 export const LIVE_TAG = 't.deleted_at IS NULL AND COALESCE(t.is_deleted, false) = false';
+export const LIVE_COWORKER_PKG = 'cp.deleted_at IS NULL AND COALESCE(cp.is_deleted, false) = false';
+export const LIVE_COWORKER_VER = 'cv.deleted_at IS NULL AND COALESCE(cv.is_deleted, false) = false';
 
 // Trusted identifiers only — never interpolated from request input.
-const VERSION_TAG_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
-  skill: { table: 'skill_version_tags', fk: 'skill_version_id' },
-  prompt: { table: 'prompt_version_tags', fk: 'prompt_version_id' },
-  'api-catalog': { table: 'api_catalog_version_tags', fk: 'api_catalog_version_id' },
+const VERSION_COWORKER_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
+  skill: { table: 'skill_version_coworkers', fk: 'skill_version_id' },
+  prompt: { table: 'prompt_version_coworkers', fk: 'prompt_version_id' },
+  'api-catalog': { table: 'api_catalog_version_coworkers', fk: 'api_catalog_version_id' },
 };
 
 export interface AssetHubCatalogListQuery {
@@ -33,7 +35,7 @@ export function applyAssetHubCatalogFilters<T extends ObjectLiteral>(
   workspace: AssetHubWorkspace,
   query: AssetHubCatalogListQuery,
 ): void {
-  const { table, fk } = VERSION_TAG_TABLE[workspace];
+  const { table, fk } = VERSION_COWORKER_TABLE[workspace];
 
   if (query.search?.trim()) {
     const kw = `%${escapeIlike(query.search.trim())}%`;
@@ -42,8 +44,10 @@ export function applyAssetHubCatalogFilters<T extends ObjectLiteral>(
         OR av.short_description ILIKE :search ESCAPE '\\'
         OR pkg.active_version_id IN (
           SELECT vt.${fk} FROM ${table} vt
-          INNER JOIN ai_hub_tags t ON t.id = vt.tag_id AND ${LIVE_TAG}
-          WHERE t.name ILIKE :search ESCAPE '\\' AND ${LIVE_VERSION_TAG}
+          INNER JOIN coworker_packages cp ON cp.id = vt.coworker_package_id AND ${LIVE_COWORKER_PKG}
+          LEFT JOIN coworker_versions cv ON cv.id = cp.active_version_id AND ${LIVE_COWORKER_VER}
+          WHERE (cp.code ILIKE :search ESCAPE '\\' OR cv.name ILIKE :search ESCAPE '\\')
+            AND ${LIVE_VERSION_TAG}
         ))`,
       { search: kw },
     );

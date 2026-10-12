@@ -4,6 +4,7 @@ import { PromptPackage } from '@modules/databases/prompt-package.entity';
 import { PromptVersion } from '@modules/databases/prompt-version.entity';
 import { PromptPackageResponsible } from '@modules/databases/prompt-package-responsible.entity';
 import { PromptVersionTag } from '@modules/databases/prompt-version-tag.entity';
+import { PromptVersionCoworker } from '@modules/databases/prompt-version-coworker.entity';
 import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { PromptLibraryController } from './prompt-library.controller';
 import { PromptLibraryQueryService } from './prompt-library-query.service';
@@ -15,7 +16,13 @@ import { CategoryModule } from '@modules/category/category.module';
 // and BearerGuard-required deps are available without re-importing here.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PromptPackage, PromptVersion, PromptPackageResponsible, PromptVersionTag]),
+    TypeOrmModule.forFeature([
+      PromptPackage,
+      PromptVersion,
+      PromptPackageResponsible,
+      PromptVersionTag,
+      PromptVersionCoworker,
+    ]),
     CategoryModule,
     // Supplies AssetHubItemMetaService — the shared publisher/PIC/tag validation + persistence
     // the create and bump transactions use.

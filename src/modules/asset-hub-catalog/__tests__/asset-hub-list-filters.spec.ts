@@ -23,15 +23,16 @@ describe('asset-hub-list-filters', () => {
   });
 
   describe('applyAssetHubCatalogFilters', () => {
-    it('search ORs name, description and a non-correlated tag-name subquery', () => {
+    it('search ORs name, description and a non-correlated coworker code/name subquery', () => {
       const qb = makeQb();
       applyAssetHubCatalogFilters(qb, 'skill', { search: 'happ' });
 
       const sql = qb.capturedWheres[0];
       expect(sql).toContain('av.name ILIKE :search');
       expect(sql).toContain('av.short_description ILIKE :search');
-      expect(sql).toContain('SELECT vt.skill_version_id FROM skill_version_tags vt');
-      expect(sql).toContain('t.name ILIKE :search');
+      expect(sql).toContain('SELECT vt.skill_version_id FROM skill_version_coworkers vt');
+      expect(sql).toContain('cp.code ILIKE :search');
+      expect(sql).toContain('cv.name ILIKE :search');
       expect(sql).toContain("ESCAPE '\\'");
       expect(sql).not.toContain('EXISTS');
       expect(qb.capturedParams.search).toBe('%happ%');
@@ -41,13 +42,14 @@ describe('asset-hub-list-filters', () => {
       const qb = makeQb();
       applyAssetHubCatalogFilters(qb, 'prompt', { search: 'a%b_c' });
       expect(qb.capturedParams.search).toBe('%a\\%b\\_c%');
-      expect(qb.capturedWheres[0]).toContain('SELECT vt.prompt_version_id FROM prompt_version_tags vt');
+      expect(qb.capturedWheres[0]).toContain('SELECT vt.prompt_version_id FROM prompt_version_coworkers vt');
     });
 
-    it('a near-match keyword still hits tag name via substring ILIKE', () => {
+    it('a near-match keyword still hits coworker code/name via substring ILIKE', () => {
       const qb = makeQb();
       applyAssetHubCatalogFilters(qb, 'skill', { search: 'Báo' });
-      expect(qb.capturedWheres[0]).toContain('t.name ILIKE :search');
+      expect(qb.capturedWheres[0]).toContain('cp.code ILIKE :search');
+      expect(qb.capturedWheres[0]).toContain('cv.name ILIKE :search');
       expect(qb.capturedParams.search).toBe('%Báo%');
     });
 

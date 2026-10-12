@@ -9,6 +9,9 @@ import { CoworkerPackageResponsible } from '@modules/databases/coworker-package-
 import { SkillVersionTag } from '@modules/databases/skill-version-tag.entity';
 import { PromptVersionTag } from '@modules/databases/prompt-version-tag.entity';
 import { ApiVersionTag } from '@modules/databases/api-catalog-version-tag.entity';
+import { SkillVersionCoworker } from '@modules/databases/skill-version-coworker.entity';
+import { PromptVersionCoworker } from '@modules/databases/prompt-version-coworker.entity';
+import { ApiVersionCoworker } from '@modules/databases/api-catalog-version-coworker.entity';
 import { AiHubSupporter } from '@modules/databases/ai-hub-supporter.entity';
 import type { AiHubArtifactType } from './ai-hub-package-access.helper';
 import { AI_HUB_ARTIFACT_TYPES } from './ai-hub-package-access.helper';
@@ -18,6 +21,7 @@ import { AI_HUB_ARTIFACT_TYPES } from './ai-hub-package-access.helper';
 export const MAX_RESPONSIBLE_USERS = 20;
 export const MAX_SUPPORTERS = MAX_RESPONSIBLE_USERS;
 export const MAX_VERSION_TAGS = 20;
+export const MAX_VERSION_COWORKERS = MAX_VERSION_TAGS;
 
 // Which workspace a write belongs to. Picks the join entities and the tag artifact_type.
 export type AssetHubWorkspace = 'skill' | 'prompt' | 'api-catalog';
@@ -34,6 +38,12 @@ const VERSION_TAG_ENTITY = {
   skill: SkillVersionTag,
   prompt: PromptVersionTag,
   'api-catalog': ApiVersionTag,
+} as const;
+
+const VERSION_COWORKER_ENTITY = {
+  skill: SkillVersionCoworker,
+  prompt: PromptVersionCoworker,
+  'api-catalog': ApiVersionCoworker,
 } as const;
 
 const ARTIFACT_TYPE: Record<AssetHubWorkspace, AssetHubTagArtifactType> = {
@@ -159,6 +169,25 @@ export class AssetHubItemMetaService {
     return ids;
   }
 
+  // Live coworker packages only. Shared catalog — not scoped by skill/prompt/api workspace.
+  async assertCoworkerPackages(manager: EntityManager, packageIds: number[]): Promise<number[]> {
+    const ids = unique(packageIds);
+    if (ids.length === 0) return [];
+    if (ids.length > MAX_VERSION_COWORKERS) {
+      throw new BadRequestException(`INVALID_COWORKERS: at most ${MAX_VERSION_COWORKERS} coworker packages allowed`);
+    }
+
+    const rows: Array<{ id: number }> = await manager.query(
+      `SELECT id FROM coworker_packages
+       WHERE id = ANY($1) AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false`,
+      [ids],
+    );
+    if (rows.length !== ids.length) {
+      throw new BadRequestException('INVALID_COWORKERS: one or more coworker packages do not exist');
+    }
+    return ids;
+  }
+
   // Full replace: the request body is the complete list, so prior links are hard-deleted first.
   // Same shape the diagnostic report uses for its PIC links.
   async replaceResponsibles(
@@ -191,6 +220,23 @@ export class AssetHubItemMetaService {
     const ids = unique(tagIds);
     if (!ids.length) return;
     await manager.save(ids.map((tag_id) => manager.create(entity, { [ownerColumn]: versionId, tag_id })));
+  }
+
+  async replaceVersionCoworkers(
+    manager: EntityManager,
+    workspace: AssetHubWorkspace,
+    versionId: number,
+    coworkerPackageIds: number[],
+  ): Promise<void> {
+    const entity = VERSION_COWORKER_ENTITY[workspace];
+    const ownerColumn = VERSION_OWNER[workspace];
+
+    await manager.delete(entity, { [ownerColumn]: versionId });
+    const ids = unique(coworkerPackageIds);
+    if (!ids.length) return;
+    await manager.save(
+      ids.map((coworker_package_id) => manager.create(entity, { [ownerColumn]: versionId, coworker_package_id })),
+    );
   }
 
   // Hard-delete prior rows then insert — same as PIC. `[]` clears. Omit handled by caller (undefined skip).

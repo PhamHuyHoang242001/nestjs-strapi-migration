@@ -4,6 +4,7 @@ import { ApiPackage } from '@modules/databases/api-catalog-package.entity';
 import { ApiVersion } from '@modules/databases/api-catalog-version.entity';
 import { ApiPackageResponsible } from '@modules/databases/api-catalog-package-responsible.entity';
 import { ApiVersionTag } from '@modules/databases/api-catalog-version-tag.entity';
+import { ApiVersionCoworker } from '@modules/databases/api-catalog-version-coworker.entity';
 import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { ApiCatalogController } from './api-catalog.controller';
 import { ApiCatalogQueryService } from './api-catalog-query.service';
@@ -15,7 +16,7 @@ import { CategoryModule } from '@modules/category/category.module';
 // and BearerGuard-required deps are available without re-importing here.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApiPackage, ApiVersion, ApiPackageResponsible, ApiVersionTag]),
+    TypeOrmModule.forFeature([ApiPackage, ApiVersion, ApiPackageResponsible, ApiVersionTag, ApiVersionCoworker]),
     CategoryModule,
     // Supplies AssetHubItemMetaService — the shared publisher/PIC/tag validation + persistence
     // the create and bump transactions use.

@@ -61,7 +61,7 @@ function makeQueryBuilder(resultRows: unknown[] = [], countValue = '0') {
 // assertions stay focused; the tag/publisher/PIC decoration has its own specs.
 function makeMetaRead(overrides: Record<string, unknown> = {}) {
   return {
-    getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
+    getCoworkersByVersionIds: jest.fn().mockResolvedValue(new Map()),
     getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
     getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
     getSupportersByPackageIds: jest.fn().mockResolvedValue(new Map()),
@@ -171,34 +171,29 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.search).toContain('hello world');
     });
 
-    it('search also matches a catalog tag NAME, via a non-correlated subquery', async () => {
+    it('search also matches coworker code/name, via a non-correlated subquery', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
       await service.list({ page: 1, limit: 10, search: 'happ' }, USER_ID);
 
       const joined = qb.capturedWheres.join(' | ');
-      // Tag matching now goes through the join table, so a keyword hits the catalog name.
-      expect(joined).toContain('t.name ILIKE :search');
-      expect(joined).toContain('SELECT vt.skill_version_id FROM skill_version_tags vt');
-      // The jsonb column is gone from the read path entirely.
+      expect(joined).toContain('cp.code ILIKE :search');
+      expect(joined).toContain('cv.name ILIKE :search');
+      expect(joined).toContain('SELECT vt.skill_version_id FROM skill_version_coworkers vt');
       expect(joined).not.toContain('av.tags');
-      // The subquery must not reference an outer alias — that breaks TypeORM's skip/take rewrite.
       expect(joined).not.toContain('EXISTS');
-      // Still ORed with name/short_description; reuses the single bound :search param.
       expect(joined).toContain('av.name ILIKE :search');
       expect(qb.capturedParams.search).toContain('happ');
     });
 
-    it('tag-in-search clause is applied to BOTH page and count queries (no total drift)', async () => {
+    it('coworker-in-search clause is applied to BOTH page and count queries (no total drift)', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
 
       await service.list({ page: 1, limit: 10, search: 'happ' }, USER_ID);
 
-      // Mock returns the same builder for page + count createQueryBuilder calls, so the tag
-      // clause must appear twice — once per query — or pagination total would diverge.
-      const occurrences = qb.capturedWheres.filter((w: string) => w.includes('t.name ILIKE :search')).length;
+      const occurrences = qb.capturedWheres.filter((w: string) => w.includes('cp.code ILIKE :search')).length;
       expect(occurrences).toBe(2);
     });
 
@@ -244,7 +239,7 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.publisher_id).toBe(4);
     });
 
-    it('decorates rows with publisher, people in charge and tags — one batched query each', async () => {
+    it('decorates rows with publisher, people in charge and coworkers — one batched query each', async () => {
       const qb = makeQueryBuilder(
         [{ id: PACKAGE_ID, publisher_id: 9, active_version_id: 7, active_version: { id: 7 } }],
         '1',
@@ -252,18 +247,19 @@ describe('SkillPackageQueryService', () => {
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
       metaRead.getPublishersByIds.mockResolvedValue(new Map([[9, { id: 9, name: 'Khối CNTT' }]]));
       metaRead.getResponsiblesByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: 2, email: 'a@x.vn' }]]]));
-      metaRead.getTagsByVersionIds.mockResolvedValue(new Map([[7, [{ id: 3, name: 'Báo cáo', kind: 'enterprise' }]]]));
+      metaRead.getCoworkersByVersionIds.mockResolvedValue(
+        new Map([[7, [{ id: 3, code: 'bao-cao', name: 'Báo cáo' }]]]),
+      );
 
       const result = await service.list({ page: 1, limit: 10 }, USER_ID);
 
       const row = result.data[0] as Record<string, any>;
       expect(row.publisher).toEqual({ id: 9, name: 'Khối CNTT' });
       expect(row.responsible_users).toEqual([{ id: 2, email: 'a@x.vn' }]);
-      expect(row.active_version.tags).toEqual([{ id: 3, name: 'Báo cáo', kind: 'enterprise' }]);
-      // One call per dimension for the whole page — never per row.
+      expect(row.active_version.coworkers).toEqual([{ id: 3, code: 'bao-cao', name: 'Báo cáo' }]);
       expect(metaRead.getPublishersByIds).toHaveBeenCalledTimes(1);
       expect(metaRead.getResponsiblesByPackageIds).toHaveBeenCalledTimes(1);
-      expect(metaRead.getTagsByVersionIds).toHaveBeenCalledTimes(1);
+      expect(metaRead.getCoworkersByVersionIds).toHaveBeenCalledTimes(1);
     });
 
     it('never puts the usage guide on a list row', async () => {
@@ -911,7 +907,7 @@ describe('SkillPackageQueryService', () => {
       name: 'v2',
       avatar_url: '/uploads/icon.png',
       category_id: 1,
-      tags: [],
+      coworkers: [],
       changelog_note: null,
       created_at: new Date(),
       ...overrides,

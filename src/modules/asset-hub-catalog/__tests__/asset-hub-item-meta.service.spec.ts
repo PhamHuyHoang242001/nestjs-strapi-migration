@@ -4,6 +4,7 @@ import {
   MAX_RESPONSIBLE_USERS,
   MAX_SUPPORTERS,
   MAX_VERSION_TAGS,
+  MAX_VERSION_COWORKERS,
   packageOwningFields,
 } from '../asset-hub-item-meta.service';
 
@@ -161,6 +162,44 @@ describe('AssetHubItemMetaService.replaceSupporters', () => {
   });
 });
 
+describe('AssetHubItemMetaService.assertCoworkerPackages', () => {
+  it('treats no coworker packages as valid — links are optional', async () => {
+    const { manager } = makeManager();
+
+    await expect(new AssetHubItemMetaService().assertCoworkerPackages(manager as never, [])).resolves.toEqual([]);
+    expect(manager.query).not.toHaveBeenCalled();
+  });
+
+  it('returns the deduped ids when every package is live', async () => {
+    const { manager } = makeManager({ userRows: [{ id: 21 }, { id: 22 }] });
+
+    await expect(new AssetHubItemMetaService().assertCoworkerPackages(manager as never, [21, 22, 21])).resolves.toEqual([
+      21, 22,
+    ]);
+    const [sql, params] = manager.query.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain('FROM coworker_packages');
+    expect(sql).toContain('id = ANY($1)');
+    expect(params).toEqual([[21, 22]]);
+  });
+
+  it('rejects an unknown coworker package as bad input', async () => {
+    const { manager } = makeManager({ userRows: [{ id: 21 }] });
+
+    await expect(new AssetHubItemMetaService().assertCoworkerPackages(manager as never, [21, 22])).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('rejects more than the cap', async () => {
+    const { manager } = makeManager();
+    const tooMany = Array.from({ length: MAX_VERSION_COWORKERS + 1 }, (_, i) => i + 1);
+
+    await expect(new AssetHubItemMetaService().assertCoworkerPackages(manager as never, tooMany)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+});
+
 describe('AssetHubItemMetaService.assertTags', () => {
   it('treats no tags as valid — tags are optional', async () => {
     const { manager } = makeManager();
@@ -254,6 +293,36 @@ describe('AssetHubItemMetaService full-replace writes', () => {
     await new AssetHubItemMetaService().replaceVersionTags(manager as never, 'skill', 9, [21, 21, 22]);
 
     expect(savedBatches[0]).toHaveLength(2);
+  });
+
+  it('clears prior version coworkers and inserts the new set', async () => {
+    const { manager, deletes, savedBatches } = makeManager();
+
+    await new AssetHubItemMetaService().replaceVersionCoworkers(manager as never, 'skill', 9, [21, 22]);
+
+    expect(deletes).toEqual([{ entity: 'SkillVersionCoworker', criteria: { skill_version_id: 9 } }]);
+    expect(savedBatches[0]).toEqual([
+      { skill_version_id: 9, coworker_package_id: 21 },
+      { skill_version_id: 9, coworker_package_id: 22 },
+    ]);
+  });
+
+  it('still clears the old coworker rows when the new list is empty', async () => {
+    const { manager, deletes, savedBatches } = makeManager();
+
+    await new AssetHubItemMetaService().replaceVersionCoworkers(manager as never, 'prompt', 9, []);
+
+    expect(deletes).toEqual([{ entity: 'PromptVersionCoworker', criteria: { prompt_version_id: 9 } }]);
+    expect(savedBatches).toHaveLength(0);
+  });
+
+  it('uses the api-catalog column and entity for api-catalog coworkers', async () => {
+    const { manager, deletes, savedBatches } = makeManager();
+
+    await new AssetHubItemMetaService().replaceVersionCoworkers(manager as never, 'api-catalog', 9, [21]);
+
+    expect(deletes).toEqual([{ entity: 'ApiVersionCoworker', criteria: { api_catalog_version_id: 9 } }]);
+    expect(savedBatches[0]).toEqual([{ api_catalog_version_id: 9, coworker_package_id: 21 }]);
   });
 });
 

@@ -13,6 +13,12 @@ export interface TagRef {
   kind: AssetHubTagKind;
 }
 
+export interface CoworkerRef {
+  id: number;
+  code: string;
+  name: string;
+}
+
 export interface ResponsibleUserRef {
   id: number;
   email: string;
@@ -29,6 +35,12 @@ const VERSION_TAG_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }
   skill: { table: 'skill_version_tags', fk: 'skill_version_id' },
   prompt: { table: 'prompt_version_tags', fk: 'prompt_version_id' },
   'api-catalog': { table: 'api_catalog_version_tags', fk: 'api_catalog_version_id' },
+};
+
+const VERSION_COWORKER_TABLE: Record<AssetHubWorkspace, { table: string; fk: string }> = {
+  skill: { table: 'skill_version_coworkers', fk: 'skill_version_id' },
+  prompt: { table: 'prompt_version_coworkers', fk: 'prompt_version_id' },
+  'api-catalog': { table: 'api_catalog_version_coworkers', fk: 'api_catalog_version_id' },
 };
 
 const RESPONSIBLE_TABLE: Record<AssetHubPicWorkspace, { table: string; fk: string }> = {
@@ -75,6 +87,39 @@ export class AssetHubItemMetaReadService {
     for (const row of rows) {
       const list = map.get(Number(row.version_id)) ?? [];
       list.push({ id: Number(row.id), name: row.name, kind: row.kind });
+      map.set(Number(row.version_id), list);
+    }
+    return map;
+  }
+
+  async getCoworkersByVersionIds(
+    workspace: AssetHubWorkspace,
+    versionIds: Array<number | null | undefined>,
+  ): Promise<Map<number, CoworkerRef[]>> {
+    const map = new Map<number, CoworkerRef[]>();
+    const ids = liveIds(versionIds);
+    if (!ids.length) return map;
+
+    const { table, fk } = VERSION_COWORKER_TABLE[workspace];
+    const rows: Array<{ version_id: number; id: number; code: string; name: string }> =
+      await this.tagRepo.manager.query(
+        `SELECT vt.${fk} AS version_id, cp.id, cp.code, COALESCE(cv.name, cp.code) AS name
+         FROM ${table} vt
+         INNER JOIN coworker_packages cp
+           ON cp.id = vt.coworker_package_id
+          AND cp.deleted_at IS NULL AND COALESCE(cp.is_deleted, false) = false
+         LEFT JOIN coworker_versions cv
+           ON cv.id = cp.active_version_id
+          AND cv.deleted_at IS NULL AND COALESCE(cv.is_deleted, false) = false
+         WHERE vt.${fk} = ANY($1)
+           AND vt.deleted_at IS NULL AND COALESCE(vt.is_deleted, false) = false
+         ORDER BY vt.${fk}, cp.code`,
+        [ids],
+      );
+
+    for (const row of rows) {
+      const list = map.get(Number(row.version_id)) ?? [];
+      list.push({ id: Number(row.id), code: row.code, name: row.name });
       map.set(Number(row.version_id), list);
     }
     return map;

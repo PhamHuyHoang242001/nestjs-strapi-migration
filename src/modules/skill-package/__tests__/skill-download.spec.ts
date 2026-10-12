@@ -41,7 +41,7 @@ describe('SkillPackageQueryService.resolveActiveZip', () => {
     versionRepo = { manager: { query: jest.fn().mockResolvedValue([]) } };
     // Metadata batch loader — the download path does not decorate, so empty maps suffice.
     const metaRead = {
-      getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
+      getCoworkersByVersionIds: jest.fn().mockResolvedValue(new Map()),
       getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
       getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
       getSupportersByPackageIds: jest.fn().mockResolvedValue(new Map()),

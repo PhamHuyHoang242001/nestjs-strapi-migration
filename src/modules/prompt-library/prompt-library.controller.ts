@@ -87,8 +87,11 @@ export class PromptLibraryController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
 
-    const { version, authorEmail, categoryName, tags } = await this.queryService.resolveActiveForExport(id, userId);
-    const md = buildPromptMarkdown(version, authorEmail, categoryName, tags);
+    const { version, authorEmail, categoryName, coworkers } = await this.queryService.resolveActiveForExport(
+      id,
+      userId,
+    );
+    const md = buildPromptMarkdown(version, authorEmail, categoryName, coworkers);
     // Filename is already a safe slug ([a-z0-9-] + -v<n> + ext) — quote directly, no percent-encode.
     const filename = buildDownloadFilename(version.name, version.version_no, 'md', 'prompt');
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');

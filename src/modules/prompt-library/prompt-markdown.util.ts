@@ -1,5 +1,5 @@
 import { PromptVersion } from '@modules/databases/prompt-version.entity';
-import type { TagRef } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
+import type { CoworkerRef } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
 
 // Build a professional, international-standard Markdown export of a prompt version:
 // a YAML frontmatter block (machine-readable metadata, as recognised by Obsidian / Jekyll /
@@ -17,12 +17,11 @@ function yamlString(value: string | null | undefined): string {
   return `"${escaped}"`;
 }
 
-// Serialize a tag list as a YAML flow array of names: ["a", "b"]. Tags are catalog rows now, but
-// the exported frontmatter keeps its plain-name shape — a downloaded .md is read outside this
-// system, where an internal tag id would mean nothing. Non-array or empty input -> [].
-function yamlTags(tags: unknown): string {
-  if (!Array.isArray(tags) || tags.length === 0) return '[]';
-  return `[${(tags as TagRef[]).map((t) => yamlString(t?.name ?? '')).join(', ')}]`;
+// Serialize coworker names as a YAML flow array: ["a", "b"]. Frontmatter keeps the `tags:` key
+// (external .md consumers) — values are coworker display names, not internal ids.
+function yamlTags(coworkers: unknown): string {
+  if (!Array.isArray(coworkers) || coworkers.length === 0) return '[]';
+  return `[${(coworkers as CoworkerRef[]).map((c) => yamlString(c?.name ?? '')).join(', ')}]`;
 }
 
 // Format a date-ish value to YYYY-MM-DD; returns '' when absent or unparseable.
@@ -36,7 +35,7 @@ export function buildPromptMarkdown(
   version: PromptVersion,
   authorEmail: string | null,
   categoryName?: string | null,
-  tags?: TagRef[] | null,
+  coworkers?: CoworkerRef[] | null,
 ): string {
   const created = isoDate(version.created_at);
 
@@ -47,7 +46,7 @@ export function buildPromptMarkdown(
     `version: ${version.version_no}`,
     `author: ${yamlString(authorEmail ?? 'unknown')}`,
     `created: ${yamlString(created)}`,
-    `tags: ${yamlTags(tags)}`,
+    `tags: ${yamlTags(coworkers)}`,
     '---',
     '',
     `# ${version.name}`,

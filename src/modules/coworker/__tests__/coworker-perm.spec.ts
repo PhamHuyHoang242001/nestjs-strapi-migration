@@ -31,6 +31,10 @@ describe('CoworkerController — perm mapping', () => {
     expect(getPerm('toggleStatus')).toEqual(['coworker_upload', 'coworker_approve']);
   });
 
+  it('getReuseMatrix carries coworker_upload', () => {
+    expect(getPerm('getReuseMatrix')).toEqual(['coworker_upload']);
+  });
+
   it('listItems has no RequirePermission metadata (auth-only)', () => {
     expect(getPerm('listItems')).toBeUndefined();
   });
@@ -82,6 +86,7 @@ describe('CoworkerController — perm mapping', () => {
   const allMethods = [
     'listChannels',
     'listModels',
+    'getReuseMatrix',
     'listItems',
     'getItem',
     'listReviews',

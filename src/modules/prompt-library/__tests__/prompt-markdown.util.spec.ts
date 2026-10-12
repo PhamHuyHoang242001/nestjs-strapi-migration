@@ -1,7 +1,6 @@
 import { buildPromptMarkdown } from '../prompt-markdown.util';
 import { PromptVersion } from '@modules/databases/prompt-version.entity';
-import { AssetHubTagKind } from '@modules/databases/asset-hub-tag.entity';
-import type { TagRef } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
+import type { CoworkerRef } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
 
 // Build a PromptVersion-shaped object for the pure builder (only the fields it reads matter).
 function makeVersion(overrides: Partial<PromptVersion> = {}): PromptVersion {
@@ -18,10 +17,9 @@ function makeVersion(overrides: Partial<PromptVersion> = {}): PromptVersion {
   } as PromptVersion;
 }
 
-// Tags are catalog rows now and travel as a separate argument, not on the version.
-const TAGS: TagRef[] = [
-  { id: 1, name: 'review', kind: AssetHubTagKind.ENTERPRISE },
-  { id: 2, name: 'quality', kind: AssetHubTagKind.PERSONAL },
+const COWORKERS: CoworkerRef[] = [
+  { id: 1, code: 'review', name: 'review' },
+  { id: 2, code: 'quality', name: 'quality' },
 ];
 
 // Extract the frontmatter block (between the first two '---' fences).
@@ -32,7 +30,7 @@ function frontmatter(md: string): string {
 
 describe('buildPromptMarkdown', () => {
   it('emits YAML frontmatter with all metadata fields', () => {
-    const md = buildPromptMarkdown(makeVersion(), 'user@example.com', 'engineering', TAGS);
+    const md = buildPromptMarkdown(makeVersion(), 'user@example.com', 'engineering', COWORKERS);
     const fm = frontmatter(md);
     expect(fm).toContain('title: "Code Review Assistant"');
     expect(fm).toContain('category: "engineering"');
@@ -63,13 +61,13 @@ describe('buildPromptMarkdown', () => {
   });
 
   it('renders tag NAMES, so the exported file stays readable outside this system', () => {
-    expect(frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, TAGS))).toContain(
+    expect(frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, COWORKERS))).toContain(
       'tags: ["review", "quality"]',
     );
   });
 
   it('escapes a hostile tag name so it cannot break out of the YAML flow array', () => {
-    const hostile: TagRef[] = [{ id: 9, name: 'evil", owned: yes', kind: AssetHubTagKind.PERSONAL }];
+    const hostile: CoworkerRef[] = [{ id: 9, code: 'evil', name: 'evil", owned: yes' }];
 
     const fm = frontmatter(buildPromptMarkdown(makeVersion(), 'a@b.c', null, hostile));
 

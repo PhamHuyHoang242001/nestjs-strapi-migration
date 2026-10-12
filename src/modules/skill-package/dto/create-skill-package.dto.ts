@@ -11,7 +11,7 @@ import { SkillFileDto } from './skill-file.dto';
 // Media ids remain server-assigned — never accepted from the client (IDOR guard M2).
 //
 // Extends the shared asset-hub metadata: publisher_id, responsible_user_ids, owning_unit_name, usage_guide_html and
-// tag_ids travel with the create request, because there is no separate metadata endpoint.
+// coworker_package_ids travel with the create request, because there is no separate metadata endpoint.
 export class CreateSkillPackageDto extends AssetHubItemMetaFieldsDto {
   @ApiProperty({ description: 'Active skill category ID' })
   @IsInt()

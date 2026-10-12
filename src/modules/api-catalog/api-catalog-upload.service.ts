@@ -110,7 +110,7 @@ export class ApiCatalogUploadService {
       const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'create');
       await this.itemMeta.assertPublisher(manager, owning.publisher_id);
       const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
-      const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'api-catalog');
+      const coworkerIds = await this.itemMeta.assertCoworkerPackages(manager, dto.coworker_package_ids ?? []);
 
       const savedPkg = await manager.save(
         ApiPackage,
@@ -150,7 +150,7 @@ export class ApiCatalogUploadService {
         }),
       );
 
-      await this.itemMeta.replaceVersionTags(manager, 'api-catalog', savedVersion.id, tagIds);
+      await this.itemMeta.replaceVersionCoworkers(manager, 'api-catalog', savedVersion.id, coworkerIds);
 
       return { package: { id: savedPkg.id }, version: { id: savedVersion.id, version_no: 1 } };
     });
@@ -216,7 +216,7 @@ export class ApiCatalogUploadService {
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
-        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'api-catalog');
+        const coworkerIds = await this.itemMeta.assertCoworkerPackages(manager, dto.coworker_package_ids ?? []);
 
         await manager.update(ApiPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', packageId, responsibleUserIds);
@@ -239,7 +239,7 @@ export class ApiCatalogUploadService {
         });
         const saved = await manager.save(ApiVersion, version);
 
-        await this.itemMeta.replaceVersionTags(manager, 'api-catalog', saved.id, tagIds);
+        await this.itemMeta.replaceVersionCoworkers(manager, 'api-catalog', saved.id, coworkerIds);
 
         return { version: { id: saved.id, version_no: placeholderVersionNo } };
       });
@@ -346,7 +346,7 @@ export class ApiCatalogUploadService {
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
-        const tagIds = await this.itemMeta.assertTags(manager, dto.tag_ids ?? [], 'api-catalog');
+        const coworkerIds = await this.itemMeta.assertCoworkerPackages(manager, dto.coworker_package_ids ?? []);
 
         await manager.update(ApiPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', pkg.id, responsibleUserIds);
@@ -371,7 +371,7 @@ export class ApiCatalogUploadService {
         }
         await manager.save(ApiVersion, locked);
 
-        await this.itemMeta.replaceVersionTags(manager, 'api-catalog', locked.id, tagIds);
+        await this.itemMeta.replaceVersionCoworkers(manager, 'api-catalog', locked.id, coworkerIds);
 
         return { version: { id: locked.id, version_no: locked.version_no } };
       });

@@ -12,6 +12,7 @@ import { CoworkerController } from './coworker.controller';
 import { CoworkerQueryService } from './coworker-query.service';
 import { CoworkerUploadService } from './coworker-upload.service';
 import { CoworkerCatalogService } from './coworker-catalog.service';
+import { CoworkerReuseMatrixService } from './coworker-reuse-matrix.service';
 
 @Module({
   imports: [
@@ -26,6 +27,12 @@ import { CoworkerCatalogService } from './coworker-catalog.service';
     AssetHubCatalogModule,
   ],
   controllers: [CoworkerController],
-  providers: [CoworkerQueryService, CoworkerUploadService, CoworkerCatalogService, PromptAvatarUrlService],
+  providers: [
+    CoworkerQueryService,
+    CoworkerUploadService,
+    CoworkerCatalogService,
+    CoworkerReuseMatrixService,
+    PromptAvatarUrlService,
+  ],
 })
 export class CoworkerModule {}

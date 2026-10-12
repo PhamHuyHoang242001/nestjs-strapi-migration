@@ -18,15 +18,15 @@ const PACKAGE_ID = 1;
 const VERSION_ID = 5;
 const PUBLISHER_ID = 7;
 const PIC_IDS = [11, 12];
-const TAG_IDS = [21, 22];
+const COWORKER_IDS = [21, 22];
 
-// Metadata every write now carries: publishing unit, people in charge, usage guide, catalog tags.
+// Metadata every write now carries: publishing unit, people in charge, usage guide, coworker packages.
 const META_FIELDS = {
   publisher_id: PUBLISHER_ID,
   responsible_user_ids: PIC_IDS,
   usage_guide_html: '<p>Hướng dẫn</p>',
   kind: 'personal',
-  tag_ids: TAG_IDS,
+  coworker_package_ids: COWORKER_IDS,
 };
 
 // Stand-in for AssetHubItemMetaService: the asserts resolve by default (id validation is covered
@@ -35,9 +35,9 @@ function makeItemMeta() {
   return {
     assertPublisher: jest.fn().mockResolvedValue(undefined),
     assertUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
-    assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    assertCoworkerPackages: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceResponsibles: jest.fn().mockResolvedValue(undefined),
-    replaceVersionTags: jest.fn().mockResolvedValue(undefined),
+    replaceVersionCoworkers: jest.fn().mockResolvedValue(undefined),
     listSupporterIds: jest.fn().mockResolvedValue([]),
     assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceSupporters: jest.fn().mockResolvedValue(undefined),

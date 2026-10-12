@@ -19,7 +19,7 @@ const baseCreateDto = {
   responsible_user_ids: [11, 12],
   usage_guide_html: '<p>Cách dùng</p>',
   kind: 'personal',
-  tag_ids: [21],
+  coworker_package_ids: [21],
   http_method: 'POST',
   endpoint_path: '/v2/ai/demo',
   input_format: 'body',
@@ -41,12 +41,12 @@ function makeHarness(overrides: { itemMeta?: Record<string, jest.Mock> } = {}) {
   const itemMeta = {
     assertPublisher: jest.fn().mockResolvedValue(undefined),
     assertUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
-    assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    assertCoworkerPackages: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceResponsibles: jest.fn(async () => {
       order.push('responsibles');
     }),
-    replaceVersionTags: jest.fn(async () => {
-      order.push('version-tags');
+    replaceVersionCoworkers: jest.fn(async () => {
+      order.push('version-coworkers');
     }),
     listSupporterIds: jest.fn().mockResolvedValue([]),
     assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
@@ -107,23 +107,23 @@ describe('ApiCatalogUploadService — asset-hub metadata on create', () => {
     expect(h.saved.find((s) => s.entity === 'ApiPackage')?.row.publisher_id).toBe(PUBLISHER_ID);
   });
 
-  it('validates tags against the prompt workspace', async () => {
+  it('validates coworker packages on create', async () => {
     const h = makeHarness();
 
     await h.service.createNew(baseCreateDto as never, USER_ID);
 
-    expect(h.itemMeta.assertTags).toHaveBeenCalledWith(expect.anything(), [21], 'api-catalog');
+    expect(h.itemMeta.assertCoworkerPackages).toHaveBeenCalledWith(expect.anything(), [21]);
   });
 
-  it('writes the people in charge and the version tags in the create transaction', async () => {
+  it('writes the people in charge and the version coworkers in the create transaction', async () => {
     const h = makeHarness();
 
     await h.service.createNew(baseCreateDto as never, USER_ID);
 
     expect(h.itemMeta.replaceResponsibles).toHaveBeenCalledWith(expect.anything(), 'api-catalog', 1, [11, 12]);
-    expect(h.itemMeta.replaceVersionTags).toHaveBeenCalledWith(expect.anything(), 'api-catalog', 1, [21]);
+    expect(h.itemMeta.replaceVersionCoworkers).toHaveBeenCalledWith(expect.anything(), 'api-catalog', 1, [21]);
     expect(h.order.indexOf('responsibles')).toBeLessThan(h.order.indexOf('version'));
-    expect(h.order.indexOf('version')).toBeLessThan(h.order.indexOf('version-tags'));
+    expect(h.order.indexOf('version')).toBeLessThan(h.order.indexOf('version-coworkers'));
   });
 
   it('stores the sanitized guide, not the submitted markup', async () => {

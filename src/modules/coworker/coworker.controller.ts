@@ -22,10 +22,12 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CoworkerQueryService } from './coworker-query.service';
 import { CoworkerUploadService } from './coworker-upload.service';
 import { CoworkerCatalogService } from './coworker-catalog.service';
+import { CoworkerReuseMatrixService } from './coworker-reuse-matrix.service';
 import {
   CreateCoworkerPackageDto,
   CreateCoworkerVersionDto,
   ListCoworkerQueryDto,
+  ListReuseMatrixQueryDto,
   ListVersionsDto,
   RejectCoworkerVersionDto,
   ReviewQueryDto,
@@ -42,7 +44,18 @@ export class CoworkerController {
     private readonly queryService: CoworkerQueryService,
     private readonly uploadService: CoworkerUploadService,
     private readonly catalogService: CoworkerCatalogService,
+    private readonly reuseMatrix: CoworkerReuseMatrixService,
   ) {}
+
+  @ApiOperation({ summary: 'Coworker × skill reuse matrix (active packages only)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('coworker_upload')
+  @Get('reuse-matrix')
+  getReuseMatrix(@Query() q: ListReuseMatrixQueryDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    if (!userId) throw new ForbiddenException('User not authenticated');
+    return this.reuseMatrix.getMatrix(q);
+  }
 
   @ApiOperation({ summary: 'List coworker channels' })
   @Get('channels')

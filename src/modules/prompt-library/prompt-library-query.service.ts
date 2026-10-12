@@ -13,7 +13,7 @@ import {
   AssetHubItemMetaReadService,
   PublisherRef,
   ResponsibleUserRef,
-  TagRef,
+  CoworkerRef,
 } from '@modules/asset-hub-catalog/asset-hub-item-meta-read.service';
 import { stripGuide } from '@modules/asset-hub-catalog/asset-hub-response.helper';
 import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hub-list-filters';
@@ -53,22 +53,22 @@ export class PromptLibraryQueryService {
   ): Promise<{
     publishers: Map<number, PublisherRef>;
     responsibles: Map<number, ResponsibleUserRef[]>;
-    tags: Map<number, TagRef[]>;
+    coworkers: Map<number, CoworkerRef[]>;
     supporters: Map<number, ResponsibleUserRef[]>;
   }> {
-    const [publishers, responsibles, tags, supporters] = await Promise.all([
+    const [publishers, responsibles, coworkers, supporters] = await Promise.all([
       this.metaRead.getPublishersByIds(packages.map((p) => p.publisher_id)),
       this.metaRead.getResponsiblesByPackageIds(
         'prompt',
         packages.map((p) => p.id),
       ),
-      this.metaRead.getTagsByVersionIds('prompt', versionIds),
+      this.metaRead.getCoworkersByVersionIds('prompt', versionIds),
       this.metaRead.getSupportersByPackageIds(
         'prompt',
         packages.map((p) => p.id),
       ),
     ]);
-    return { publishers, responsibles, tags, supporters };
+    return { publishers, responsibles, coworkers, supporters };
   }
 
   private async resolveCategories(ids: Array<number | null | undefined>) {
@@ -240,7 +240,7 @@ export class PromptLibraryQueryService {
       active_version: pkg.active_version
         ? {
             ...this.decorateCategory(stripGuide(pkg.active_version), categories),
-            tags: meta.tags.get(pkg.active_version.id) ?? [],
+            coworkers: meta.coworkers.get(pkg.active_version.id) ?? [],
           }
         : pkg.active_version,
     }));
@@ -314,7 +314,7 @@ export class PromptLibraryQueryService {
     const categories = await this.resolveCategories([pkg.active_version?.category_id]);
     const meta = await this.loadPackageMeta([pkg], [pkg.active_version_id]);
     const withTags = <T extends { id: number }>(version: T | null | undefined) =>
-      version ? { ...version, tags: meta.tags.get(version.id) ?? [] } : version;
+      version ? { ...version, coworkers: meta.coworkers.get(version.id) ?? [] } : version;
 
     const formattedActive = withTags(addSubmitterEmail(this.decorateCategory(pkg.active_version, categories)));
     const activeId = pkg.active_version_id ?? pkg.active_version?.id;
@@ -428,7 +428,7 @@ export class PromptLibraryQueryService {
     const emailMap = await this.resolveEmails(rows.map((r) => r.submitted_by));
     // This projection is raw SQL, so tags are attached explicitly — one batched query for the whole
     // page. The usage guide is deliberately absent from the SELECT above.
-    const tagMap = await this.metaRead.getTagsByVersionIds(
+    const coworkerMap = await this.metaRead.getCoworkersByVersionIds(
       'prompt',
       rows.map((r) => Number(r.version_id)),
     );
@@ -437,7 +437,7 @@ export class PromptLibraryQueryService {
       code: r.code,
       package_name: r.package_name,
       version_id: Number(r.version_id),
-      tags: tagMap.get(Number(r.version_id)) ?? [],
+      coworkers: coworkerMap.get(Number(r.version_id)) ?? [],
       old_version: r.old_version == null ? null : Number(r.old_version),
       version_no: Number(r.version_no),
       state: r.state,
@@ -485,14 +485,14 @@ export class PromptLibraryQueryService {
     const categories = await this.resolveCategories(data.map((version) => version.category_id));
     // The review queue is a list surface: it carries tags but not the usage guide. A reviewer opens
     // the version detail to read the guide.
-    const tagMap = await this.metaRead.getTagsByVersionIds(
+    const coworkerMap = await this.metaRead.getCoworkersByVersionIds(
       'prompt',
       data.map((v) => v.id),
     );
     return {
       data: data.map((v) => ({
         ...this.decorateCategory(stripGuide(v), categories),
-        tags: tagMap.get(v.id) ?? [],
+        coworkers: coworkerMap.get(v.id) ?? [],
         submitted_by_email: emailMap.get(v.submitted_by) ?? null,
       })),
       meta: { total: Number(countRow?.count ?? 0), page, limit },
@@ -593,7 +593,7 @@ export class PromptLibraryQueryService {
       },
       version: {
         ...this.decorateCategory(version, categories),
-        tags: meta.tags.get(version.id) ?? [],
+        coworkers: meta.coworkers.get(version.id) ?? [],
         submitted_by_email: emailMap.get(version.submitted_by) ?? null,
         reviewed_by_email: version.reviewed_by ? (emailMap.get(version.reviewed_by) ?? null) : null,
         isUpdate,
@@ -663,7 +663,7 @@ export class PromptLibraryQueryService {
         category: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1)?.name ?? null,
         category_id: version.category_id,
         category_detail: (await this.resolveCategories([version.category_id])).get(version.category_id ?? -1) ?? null,
-        tags: (await this.metaRead.getTagsByVersionIds('prompt', [version.id])).get(version.id) ?? [],
+        coworkers: (await this.metaRead.getCoworkersByVersionIds('prompt', [version.id])).get(version.id) ?? [],
         // Single-version surface, and this method already 403s anyone who is not the submitter or
         // an approver — so the guide rides along and the review screen needs no second request.
         usage_guide_html: version.usage_guide_html ?? '',
@@ -682,7 +682,7 @@ export class PromptLibraryQueryService {
   async resolveActiveForExport(
     packageId: number,
     userId: number,
-  ): Promise<{ version: PromptVersion; authorEmail: string | null; categoryName: string | null; tags: TagRef[] }> {
+  ): Promise<{ version: PromptVersion; authorEmail: string | null; categoryName: string | null; coworkers: CoworkerRef[] }> {
     const pkg = await this.attachActiveVersion(
       await this.packageRepo.findOne({
         where: { id: packageId, is_deleted: false },
@@ -714,11 +714,10 @@ export class PromptLibraryQueryService {
     const categoryName =
       (await this.resolveCategories([pkg.active_version.category_id])).get(pkg.active_version.category_id ?? -1)
         ?.name ?? null;
-    // Tags travel separately so the exported frontmatter can render their names.
-    const tags = (await this.metaRead.getTagsByVersionIds('prompt', [pkg.active_version.id])).get(
+    const coworkers = (await this.metaRead.getCoworkersByVersionIds('prompt', [pkg.active_version.id])).get(
       pkg.active_version.id,
     );
-    return { version: pkg.active_version, authorEmail, categoryName, tags: tags ?? [] };
+    return { version: pkg.active_version, authorEmail, categoryName, coworkers: coworkers ?? [] };
   }
 
   private async attachActiveVersion(pkg: PromptPackage | null): Promise<PromptPackage | null> {

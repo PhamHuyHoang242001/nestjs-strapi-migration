@@ -38,7 +38,7 @@ describe('PromptLibraryQueryService.resolveActiveForExport', () => {
     };
     // Metadata batch loader — the export path only needs the version's tags for the frontmatter.
     const metaRead = {
-      getTagsByVersionIds: jest.fn().mockResolvedValue(new Map()),
+      getCoworkersByVersionIds: jest.fn().mockResolvedValue(new Map()),
       getResponsiblesByPackageIds: jest.fn().mockResolvedValue(new Map()),
       getPublishersByIds: jest.fn().mockResolvedValue(new Map()),
       getSupportersByPackageIds: jest.fn().mockResolvedValue(new Map()),

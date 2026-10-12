@@ -14,7 +14,7 @@ import {
 } from 'class-validator';
 import { USAGE_GUIDE_MAX_LENGTH } from '@common/utils/usage-guide-html.util';
 import { AssetHubTagKind } from '@modules/databases/asset-hub-tag.entity';
-import { MAX_RESPONSIBLE_USERS, MAX_VERSION_TAGS } from '../asset-hub-item-meta.service';
+import { MAX_RESPONSIBLE_USERS, MAX_VERSION_COWORKERS } from '../asset-hub-item-meta.service';
 
 // Metadata every asset-hub write carries, shared by the skill and prompt create/bump DTOs.
 // There is no separate metadata endpoint: a create or a version bump is the only way to set these,
@@ -79,17 +79,17 @@ export abstract class AssetHubItemMetaFieldsDto {
   readonly kind: AssetHubTagKind;
 
   @ApiProperty({
-    description: 'Catalog tag IDs from /v1/asset-hub/tags (must match this workspace). Optional.',
+    description: 'Coworker package IDs from /v1/ai-hub/coworker (replaces legacy ai_hub_tags). Optional.',
     type: [Number],
     required: false,
-    maxItems: MAX_VERSION_TAGS,
+    maxItems: MAX_VERSION_COWORKERS,
   })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(MAX_VERSION_TAGS)
+  @ArrayMaxSize(MAX_VERSION_COWORKERS)
   @ArrayUnique()
   @IsInt({ each: true })
   @Min(1, { each: true })
   @Type(() => Number)
-  readonly tag_ids?: number[];
+  readonly coworker_package_ids?: number[];
 }

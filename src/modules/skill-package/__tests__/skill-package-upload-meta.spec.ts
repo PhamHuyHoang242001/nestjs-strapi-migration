@@ -27,7 +27,7 @@ const baseCreateDto = {
   responsible_user_ids: [11, 12],
   usage_guide_html: '<p>Chạy lệnh</p>',
   kind: 'personal',
-  tag_ids: [21],
+  coworker_package_ids: [21],
 };
 
 const baseVersionDto = { ...baseCreateDto, name: 'v2', changelog_note: 'bump' };
@@ -42,12 +42,12 @@ function makeHarness(overrides: { itemMeta?: Record<string, jest.Mock> } = {}) {
   const itemMeta = {
     assertPublisher: jest.fn().mockResolvedValue(undefined),
     assertUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
-    assertTags: jest.fn(async (_m: unknown, ids: number[]) => ids),
+    assertCoworkerPackages: jest.fn(async (_m: unknown, ids: number[]) => ids),
     replaceResponsibles: jest.fn(async () => {
       order.push('responsibles');
     }),
-    replaceVersionTags: jest.fn(async () => {
-      order.push('version-tags');
+    replaceVersionCoworkers: jest.fn(async () => {
+      order.push('version-coworkers');
     }),
     listSupporterIds: jest.fn().mockResolvedValue([]),
     assertSupporterUsers: jest.fn(async (_m: unknown, ids: number[]) => ids),
@@ -123,7 +123,7 @@ describe('SkillPackageUploadService — asset-hub metadata on create', () => {
 
     expect(h.itemMeta.assertPublisher).toHaveBeenCalledWith(expect.anything(), PUBLISHER_ID);
     expect(h.itemMeta.assertUsers).toHaveBeenCalledWith(expect.anything(), [11, 12]);
-    expect(h.itemMeta.assertTags).toHaveBeenCalledWith(expect.anything(), [21], 'skill');
+    expect(h.itemMeta.assertCoworkerPackages).toHaveBeenCalledWith(expect.anything(), [21]);
   });
 
   it('writes the people in charge and the version tags in the create transaction', async () => {
@@ -132,10 +132,10 @@ describe('SkillPackageUploadService — asset-hub metadata on create', () => {
     await h.service.createNew(baseCreateDto as never, USER_ID);
 
     expect(h.itemMeta.replaceResponsibles).toHaveBeenCalledWith(expect.anything(), 'skill', 1, [11, 12]);
-    expect(h.itemMeta.replaceVersionTags).toHaveBeenCalledWith(expect.anything(), 'skill', 1, [21]);
-    // PIC rows attach to the package before the version row exists; tags need the version id.
+    expect(h.itemMeta.replaceVersionCoworkers).toHaveBeenCalledWith(expect.anything(), 'skill', 1, [21]);
+    // PIC rows attach to the package before the version row exists; coworkers need the version id.
     expect(h.order.indexOf('responsibles')).toBeLessThan(h.order.indexOf('version'));
-    expect(h.order.indexOf('version')).toBeLessThan(h.order.indexOf('version-tags'));
+    expect(h.order.indexOf('version')).toBeLessThan(h.order.indexOf('version-coworkers'));
   });
 
   it('stores the sanitized guide, not the submitted markup', async () => {
@@ -180,10 +180,10 @@ describe('SkillPackageUploadService — asset-hub metadata on create', () => {
     expect(versionRow(h.saved)?.usage_guide_html).toContain('<img');
   });
 
-  it('surfaces an unknown tag as a 400 and writes nothing', async () => {
+  it('surfaces an unknown coworker package as a 400 and writes nothing', async () => {
     const h = makeHarness({
       itemMeta: {
-        assertTags: jest.fn().mockRejectedValue(new BadRequestException('INVALID_TAGS')),
+        assertCoworkerPackages: jest.fn().mockRejectedValue(new BadRequestException('INVALID_COWORKERS')),
       },
     });
 
@@ -226,12 +226,12 @@ describe('SkillPackageUploadService — asset-hub metadata on bump', () => {
     expect(versionRow(h.saved)?.usage_guide_html).toBe('');
   });
 
-  it('attaches the new version tags to the new version id', async () => {
+  it('attaches the new version coworkers to the new version id', async () => {
     const h = makeHarness();
 
-    await h.service.createVersion(PACKAGE_ID, { ...baseVersionDto, tag_ids: [21, 22] } as never, USER_ID);
+    await h.service.createVersion(PACKAGE_ID, { ...baseVersionDto, coworker_package_ids: [21, 22] } as never, USER_ID);
 
-    expect(h.itemMeta.replaceVersionTags).toHaveBeenCalledWith(expect.anything(), 'skill', 1, [21, 22]);
+    expect(h.itemMeta.replaceVersionCoworkers).toHaveBeenCalledWith(expect.anything(), 'skill', 1, [21, 22]);
   });
 });
 
@@ -277,9 +277,9 @@ describe('skill write DTOs', () => {
     expect(errors.map((e) => e.property)).toContain('usage_guide_html');
   });
 
-  it('accepts omitted tag_ids', async () => {
-    const { tag_ids: _omit, ...withoutTags } = validCreate;
-    const errors = await validate(plainToInstance(CreateSkillPackageDto, withoutTags));
+  it('accepts omitted coworker_package_ids', async () => {
+    const { coworker_package_ids: _omit, ...withoutCoworkers } = validCreate;
+    const errors = await validate(plainToInstance(CreateSkillPackageDto, withoutCoworkers));
     expect(errors).toHaveLength(0);
   });
 
@@ -288,12 +288,15 @@ describe('skill write DTOs', () => {
     expect(errors.map((e) => e.property)).toContain('kind');
   });
 
-  it('rejects more than twenty tags', async () => {
+  it('rejects more than twenty coworker packages', async () => {
     const errors = await validate(
-      plainToInstance(CreateSkillPackageDto, { ...validCreate, tag_ids: Array.from({ length: 21 }, (_, i) => i + 1) }),
+      plainToInstance(CreateSkillPackageDto, {
+        ...validCreate,
+        coworker_package_ids: Array.from({ length: 21 }, (_, i) => i + 1),
+      }),
     );
 
-    expect(errors.map((e) => e.property)).toContain('tag_ids');
+    expect(errors.map((e) => e.property)).toContain('coworker_package_ids');
   });
 
   it('accepts a fully populated create body', async () => {
