@@ -56,8 +56,8 @@ export class PromptLibraryController {
   ) {}
 
   // GET /v1/prompt/items — list packages with active version joined. Defaults to active-only;
-  // status=inactive is honored only for approvers (drives the status gate in the service).
-  @ApiOperation({ summary: 'List prompt packages (active by default; inactive for approvers)' })
+  // status=inactive: SO sees all; everyone else sees own/supporter only.
+  @ApiOperation({ summary: 'List prompt packages (active by default; inactive = SO all, else own)' })
   @Get('items')
   listItems(@Query() q: ListPromptQueryDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
@@ -80,7 +80,7 @@ export class PromptLibraryController {
 
   // GET /v1/prompt/items/:id/download — export the active version as a professional .md file.
   // Auth = controller-level BearerGuard; any authenticated user may export an active package
-  // (inactive packages are exportable only by owner/approver — enforced in resolveActiveForExport).
+  // (inactive packages are exportable only by owner/supporter/SO — enforced in resolveActiveForExport).
   @ApiOperation({ summary: 'Download the active prompt version as a Markdown file' })
   @Get('items/:id/download')
   async downloadMarkdown(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo, @Res() res: Response) {

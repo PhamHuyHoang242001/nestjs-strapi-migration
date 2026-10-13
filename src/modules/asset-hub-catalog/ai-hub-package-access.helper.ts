@@ -61,13 +61,9 @@ export function ownVersionScopeSql(userParamIndex: number, artifactType: AiHubAr
     ))`;
 }
 
-export function canSeeInactivePackage(opts: {
-  isOwner: boolean;
-  isSupporter: boolean;
-  canApprove: boolean;
-  isSo: boolean;
-}): boolean {
-  return opts.isOwner || opts.isSupporter || opts.canApprove || opts.isSo;
+/** Inactive detail/download: owner ∨ supporter ∨ SO. Approve does not widen (same as list). */
+export function canSeeInactivePackage(opts: { isOwner: boolean; isSupporter: boolean; isSo: boolean }): boolean {
+  return opts.isOwner || opts.isSupporter || opts.isSo;
 }
 
 /** Active (or omitted) → active. Inactive → SO all, everyone else own/supporter. Approve is unused. */

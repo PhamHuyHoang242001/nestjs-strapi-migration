@@ -63,8 +63,8 @@ export class SkillPackageController {
   ) {}
 
   // GET /v1/skill/items — list packages with active version joined. Defaults to active-only;
-  // status=inactive is honored only for approvers (drives the status gate in the service).
-  @ApiOperation({ summary: 'List skill packages (active by default; inactive for approvers)' })
+  // status=inactive: SO sees all; everyone else sees own/supporter only.
+  @ApiOperation({ summary: 'List skill packages (active by default; inactive = SO all, else own)' })
   @Get('items')
   listItems(@Query() q: ListSkillQueryDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
@@ -87,7 +87,7 @@ export class SkillPackageController {
 
   // GET /v1/skill/items/:id/download — stream the active version's zip as an attachment.
   // Auth = controller-level BearerGuard; any authenticated user may download an active package
-  // (inactive packages are downloadable only by owner/approver — enforced in resolveActiveZip).
+  // (inactive packages are downloadable only by owner/supporter/SO — enforced in resolveActiveZip).
   @ApiOperation({ summary: "Download the active skill version's zip archive" })
   @Get('items/:id/download')
   async downloadZip(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo, @Res() res: Response) {

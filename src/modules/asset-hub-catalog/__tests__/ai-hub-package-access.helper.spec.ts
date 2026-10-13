@@ -104,12 +104,11 @@ describe('ownVersionScopeSql', () => {
 });
 
 describe('inactive visibility', () => {
-  it('canSeeInactivePackage true for owner / supporter / approve / SO', () => {
-    expect(canSeeInactivePackage({ isOwner: true, isSupporter: false, canApprove: false, isSo: false })).toBe(true);
-    expect(canSeeInactivePackage({ isOwner: false, isSupporter: true, canApprove: false, isSo: false })).toBe(true);
-    expect(canSeeInactivePackage({ isOwner: false, isSupporter: false, canApprove: true, isSo: false })).toBe(true);
-    expect(canSeeInactivePackage({ isOwner: false, isSupporter: false, canApprove: false, isSo: true })).toBe(true);
-    expect(canSeeInactivePackage({ isOwner: false, isSupporter: false, canApprove: false, isSo: false })).toBe(false);
+  it('canSeeInactivePackage true for owner / supporter / SO; approve does not widen', () => {
+    expect(canSeeInactivePackage({ isOwner: true, isSupporter: false, isSo: false })).toBe(true);
+    expect(canSeeInactivePackage({ isOwner: false, isSupporter: true, isSo: false })).toBe(true);
+    expect(canSeeInactivePackage({ isOwner: false, isSupporter: false, isSo: true })).toBe(true);
+    expect(canSeeInactivePackage({ isOwner: false, isSupporter: false, isSo: false })).toBe(false);
   });
 
   it('inactiveListMode: omitted/active → active; inactive → SO all, else own', () => {

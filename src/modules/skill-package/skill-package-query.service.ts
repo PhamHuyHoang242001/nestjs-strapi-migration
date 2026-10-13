@@ -258,7 +258,7 @@ export class SkillPackageQueryService {
   // first. Recency is deliberately derived from the surrogate id, NOT from version_no: version_no
   // is a display label whose definition may later change to a non-numeric scheme (e.g. "1.0.1"),
   // under which a version_no sort would be lexicographic and wrong. Caller-scoped: computes
-  // edit/pending flags, gates inactive access to owner/approver, and scrubs non-approved draft
+  // edit/pending flags, gates inactive access to owner/supporter/SO, and scrubs non-approved draft
   // content from callers who are neither the owner nor an approver.
   async detail(packageId: number, userId: number) {
     const pkg = await this.attachActiveVersion(
@@ -270,7 +270,6 @@ export class SkillPackageQueryService {
 
     // Resolve caller permissions once (per-user TTL cache upstream).
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('skill_approve');
     const canUpload = codes.includes('skill_upload');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isSkillSo(userId);
@@ -278,10 +277,7 @@ export class SkillPackageQueryService {
     const supporterIds = (supporterRows.get(pkg.id) ?? []).map((s) => s.id);
     const isSupporter = supporterIds.includes(userId);
 
-    if (
-      pkg.status === SkillPackageStatus.INACTIVE &&
-      !canSeeInactivePackage({ isOwner, isSupporter, canApprove, isSo })
-    ) {
+    if (pkg.status === SkillPackageStatus.INACTIVE && !canSeeInactivePackage({ isOwner, isSupporter, isSo })) {
       throw new NotFoundException('Skill package not found or inactive');
     }
 
@@ -703,8 +699,8 @@ export class SkillPackageQueryService {
   }
 
   // Resolve the downloadable zip descriptor for a package's ACTIVE version. Enforces the same
-  // visibility rule as detail(): an inactive package is downloadable only by its owner or an
-  // approver. Throws 404 when the package is missing/deleted, has no active version, or that
+  // visibility rule as detail(): inactive is downloadable only by owner, supporter, or SO.
+  // Throws 404 when the package is missing/deleted, has no active version, or that
   // version carries no (non-deleted) zip file row.
   async resolveActiveZip(
     packageId: number,
@@ -717,15 +713,13 @@ export class SkillPackageQueryService {
     );
     if (!pkg) throw new NotFoundException('Skill package not found');
 
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('skill_approve');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isSkillSo(userId);
     const supporterIds =
       (await this.metaRead.getSupportersByPackageIds('skill', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
     if (
       pkg.status === SkillPackageStatus.INACTIVE &&
-      !canSeeInactivePackage({ isOwner, isSupporter: supporterIds.includes(userId), canApprove, isSo })
+      !canSeeInactivePackage({ isOwner, isSupporter: supporterIds.includes(userId), isSo })
     ) {
       throw new NotFoundException('Skill package not found or inactive');
     }

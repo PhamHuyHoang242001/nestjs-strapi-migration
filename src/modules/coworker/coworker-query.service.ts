@@ -248,7 +248,6 @@ export class CoworkerQueryService {
     if (!pkg) throw new NotFoundException('Coworker package not found');
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('coworker_approve');
     const canUpload = codes.includes('coworker_upload');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isCoworkerSo(userId);
@@ -256,10 +255,7 @@ export class CoworkerQueryService {
     const supporterIds = (supporterRows.get(pkg.id) ?? []).map((s) => s.id);
     const isSupporter = supporterIds.includes(userId);
 
-    if (
-      pkg.status === CoworkerPackageStatus.INACTIVE &&
-      !canSeeInactivePackage({ isOwner, isSupporter, canApprove, isSo })
-    ) {
+    if (pkg.status === CoworkerPackageStatus.INACTIVE && !canSeeInactivePackage({ isOwner, isSupporter, isSo })) {
       throw new NotFoundException('Coworker package not found or inactive');
     }
 

@@ -67,7 +67,7 @@ describe('PromptLibraryQueryService.resolveActiveForExport', () => {
     );
   });
 
-  it('404 for an inactive package to a non-owner / non-approver', async () => {
+  it('404 for an inactive package to a non-owner / non-supporter / non-SO', async () => {
     packageRepo.findOne.mockResolvedValue(makePackage({ status: PromptPackageStatus.INACTIVE }));
     await expect(service.resolveActiveForExport(PACKAGE_ID, OTHER_ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -80,11 +80,10 @@ describe('PromptLibraryQueryService.resolveActiveForExport', () => {
     expect(res.version.version_no).toBe(2);
   });
 
-  it('approver may export an inactive package', async () => {
+  it('approver without owner/support/SO cannot export an inactive package', async () => {
     permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
     packageRepo.findOne.mockResolvedValue(makePackage({ status: PromptPackageStatus.INACTIVE }));
-    const res = await service.resolveActiveForExport(PACKAGE_ID, OTHER_ID);
-    expect(res.version.name).toBe('Prompt A');
+    await expect(service.resolveActiveForExport(PACKAGE_ID, OTHER_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('404 when the package has no active version', async () => {

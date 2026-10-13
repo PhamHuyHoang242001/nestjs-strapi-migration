@@ -426,7 +426,7 @@ describe('SkillPackageQueryService', () => {
       await expect(service.detail(999, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws NotFound when the package is inactive and caller is not owner or approver', async () => {
+    it('throws NotFound when the package is inactive and caller is not owner/supporter/SO', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: SkillPackageStatus.INACTIVE,
@@ -454,7 +454,7 @@ describe('SkillPackageQueryService', () => {
       expect(result.id).toBe(1);
     });
 
-    it('allows approver to view inactive package (permission gate for inactive)', async () => {
+    it('throws NotFound when approver is not owner/supporter/SO of inactive package', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: SkillPackageStatus.INACTIVE,
@@ -465,8 +465,7 @@ describe('SkillPackageQueryService', () => {
       versionRepo.find = jest.fn().mockResolvedValue([]);
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
 
-      const result = await service.detail(1, USER_ID);
-      expect(result.id).toBe(1);
+      await expect(service.detail(1, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('excludes soft-deleted (is_deleted=true) file rows before folding on active_version', async () => {

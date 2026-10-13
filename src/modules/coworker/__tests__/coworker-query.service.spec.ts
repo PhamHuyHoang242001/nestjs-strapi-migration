@@ -127,7 +127,7 @@ describe('CoworkerQueryService', () => {
     expect(result.isUpdate).toBe(false);
   });
 
-  it('inactive detail 404s for a stranger without approve', async () => {
+  it('inactive detail 404s for a stranger without owner/support/SO', async () => {
     packageRepo.findOne.mockResolvedValue({
       id: PACKAGE_ID,
       created_by: OTHER_USER_ID,
@@ -135,6 +135,18 @@ describe('CoworkerQueryService', () => {
       is_deleted: false,
       publisher_id: 1,
     });
+    await expect(service.detail(PACKAGE_ID, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('inactive detail 404s for approver who is not owner/supporter/SO', async () => {
+    packageRepo.findOne.mockResolvedValue({
+      id: PACKAGE_ID,
+      created_by: OTHER_USER_ID,
+      status: CoworkerPackageStatus.INACTIVE,
+      is_deleted: false,
+      publisher_id: 1,
+    });
+    permissionQuery.getUserPermissions.mockResolvedValue(['coworker_approve']);
     await expect(service.detail(PACKAGE_ID, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
 

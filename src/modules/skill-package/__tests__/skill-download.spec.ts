@@ -62,7 +62,7 @@ describe('SkillPackageQueryService.resolveActiveZip', () => {
     );
   });
 
-  it('404 for an inactive package to a non-owner / non-approver', async () => {
+  it('404 for an inactive package to a non-owner / non-supporter / non-SO', async () => {
     packageRepo.findOne.mockResolvedValue(makePackage({ status: SkillPackageStatus.INACTIVE }));
     await expect(service.resolveActiveZip(PACKAGE_ID, OTHER_ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -75,11 +75,10 @@ describe('SkillPackageQueryService.resolveActiveZip', () => {
     expect(res.versionNo).toBe(4);
   });
 
-  it('approver may download an inactive package', async () => {
+  it('approver without owner/support/SO cannot download an inactive package', async () => {
     permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
     packageRepo.findOne.mockResolvedValue(makePackage({ status: SkillPackageStatus.INACTIVE }));
-    const res = await service.resolveActiveZip(PACKAGE_ID, OTHER_ID);
-    expect(res.name).toBe('My Skill');
+    await expect(service.resolveActiveZip(PACKAGE_ID, OTHER_ID)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('404 when the package has no active version', async () => {

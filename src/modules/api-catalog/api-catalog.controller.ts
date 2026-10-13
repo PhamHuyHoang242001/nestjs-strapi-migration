@@ -51,8 +51,8 @@ export class ApiCatalogController {
   ) {}
 
   // GET /v1/ai-hub/api-catalog/items — list packages with active version joined. Defaults to active-only;
-  // status=inactive is honored only for approvers (drives the status gate in the service).
-  @ApiOperation({ summary: 'List API packages (active by default; inactive for approvers)' })
+  // status=inactive: SO sees all; everyone else sees own/supporter only.
+  @ApiOperation({ summary: 'List API packages (active by default; inactive = SO all, else own)' })
   @Get('items')
   listItems(@Query() q: ListApiQueryDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;

@@ -353,7 +353,7 @@ describe('PromptLibraryQueryService', () => {
       await expect(service.detail(999, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('throws NotFound when the package is inactive and caller is not owner or approver', async () => {
+    it('throws NotFound when the package is inactive and caller is not owner/supporter/SO', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: PromptPackageStatus.INACTIVE,
@@ -381,7 +381,7 @@ describe('PromptLibraryQueryService', () => {
       expect(result.id).toBe(1);
     });
 
-    it('allows approver to view inactive package', async () => {
+    it('throws NotFound when approver is not owner/supporter/SO of inactive package', async () => {
       packageRepo.findOne = jest.fn().mockResolvedValue({
         id: 1,
         status: PromptPackageStatus.INACTIVE,
@@ -392,8 +392,7 @@ describe('PromptLibraryQueryService', () => {
       versionRepo.find = jest.fn().mockResolvedValue([]);
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
 
-      const result = await service.detail(1, USER_ID);
-      expect(result.id).toBe(1);
+      await expect(service.detail(1, USER_ID)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

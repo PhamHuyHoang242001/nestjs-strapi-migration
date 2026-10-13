@@ -251,7 +251,7 @@ export class PromptLibraryQueryService {
   // first. Recency is deliberately derived from the surrogate id, NOT from version_no: version_no
   // is a display label whose definition may later change to a non-numeric scheme (e.g. "1.0.1"),
   // under which a version_no sort would be lexicographic and wrong. Caller-scoped: computes
-  // edit/pending flags, gates inactive access to owner/approver, and scrubs non-approved draft
+  // edit/pending flags, gates inactive access to owner/supporter/SO, and scrubs non-approved draft
   // content from callers who are neither the owner nor an approver.
   async detail(packageId: number, userId: number) {
     const pkg = await this.attachActiveVersion(
@@ -263,7 +263,6 @@ export class PromptLibraryQueryService {
 
     // Resolve caller permissions once (per-user TTL cache upstream).
     const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('prompt_approve');
     const canUpload = codes.includes('prompt_upload');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isPromptSo(userId);
@@ -271,10 +270,7 @@ export class PromptLibraryQueryService {
     const supporterIds = (supporterRows.get(pkg.id) ?? []).map((s) => s.id);
     const isSupporter = supporterIds.includes(userId);
 
-    if (
-      pkg.status === PromptPackageStatus.INACTIVE &&
-      !canSeeInactivePackage({ isOwner, isSupporter, canApprove, isSo })
-    ) {
+    if (pkg.status === PromptPackageStatus.INACTIVE && !canSeeInactivePackage({ isOwner, isSupporter, isSo })) {
       throw new NotFoundException('Prompt package not found or inactive');
     }
 
@@ -672,8 +668,8 @@ export class PromptLibraryQueryService {
   }
 
   // Resolve the active prompt version + author email for Markdown export. Enforces the same
-  // visibility rule as detail(): an inactive package is exportable only by its owner or an
-  // approver. Throws 404 when the package is missing/deleted or has no active version.
+  // visibility rule as detail(): inactive is exportable only by owner, supporter, or SO.
+  // Throws 404 when the package is missing/deleted or has no active version.
   async resolveActiveForExport(
     packageId: number,
     userId: number,
@@ -685,15 +681,13 @@ export class PromptLibraryQueryService {
     );
     if (!pkg) throw new NotFoundException('Prompt package not found');
 
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('prompt_approve');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isPromptSo(userId);
     const supporterIds =
       (await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
     if (
       pkg.status === PromptPackageStatus.INACTIVE &&
-      !canSeeInactivePackage({ isOwner, isSupporter: supporterIds.includes(userId), canApprove, isSo })
+      !canSeeInactivePackage({ isOwner, isSupporter: supporterIds.includes(userId), isSo })
     ) {
       throw new NotFoundException('Prompt package not found or inactive');
     }
