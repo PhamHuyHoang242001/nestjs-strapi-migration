@@ -162,7 +162,7 @@ describe('CoworkerQueryService', () => {
     await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('versionDetail allows a package supporter without approve', async () => {
+  it('versionDetail forbids a package supporter without submitter/creator/approve', async () => {
     versionRepo.findOne.mockResolvedValue({
       id: VERSION_ID,
       coworker_package_id: PACKAGE_ID,
@@ -178,9 +178,7 @@ describe('CoworkerQueryService', () => {
       publisher_id: 1,
     });
     metaRead.getSupportersByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]));
-    const result = await service.versionDetail(VERSION_ID, USER_ID);
-    expect(result.can_review).toBe(false);
-    expect(result.package.supporters).toEqual([{ id: USER_ID, email: 's@x.com' }]);
+    await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('listVersions own-scope is submitter or creator only — supporter does not widen', async () => {
@@ -195,7 +193,7 @@ describe('CoworkerQueryService', () => {
     expect(sqls).not.toContain('ai_hub_supporters');
   });
 
-  it('getDiff allows a package supporter', async () => {
+  it('getDiff forbids a package supporter without submitter/creator/approve', async () => {
     versionRepo.findOne.mockResolvedValue({
       id: VERSION_ID,
       coworker_package_id: PACKAGE_ID,
@@ -211,6 +209,6 @@ describe('CoworkerQueryService', () => {
       active_version_id: null,
     });
     metaRead.getSupportersByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]));
-    await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
+    await expect(service.getDiff(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

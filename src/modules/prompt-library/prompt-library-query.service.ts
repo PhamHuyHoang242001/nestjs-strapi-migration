@@ -505,10 +505,8 @@ export class PromptLibraryQueryService {
     return { data: rows.map((row) => ({ id: Number(row.id), email: row.email ?? null })) };
   }
 
-  // Full version detail shared by review and "My Version". Access is the union of those screens:
-  // submitter, package creator, package supporter, or approver. Pending comparison uses the stored
-  // approved predecessor rather than active_version_id, keeping the result stable after later
-  // publication changes.
+  // Full version detail shared by review and "My Version". Access: submitter, package creator,
+  // or approver. Supporter does not widen. Pending comparison uses the stored approved predecessor.
   async versionDetail(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
@@ -522,14 +520,11 @@ export class PromptLibraryQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('prompt_approve');
-    const supporterIds =
-      (await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
     const canAccess = canAccessAiHubVersion({
       userId,
       submittedBy: version.submitted_by,
       createdBy: pkg.created_by,
       canApprove,
-      supporterIds,
     });
     if (!canAccess) throw new ForbiddenException('You do not have access to this prompt version');
 
@@ -567,7 +562,7 @@ export class PromptLibraryQueryService {
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
     const categories = await this.resolveCategories([version.category_id]);
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
-    // submitter, the package creator, a supporter, or an approver, so no extra scrub is needed here.
+    // submitter, the package creator, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
     const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('prompt_upload'));
     return {
@@ -596,8 +591,7 @@ export class PromptLibraryQueryService {
   }
 
   // Diff: return base (active version prompt_content or null) and incoming (target version content).
-  // Controller already requires prompt_upload OR prompt_approve. This method only applies
-  // row-ownership: upload-only → submitter, package creator, or supporter; approver → any version.
+  // Controller already requires prompt_upload OR prompt_approve. Row-ownership: submitter, creator, or approver.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
@@ -609,15 +603,11 @@ export class PromptLibraryQueryService {
     const pkg = await this.packageRepo.findOne({
       where: { id: version.prompt_package_id },
     });
-    const supporterIds = pkg
-      ? ((await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [])
-      : [];
     const canAccess = canAccessAiHubVersion({
       userId,
       submittedBy: version.submitted_by,
       createdBy: pkg?.created_by,
       canApprove,
-      supporterIds,
     });
     if (!canAccess) {
       throw new ForbiddenException('You do not have access to this version diff');

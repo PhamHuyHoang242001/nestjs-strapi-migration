@@ -456,14 +456,11 @@ export class CoworkerQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('coworker_approve');
-    const supporterIds =
-      (await this.metaRead.getSupportersByPackageIds('coworker', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
     const canAccess = canAccessAiHubVersion({
       userId,
       submittedBy: version.submitted_by,
       createdBy: pkg.created_by,
       canApprove,
-      supporterIds,
     });
     if (!canAccess) throw new ForbiddenException('You do not have access to this coworker version');
 
@@ -540,15 +537,11 @@ export class CoworkerQueryService {
     const pkg = await this.packageRepo.findOne({
       where: { id: version.coworker_package_id },
     });
-    const supporterIds = pkg
-      ? ((await this.metaRead.getSupportersByPackageIds('coworker', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [])
-      : [];
     const canAccess = canAccessAiHubVersion({
       userId,
       submittedBy: version.submitted_by,
       createdBy: pkg?.created_by,
       canApprove,
-      supporterIds,
     });
     if (!canAccess) {
       throw new ForbiddenException('You do not have access to this version diff');

@@ -838,7 +838,7 @@ describe('SkillPackageQueryService', () => {
       await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('allows package supporter without approve', async () => {
+    it('forbids package supporter without submitter/creator/approve', async () => {
       versionRepo.findOne = jest
         .fn()
         .mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID, old_version: null }));
@@ -848,10 +848,7 @@ describe('SkillPackageQueryService', () => {
         new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]),
       );
 
-      const result = await service.versionDetail(VERSION_ID, USER_ID);
-
-      expect(result.can_review).toBe(false);
-      expect(result.comparison?.incoming).toBe('# incoming');
+      await expect(service.versionDetail(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('returns first pending with null base and no predecessor lookup', async () => {
@@ -953,7 +950,7 @@ describe('SkillPackageQueryService', () => {
       await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
     });
 
-    it('package supporter without submitter/approver → allowed', async () => {
+    it('package supporter without submitter/creator/approver → forbidden', async () => {
       versionRepo.findOne = jest.fn().mockResolvedValue(makeVersion({ submitted_by: OTHER_USER_ID }));
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
       packageRepo.findOne = jest.fn().mockResolvedValue({
@@ -965,7 +962,7 @@ describe('SkillPackageQueryService', () => {
         new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]),
       );
 
-      await expect(service.getDiff(VERSION_ID, USER_ID)).resolves.toBeDefined();
+      await expect(service.getDiff(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('owner (submitted_by = me) without approver code → allowed', async () => {

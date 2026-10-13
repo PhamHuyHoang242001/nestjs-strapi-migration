@@ -530,11 +530,8 @@ export class SkillPackageQueryService {
     return { data: rows.map((row) => ({ id: Number(row.id), email: row.email ?? null })) };
   }
 
-  // Version detail for both the review and "My Version" screens. Access deliberately mirrors the
-  // union of those entry points: submitter, package creator, package supporter, or approver. A
-  // pending version compares against its immutable approved predecessor (old_version), never the
-  // package's current active version, so historical review remains stable after later versions
-  // are published.
+  // Version detail for review and "My Version". Access: submitter, package creator, or approver.
+  // Supporter does not widen. Pending compares against stored approved predecessor (old_version).
   async versionDetail(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false, deleted_at: IsNull() },
@@ -549,14 +546,11 @@ export class SkillPackageQueryService {
 
     const codes = await this.permissionQuery.getUserPermissions(userId);
     const canApprove = codes.includes('skill_approve');
-    const supporterIds =
-      (await this.metaRead.getSupportersByPackageIds('skill', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [];
     const canAccess = canAccessAiHubVersion({
       userId,
       submittedBy: version.submitted_by,
       createdBy: pkg.created_by,
       canApprove,
-      supporterIds,
     });
     if (!canAccess) throw new ForbiddenException('You do not have access to this skill version');
 
@@ -597,7 +591,7 @@ export class SkillPackageQueryService {
     const categories = await this.resolveCategories([version.category_id]);
     const formattedVersion = this.decorateCategory(formatVersion(version), categories);
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
-    // submitter, the package creator, a supporter, or an approver, so no extra scrub is needed here.
+    // submitter, the package creator, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
     const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('skill_upload'));
     return {
@@ -628,8 +622,7 @@ export class SkillPackageQueryService {
   }
 
   // Diff: return base (active version skill.md or null) and incoming (target version skill.md).
-  // Controller already requires skill_upload OR skill_approve. This method only applies
-  // row-ownership: upload-only → submitter, package creator, or supporter; approver → any version.
+  // Controller already requires skill_upload OR skill_approve. Row-ownership: submitter, creator, or approver.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
@@ -641,15 +634,11 @@ export class SkillPackageQueryService {
     const pkg = await this.packageRepo.findOne({
       where: { id: version.skill_package_id },
     });
-    const supporterIds = pkg
-      ? ((await this.metaRead.getSupportersByPackageIds('skill', [pkg.id])).get(pkg.id)?.map((s) => s.id) ?? [])
-      : [];
     const canAccess = canAccessAiHubVersion({
       userId,
       submittedBy: version.submitted_by,
       createdBy: pkg?.created_by,
       canApprove,
-      supporterIds,
     });
     if (!canAccess) {
       throw new ForbiddenException('You do not have access to this version diff');

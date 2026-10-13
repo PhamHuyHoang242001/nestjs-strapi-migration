@@ -33,18 +33,16 @@ export function canTogglePackage(opts: {
   return opts.createdBy === opts.userId || opts.supporterIds.includes(opts.userId);
 }
 
-/** Version detail/diff. Approver is org-wide; supporter is package-scoped. List uses ownVersionScopeSql. */
+/** Version detail/diff. Submitter, package creator, or approver. Supporter does not widen. */
 export function canAccessAiHubVersion(opts: {
   userId: number;
   submittedBy: number;
   createdBy?: number;
   canApprove: boolean;
-  supporterIds: number[];
 }): boolean {
   if (opts.submittedBy === opts.userId) return true;
   if (opts.createdBy === opts.userId) return true;
-  if (opts.canApprove) return true;
-  return opts.supporterIds.includes(opts.userId);
+  return opts.canApprove;
 }
 
 /**

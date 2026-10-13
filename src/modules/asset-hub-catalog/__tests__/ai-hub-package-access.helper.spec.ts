@@ -62,7 +62,6 @@ describe('canAccessAiHubVersion', () => {
     submittedBy: 99,
     createdBy: 88,
     canApprove: false,
-    supporterIds: [] as number[],
   };
 
   it('true for submitter', () => {
@@ -77,12 +76,9 @@ describe('canAccessAiHubVersion', () => {
     expect(canAccessAiHubVersion({ ...base, canApprove: true })).toBe(true);
   });
 
-  it('true for package supporter', () => {
-    expect(canAccessAiHubVersion({ ...base, supporterIds: [10, 11] })).toBe(true);
-  });
-
-  it('false for stranger even with empty createdBy', () => {
-    expect(canAccessAiHubVersion({ ...base, createdBy: undefined, supporterIds: [11] })).toBe(false);
+  it('false for supporter-only and stranger', () => {
+    expect(canAccessAiHubVersion(base)).toBe(false);
+    expect(canAccessAiHubVersion({ ...base, createdBy: undefined })).toBe(false);
   });
 });
 
