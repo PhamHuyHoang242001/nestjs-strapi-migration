@@ -133,7 +133,7 @@ describe('ApiCatalogQueryService', () => {
       expect(qb.capturedParams.status).toBe(ApiPackageStatus.ACTIVE);
     });
 
-    it('approver may filter status=inactive', async () => {
+    it('approver requesting status=inactive is scoped to own/supporter packages', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
       permissionQuery.getUserPermissions.mockResolvedValue(['api_approve']);
@@ -141,6 +141,28 @@ describe('ApiCatalogQueryService', () => {
       await service.list({ page: 1, limit: 10, status: ApiPackageStatus.INACTIVE }, USER_ID);
 
       expect(qb.capturedParams.status).toBe(ApiPackageStatus.INACTIVE);
+      expect(qb.capturedParams.viewerId).toBe(USER_ID);
+    });
+
+    it('workspace SO may filter status=inactive (all inactive)', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      const ownerScope = {
+        getUserOwnerScope: jest.fn().mockResolvedValue([{ rootTable: 'api_catalog_packages', rootId: 0 }]),
+      };
+      service = new ApiCatalogQueryService(
+        packageRepo,
+        versionRepo,
+        permissionQuery,
+        metaRead,
+        undefined,
+        ownerScope as never,
+      );
+
+      await service.list({ page: 1, limit: 10, status: ApiPackageStatus.INACTIVE }, USER_ID);
+
+      expect(qb.capturedParams.status).toBe(ApiPackageStatus.INACTIVE);
+      expect(qb.capturedParams.viewerId).toBeUndefined();
     });
 
     it('non-approver requesting status=inactive is scoped to own/supporter packages', async () => {

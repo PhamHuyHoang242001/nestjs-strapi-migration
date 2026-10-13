@@ -25,7 +25,12 @@ export class ListCoworkerQueryDto {
   @MaxLength(200)
   readonly search?: string;
 
-  @ApiProperty({ required: false, enum: CoworkerPackageStatus })
+  @ApiProperty({
+    required: false,
+    enum: CoworkerPackageStatus,
+    description:
+      'Default/omitted is active. inactive: workspace SO sees all; everyone else sees own/supporter packages only.',
+  })
   @IsOptional()
   @IsEnum(CoworkerPackageStatus)
   readonly status?: CoworkerPackageStatus;

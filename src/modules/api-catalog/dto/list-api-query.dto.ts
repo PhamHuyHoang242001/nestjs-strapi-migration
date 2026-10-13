@@ -44,7 +44,7 @@ export class ListApiQueryDto {
   @ApiProperty({
     required: false,
     description:
-      'Filter by package status. inactive is only honored for approvers; other callers are always scoped to active.',
+      'Filter by package status. Default/omitted is active. inactive: workspace SO sees all; everyone else sees own/supporter packages only.',
     enum: ApiPackageStatus,
   })
   @IsOptional()

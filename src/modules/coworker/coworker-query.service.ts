@@ -161,10 +161,9 @@ export class CoworkerQueryService {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100);
 
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('coworker_approve');
+    // Status gate: omitted/active → active. Inactive: SO sees all; everyone else own/supporter only.
     const isSo = await this.isCoworkerSo(userId);
-    const listMode = inactiveListMode(query.status === CoworkerPackageStatus.INACTIVE, canApprove, isSo);
+    const listMode = inactiveListMode(query.status === CoworkerPackageStatus.INACTIVE, isSo);
     const statusFilter = listMode === 'active' ? CoworkerPackageStatus.ACTIVE : CoworkerPackageStatus.INACTIVE;
 
     const qb = this.packageRepo

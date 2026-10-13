@@ -159,14 +159,9 @@ export class SkillPackageQueryService {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100); // double-cap even if DTO max bypassed
 
-    // Status gate: inactive packages are approver-only (mirrors the detail() inactive guard).
-    // An omitted status, or any non-approver, is scoped to active; only an approver explicitly
-    // asking for inactive flips the filter. The list therefore never leaks inactive packages to
-    // ordinary callers even though the route carries no owner scope.
-    const codes = await this.permissionQuery.getUserPermissions(userId);
-    const canApprove = codes.includes('skill_approve');
+    // Status gate: omitted/active → active. Inactive: SO sees all; everyone else own/supporter only.
     const isSo = await this.isSkillSo(userId);
-    const listMode = inactiveListMode(query.status === SkillPackageStatus.INACTIVE, canApprove, isSo);
+    const listMode = inactiveListMode(query.status === SkillPackageStatus.INACTIVE, isSo);
     const statusFilter = listMode === 'active' ? SkillPackageStatus.ACTIVE : SkillPackageStatus.INACTIVE;
 
     const qb = this.packageRepo

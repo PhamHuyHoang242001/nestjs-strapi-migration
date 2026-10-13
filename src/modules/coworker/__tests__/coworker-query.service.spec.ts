@@ -76,6 +76,27 @@ describe('CoworkerQueryService', () => {
     expect(qb.capturedParams.status).toBe(CoworkerPackageStatus.ACTIVE);
   });
 
+  it('approver requesting status=inactive is scoped to own/supporter packages', async () => {
+    const qb = makeQueryBuilder();
+    packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+    permissionQuery.getUserPermissions.mockResolvedValue(['coworker_approve']);
+    await service.list({ page: 1, limit: 10, status: CoworkerPackageStatus.INACTIVE }, USER_ID);
+    expect(qb.capturedParams.status).toBe(CoworkerPackageStatus.INACTIVE);
+    expect(qb.capturedParams.viewerId).toBe(USER_ID);
+  });
+
+  it('workspace SO may filter status=inactive (all inactive)', async () => {
+    const qb = makeQueryBuilder();
+    packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+    const ownerScope = {
+      getUserOwnerScope: jest.fn().mockResolvedValue([{ rootTable: 'coworker_packages', rootId: 0 }]),
+    };
+    service = new CoworkerQueryService(packageRepo, versionRepo, permissionQuery, metaRead, ownerScope as never);
+    await service.list({ page: 1, limit: 10, status: CoworkerPackageStatus.INACTIVE }, USER_ID);
+    expect(qb.capturedParams.status).toBe(CoworkerPackageStatus.INACTIVE);
+    expect(qb.capturedParams.viewerId).toBeUndefined();
+  });
+
   it('detail isUpdate is true only when canBump (upload + creator/supporter)', async () => {
     packageRepo.findOne.mockResolvedValue({
       id: PACKAGE_ID,

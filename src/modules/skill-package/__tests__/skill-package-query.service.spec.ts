@@ -137,15 +137,36 @@ describe('SkillPackageQueryService', () => {
       expect(qb.capturedParams.status).toBe(SkillPackageStatus.ACTIVE);
     });
 
-    it('approver may filter status=inactive', async () => {
+    it('approver requesting status=inactive is scoped to own/supporter packages', async () => {
       const qb = makeQueryBuilder();
       packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_approve']);
 
       await service.list({ page: 1, limit: 10, status: SkillPackageStatus.INACTIVE }, USER_ID);
 
-      // Approver's inactive request is honored on both page + count queries.
       expect(qb.capturedParams.status).toBe(SkillPackageStatus.INACTIVE);
+      expect(qb.capturedParams.viewerId).toBe(USER_ID);
+    });
+
+    it('workspace SO may filter status=inactive (all inactive)', async () => {
+      const qb = makeQueryBuilder();
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      const ownerScope = {
+        getUserOwnerScope: jest.fn().mockResolvedValue([{ rootTable: 'skill_packages', rootId: 0 }]),
+      };
+      service = new SkillPackageQueryService(
+        packageRepo,
+        versionRepo,
+        permissionQuery,
+        metaRead,
+        undefined,
+        ownerScope as never,
+      );
+
+      await service.list({ page: 1, limit: 10, status: SkillPackageStatus.INACTIVE }, USER_ID);
+
+      expect(qb.capturedParams.status).toBe(SkillPackageStatus.INACTIVE);
+      expect(qb.capturedParams.viewerId).toBeUndefined();
     });
 
     it('non-approver requesting status=inactive is scoped to own/supporter packages', async () => {

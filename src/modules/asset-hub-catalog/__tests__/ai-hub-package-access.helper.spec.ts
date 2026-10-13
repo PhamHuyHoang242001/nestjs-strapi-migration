@@ -112,11 +112,11 @@ describe('inactive visibility', () => {
     expect(canSeeInactivePackage({ isOwner: false, isSupporter: false, canApprove: false, isSo: false })).toBe(false);
   });
 
-  it('inactiveListMode: stranger requesting inactive still own-inactive (not all)', () => {
-    expect(inactiveListMode(false, false, false)).toBe('active');
-    expect(inactiveListMode(true, true, false)).toBe('all-inactive');
-    expect(inactiveListMode(true, false, true)).toBe('all-inactive');
-    expect(inactiveListMode(true, false, false)).toBe('own-inactive');
+  it('inactiveListMode: omitted/active → active; inactive → SO all, else own', () => {
+    expect(inactiveListMode(false, false)).toBe('active');
+    expect(inactiveListMode(false, true)).toBe('active');
+    expect(inactiveListMode(true, true)).toBe('all-inactive');
+    expect(inactiveListMode(true, false)).toBe('own-inactive');
   });
 });
 

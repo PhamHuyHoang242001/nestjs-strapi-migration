@@ -70,10 +70,10 @@ export function canSeeInactivePackage(opts: {
   return opts.isOwner || opts.isSupporter || opts.canApprove || opts.isSo;
 }
 
-export function inactiveListMode(requestedInactive: boolean, canApprove: boolean, isSo: boolean): InactiveListMode {
+/** Active (or omitted) → active. Inactive → SO all, everyone else own/supporter. Approve is unused. */
+export function inactiveListMode(requestedInactive: boolean, isSo: boolean): InactiveListMode {
   if (!requestedInactive) return 'active';
-  if (canApprove || isSo) return 'all-inactive';
-  return 'own-inactive';
+  return isSo ? 'all-inactive' : 'own-inactive';
 }
 
 export function isAiHubWorkspaceSO(
