@@ -87,19 +87,11 @@ describe('canAccessAiHubVersion', () => {
 });
 
 describe('ownVersionScopeSql', () => {
-  it('keeps submitter/creator binds and adds live supporter EXISTS', () => {
-    const sql = ownVersionScopeSql(1, 'prompt');
-    expect(sql).toContain('v.submitted_by = $1 OR p.created_by = $1');
-    expect(sql).toContain('FROM ai_hub_supporters s');
-    expect(sql).toContain("s.type = 'prompt'");
-    expect(sql).toContain('s.user_id = $1');
-    expect(sql).toContain('s.deleted_at IS NULL');
-    expect(sql).toContain('COALESCE(s.is_deleted, false) = false');
-  });
-
-  it('binds api-catalog type with hyphen', () => {
-    expect(ownVersionScopeSql(2, 'api-catalog')).toContain("s.type = 'api-catalog'");
-    expect(ownVersionScopeSql(2, 'api-catalog')).toContain('$2');
+  it('binds submitter or package creator only — supporter does not widen', () => {
+    const sql = ownVersionScopeSql(1);
+    expect(sql).toBe('(v.submitted_by = $1 OR p.created_by = $1)');
+    expect(sql).not.toContain('ai_hub_supporters');
+    expect(ownVersionScopeSql(2)).toBe('(v.submitted_by = $2 OR p.created_by = $2)');
   });
 });
 

@@ -183,7 +183,7 @@ describe('CoworkerQueryService', () => {
     expect(result.package.supporters).toEqual([{ id: USER_ID, email: 's@x.com' }]);
   });
 
-  it('listVersions own-scope includes live package supporters', async () => {
+  it('listVersions own-scope is submitter or creator only — supporter does not widen', async () => {
     const query = jest.fn().mockImplementation(async (sql: string) => {
       if (/COUNT\(\*\)::int/.test(sql)) return [{ total: 0 }];
       return [];
@@ -192,8 +192,7 @@ describe('CoworkerQueryService', () => {
     await service.listVersions({ state: 'all' }, USER_ID);
     const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
     expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
-    expect(sqls).toContain('FROM ai_hub_supporters s');
-    expect(sqls).toContain("s.type = 'coworker'");
+    expect(sqls).not.toContain('ai_hub_supporters');
   });
 
   it('getDiff allows a package supporter', async () => {

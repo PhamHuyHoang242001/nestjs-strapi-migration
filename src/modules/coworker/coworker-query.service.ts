@@ -306,11 +306,12 @@ export class CoworkerQueryService {
     };
   }
 
+  // My Version: submitter or package creator only. Supporter is edit-only.
   async listVersions(query: ListVersionsDto, userId: number) {
     const params: unknown[] = [];
     const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
     params.push(userId);
-    where.push(ownVersionScopeSql(params.length, 'coworker'));
+    where.push(ownVersionScopeSql(params.length));
     if (query.coworker_package_id?.length) {
       params.push(query.coworker_package_id);
       where.push(`p.id = ANY($${params.length})`);

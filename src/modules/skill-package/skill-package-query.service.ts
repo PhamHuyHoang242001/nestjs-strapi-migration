@@ -349,7 +349,7 @@ export class SkillPackageQueryService {
 
   // "My Version" list: flat 1-row-per-version across pending + approved + rejected, always scoped to
   // the caller. Every caller — INCLUDING approvers — sees only the versions they personally submitted
-  // (v.submitted_by), a package they created (p.created_by), or a package they support.
+  // (v.submitted_by) or a package they created (p.created_by). Supporter is edit-only.
   // There is no role-based "see all" here; an approver's org-wide view lives in the review queue.
   // Thin projection (NO content columns). codesOnly=true short-circuits to the distinct-code list for
   // the filter multi-select under the IDENTICAL visibility predicate so the options can never drift.
@@ -359,7 +359,7 @@ export class SkillPackageQueryService {
     const params: unknown[] = [];
     const where: string[] = ['v.is_deleted = false', 'v.deleted_at IS NULL', 'p.is_deleted = false'];
     params.push(userId);
-    where.push(ownVersionScopeSql(params.length, 'skill'));
+    where.push(ownVersionScopeSql(params.length));
     if (query.skill_package_id?.length) {
       params.push(query.skill_package_id);
       where.push(`p.id = ANY($${params.length})`);

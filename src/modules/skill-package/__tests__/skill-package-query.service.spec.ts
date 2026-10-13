@@ -1090,16 +1090,15 @@ describe('SkillPackageQueryService', () => {
       expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
     });
 
-    it('own-scope also includes live package supporters', async () => {
+    it('own-scope excludes supporter-only — submitter or creator only', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['skill_upload']);
       const query = stub({ count: 0, rows: [] });
 
       await service.listVersions({ state: 'all' }, USER_ID);
 
       const sqls = query.mock.calls.map((c) => c[0] as string).join(' || ');
-      expect(sqls).toContain('FROM ai_hub_supporters s');
-      expect(sqls).toContain("s.type = 'skill'");
-      expect(sqls).toContain('s.user_id = $1');
+      expect(sqls).toContain('v.submitted_by = $1 OR p.created_by = $1');
+      expect(sqls).not.toContain('ai_hub_supporters');
     });
 
     it('approver → STILL own-scoped ("My Version" — role does not widen visibility)', async () => {

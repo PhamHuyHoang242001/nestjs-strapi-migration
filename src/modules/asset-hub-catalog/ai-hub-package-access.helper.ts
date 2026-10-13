@@ -33,7 +33,7 @@ export function canTogglePackage(opts: {
   return opts.createdBy === opts.userId || opts.supporterIds.includes(opts.userId);
 }
 
-/** My Version list + version detail/diff. Approver is org-wide; supporter is package-scoped. */
+/** Version detail/diff. Approver is org-wide; supporter is package-scoped. List uses ownVersionScopeSql. */
 export function canAccessAiHubVersion(opts: {
   userId: number;
   submittedBy: number;
@@ -48,17 +48,11 @@ export function canAccessAiHubVersion(opts: {
 }
 
 /**
- * Own-scope predicate for GET list versions. Same user bind for submitter, creator, and live
- * supporter. `artifactType` is a closed union — interpolated as a SQL literal.
+ * Own-scope for GET list versions + codesOnly. Submitter or package creator only.
+ * Supporter is edit-only: they see a row only after they submit it (v.submitted_by).
  */
-export function ownVersionScopeSql(userParamIndex: number, artifactType: AiHubArtifactType): string {
-  return `(v.submitted_by = $${userParamIndex} OR p.created_by = $${userParamIndex} OR EXISTS (
-      SELECT 1 FROM ai_hub_supporters s
-      WHERE s.data_id = p.id
-        AND s.type = '${artifactType}'
-        AND s.user_id = $${userParamIndex}
-        AND s.deleted_at IS NULL AND COALESCE(s.is_deleted, false) = false
-    ))`;
+export function ownVersionScopeSql(userParamIndex: number): string {
+  return `(v.submitted_by = $${userParamIndex} OR p.created_by = $${userParamIndex})`;
 }
 
 /** Inactive detail/download: owner ∨ supporter ∨ SO. Approve does not widen (same as list). */

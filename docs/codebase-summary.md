@@ -9,7 +9,7 @@ This repository is a NestJS backend with authorization, data access, BI Payment,
 
 ## AI Hub version edit (PUT `versions/:vid`)
 
-Submitter/creator/supporter with `*_upload` resubmits only the latest **rejected** version (state flips back to pending). Approver **cannot** bump or edit pending. **Workspace SO** (`rootId===0` on that WS table) may edit pending in place. Four workspaces: skill, prompt, api-catalog, coworker. Each keeps 2 codes (`*_upload` + `*_approve`). Supporter field: `ai_hub_supporters`. List `status=inactive` and GET `items/:id` / download on inactive: SO sees all; everyone else sees own/supporter only (approve does not widen).
+Submitter/creator/supporter with `*_upload` resubmits only the latest **rejected** version (state flips back to pending). Approver **cannot** bump or edit pending. **Workspace SO** (`rootId===0` on that WS table) may edit pending in place. Four workspaces: skill, prompt, api-catalog, coworker. Each keeps 2 codes (`*_upload` + `*_approve`). Supporter field: `ai_hub_supporters`. List `status=inactive` and GET `items/:id` / download on inactive: SO sees all; everyone else sees own/supporter only (approve does not widen). GET `versions` (My Version): `submitted_by` or package `created_by` only — supporter does not see others' versions until they submit one.
 
 Coworker module: `src/modules/coworker/` mounted at `/v1/ai-hub/coworker`. Clone of prompt without download/usage_guide/tags/category. User-provided unique `code`, Teams `link`, channel/model lookups.
 

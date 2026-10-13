@@ -15,8 +15,9 @@ Nguồn sự thật sau plan `plans/261009-1424-ai-hub-coworker/`. Bản vẽ c�
 | Diff | `GET versions/:vid/diff` | submitter ∨ created_by ∨ **supporter** ∨ approver |
 | Approve / reject | `POST approve` / `reject` | `*_approve` |
 | Ẩn/hiện | `PATCH /items/:id/status` | creator ∨ supporter ∨ SO (guard: upload ∨ approve) |
-| Đọc catalog active | GET items | Bearer. Inactive: own/supporter, hoặc approve/SO |
-| My Version list / version detail | GET versions, GET versions/:vid | submitter ∨ created_by ∨ **supporter**. Detail cũng mở approver. Soft-deleted supporter không vào |
+| Đọc catalog active | GET items | Bearer. Inactive: own/supporter hoặc SO (approve không widen) |
+| My Version list | GET versions | submitter ∨ package `created_by` only. Supporter không thấy version người khác |
+| Version detail / diff | GET versions/:vid | submitter ∨ created_by ∨ supporter ∨ approver |
 
 `supporter_ids` full-replace trên create/bump/editVersion (không PATCH riêng). Bảng `ai_hub_supporters`. Tác giả (`responsible_user_ids`) ≠ supporter.
 
