@@ -36,6 +36,7 @@ describe('CoworkerCatalogService', () => {
     expect(result.data[0]).toEqual({
       id: 1,
       name: 'Microsoft Teams',
+      type: 'prefix',
       domains: ['https://teams.microsoft.com', 'https://teams.live.com'],
     });
     expect(qb.captured.join(' ')).toContain('deleted_at IS NULL');

@@ -73,3 +73,52 @@ describe('assertChannelLink', () => {
     );
   });
 });
+
+describe('assertChannelLink — suffix type (e.g. Outlook email)', () => {
+  const VPB = '@vpbank.com.vn';
+
+  it.each(['an.nguyen@vpbank.com.vn', 'An.Nguyen@VPBank.com.vn', '  team-bi@vpbank.com.vn '])(
+    'accepts %p',
+    (value) => {
+      expect(assertChannelLink(value, VPB, 'Outlook', 'suffix')).toBe(value.trim());
+    },
+  );
+
+  it('accepts any entry of a multi-domain suffix list', () => {
+    expect(() => assertChannelLink('a@vpbank.com.vn', '@vpbank.com.vn,@vpbs.com.vn', 'Outlook', 'SUFFIX')).not.toThrow();
+    expect(() => assertChannelLink('a@vpbs.com.vn', '@vpbank.com.vn,@vpbs.com.vn', 'Outlook', 'suffix')).not.toThrow();
+  });
+
+  it.each([
+    ['other domain', 'a@gmail.com'],
+    ['look-alike domain', 'a@evilvpbank.com.vn'],
+    ['double @', 'a@evil.com@vpbank.com.vn'],
+    ['bare suffix', '@vpbank.com.vn'],
+    ['inner whitespace', 'a b@vpbank.com.vn'],
+    ['a URL', 'https://outlook.office.com/mail/x'],
+  ])('rejects %s', (_label, value) => {
+    expect(() => assertChannelLink(value, VPB, 'Outlook', 'suffix')).toThrow(BadRequestException);
+  });
+
+  it('non-email suffix entry: plain ends-with match', () => {
+    expect(assertChannelLink('report.vpbank.com.vn', '.vpbank.com.vn', 'X', 'suffix')).toBe('report.vpbank.com.vn');
+    expect(() => assertChannelLink('vpbank.com.vn.evil', '.vpbank.com.vn', 'X', 'suffix')).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('empty value is still "no link" for suffix channels', () => {
+    expect(assertChannelLink('', VPB, 'Outlook', 'suffix')).toBeNull();
+  });
+
+  it('null / prefix type keeps the URL origin check', () => {
+    expect(() => assertChannelLink('a@vpbank.com.vn', 'https://teams.microsoft.com', 'Teams', null)).toThrow(
+      BadRequestException,
+    );
+    expect(() => assertChannelLink('https://teams.microsoft.com/l/x', 'https://teams.microsoft.com', 'Teams', 'prefix')).not.toThrow();
+  });
+
+  it('rejects an unknown type instead of skipping validation', () => {
+    expect(() => assertChannelLink('a@vpbank.com.vn', VPB, 'Outlook', 'contains')).toThrow(BadRequestException);
+  });
+});

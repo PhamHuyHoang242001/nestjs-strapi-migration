@@ -40,6 +40,7 @@ Prefix `/v1/ai-hub/coworker`. Clone prompt, **không** download / usage_guide / 
 - Artifact: `channels: [{ channel_id, link? }]` (≥1, mỗi channel 1 lần), `model_id`. **Mỗi channel tối đa 1 link, không bắt buộc** (bỏ trống / `null` / `""` → lưu NULL, không check domain), lưu ở `coworker_version_channels.link`; `coworker_versions.link` đã bỏ.
 - Validate link: `ai_hub_coworker_channels.domain` = origin cho phép, nhiều origin cách nhau `,` (vd `https://outlook.office.com,https://outlook.live.com`). Link hợp lệ khi `new URL(link).origin` khớp 1 origin (không phân biệt hoa thường, bỏ `/` cuối). `domain` NULL/rỗng → 400. Data `domain` do ops tự điền.
 - Response: `channels: [{ id, name, link }]`. Comparison (version detail) + diff: `base` / `incoming` = `[{ channel_id, name, link }]` (`base` null nếu không có bản trước/active).
-- Lookup GET `/channels` (`{ id, name, domains[] }`) `/models` Bearer.
+- Kiểu check theo `ai_hub_coworker_channels.type`: `prefix` (mặc định khi NULL) = URL, origin khớp 1 entry trong `domain` (Teams, Zalo); `suffix` = giá trị kết thúc bằng 1 entry (Outlook: `domain = '@vpbank.com.vn'`; entry bắt đầu `@` thì giá trị còn phải là email hợp lệ). Type lạ → 400.
+- Lookup GET `/channels` (`{ id, name, type, domains[] }`) `/models` Bearer.
 
 Seed test: `coworker_uploader` = `coworker_upload`; `coworker_approver` = `coworker_approve` **không** upload.

@@ -18,12 +18,19 @@ export class CoworkerCatalogService {
   async listChannels() {
     const rows = await this.channelRepo
       .createQueryBuilder('c')
-      .select(['c.id', 'c.name', 'c.domain'])
+      .select(['c.id', 'c.name', 'c.domain', 'c.type'])
       .where('c.deleted_at IS NULL')
       .andWhere('c.is_deleted IS NOT TRUE')
       .orderBy('c.id', 'ASC')
       .getMany();
-    return { data: rows.map((r) => ({ id: r.id, name: r.name, domains: parseChannelDomains(r.domain) })) };
+    return {
+      data: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type || 'prefix',
+        domains: parseChannelDomains(r.domain),
+      })),
+    };
   }
 
   async listModels() {

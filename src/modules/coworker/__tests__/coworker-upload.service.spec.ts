@@ -22,7 +22,7 @@ const META = {
 };
 
 // Live channel rows the lookup query returns: id, name and the configured domain list.
-type ChannelRow = { id: number; name: string; domain: string | null };
+type ChannelRow = { id: number; name: string; domain: string | null; type?: string | null };
 const DEFAULT_CHANNELS: ChannelRow[] = [{ id: 1, name: 'Microsoft Teams', domain: TEAMS }];
 
 function makeItemMeta() {
@@ -107,14 +107,14 @@ describe('CoworkerUploadService', () => {
       const channels: ChannelRow[] = [
         { id: 1, name: 'Microsoft Teams', domain: TEAMS },
         { id: 2, name: 'Zalo', domain: 'https://zalo.me' },
-        { id: 3, name: 'Outlook', domain: 'https://outlook.office.com, https://outlook.live.com' },
+        { id: 3, name: 'Outlook', domain: '@vpbank.com.vn', type: 'suffix' },
       ];
       dataSource.transaction = jest.fn(async (cb: any) => cb(lookupManager(saved, [], channels)));
       service = new CoworkerUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
       const pairs = [
         { channel_id: 1, link: `${TEAMS}/l/a` },
         { channel_id: 2, link: 'https://zalo.me/g/b' },
-        { channel_id: 3, link: 'https://outlook.live.com/mail/c' },
+        { channel_id: 3, link: 'team-bi@vpbank.com.vn' },
       ];
 
       await service.createNew({ ...dto, channels: pairs } as any, USER_ID);
@@ -150,9 +150,14 @@ describe('CoworkerUploadService', () => {
       ['channel without domain', [{ channel_id: 4, link: `${TEAMS}/l/a` }], 'has no domain configured'],
       ['link origin not in channel domain', [{ channel_id: 1, link: 'https://zalo.me/g/b' }], 'does not match channel'],
       ['look-alike host', [{ channel_id: 1, link: 'https://teams.microsoft.com.evil.vn/x' }], 'does not match channel'],
+      ['email outside the suffix domain', [{ channel_id: 5, link: 'a@gmail.com' }], 'does not match channel'],
     ])('rejects %s with 400 before writing', async (_label, pairs, message) => {
       const saved: any[] = [];
-      const channels: ChannelRow[] = [...DEFAULT_CHANNELS, { id: 4, name: 'Zalo', domain: null }];
+      const channels: ChannelRow[] = [
+        ...DEFAULT_CHANNELS,
+        { id: 4, name: 'Zalo', domain: null },
+        { id: 5, name: 'Outlook', domain: '@vpbank.com.vn', type: 'suffix' },
+      ];
       dataSource.transaction = jest.fn(async (cb: any) => cb(lookupManager(saved, [], channels)));
       service = new CoworkerUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
 

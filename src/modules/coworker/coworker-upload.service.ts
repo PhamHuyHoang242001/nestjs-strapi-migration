@@ -47,6 +47,9 @@ function constraintName(error: unknown): string {
   return `${pg.constraint ?? ''} ${pg.driverError?.constraint ?? ''} ${pg.driverError?.detail ?? ''}`;
 }
 
+// Channel fields needed to validate a version's channel/link pairs.
+type ChannelLookupRow = { id: number; name: string; domain: string | null; type: string | null };
+
 @Injectable()
 export class CoworkerUploadService {
   constructor(
@@ -96,8 +99,8 @@ export class CoworkerUploadService {
     if (new Set(ids).size !== ids.length) {
       throw new BadRequestException('INVALID_CHANNELS: each channel may appear only once');
     }
-    const channelRows: Array<{ id: number; name: string; domain: string | null }> = await manager.query(
-      `SELECT id, name, domain FROM ai_hub_coworker_channels
+    const channelRows: ChannelLookupRow[] = await manager.query(
+      `SELECT id, name, domain, type FROM ai_hub_coworker_channels
        WHERE id = ANY($1) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
       [ids],
     );
@@ -108,7 +111,7 @@ export class CoworkerUploadService {
     for (const pair of pairs) {
       const channel = byId.get(pair.channel_id);
       if (!channel) throw new BadRequestException('INVALID_CHANNELS: one or more channels do not exist');
-      pair.link = assertChannelLink(pair.link, channel.domain, channel.name);
+      pair.link = assertChannelLink(pair.link, channel.domain, channel.name, channel.type);
     }
     const modelRows: Array<{ id: number }> = await manager.query(
       `SELECT id FROM ai_hub_coworker_models
