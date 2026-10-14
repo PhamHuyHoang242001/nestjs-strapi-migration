@@ -24,6 +24,15 @@ import {
   ownVersionScopeSql,
 } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 
+// A version's channel with that version's link for it (response shape of `channels[]`).
+type VersionChannel = { id: number; name: string; link: string };
+// Comparison / diff entry: base and incoming are compared channel by channel.
+type ChannelLinkPair = { channel_id: number; name: string; link: string };
+
+function toChannelLinkPairs(channels: VersionChannel[] | undefined): ChannelLinkPair[] {
+  return (channels ?? []).map((c) => ({ channel_id: c.id, name: c.name, link: c.link }));
+}
+
 @Injectable()
 export class CoworkerQueryService {
   constructor(
@@ -60,14 +69,15 @@ export class CoworkerQueryService {
     return { publishers, responsibles, supporters };
   }
 
+  // Channels of each version with that version's link for the channel, ordered by channel id.
   private async loadChannelsByVersionIds(
     versionIds: Array<number | null | undefined>,
-  ): Promise<Map<number, Array<{ id: number; name: string }>>> {
-    const map = new Map<number, Array<{ id: number; name: string }>>();
+  ): Promise<Map<number, VersionChannel[]>> {
+    const map = new Map<number, VersionChannel[]>();
     const ids = Array.from(new Set(versionIds.filter((id): id is number => typeof id === 'number')));
     if (!ids.length) return map;
     const rows = await this.versionRepo.manager.query(
-      `SELECT vc.coworker_version_id AS version_id, c.id, c.name
+      `SELECT vc.coworker_version_id AS version_id, c.id, c.name, vc.link
        FROM coworker_version_channels vc
        INNER JOIN ai_hub_coworker_channels c ON c.id = vc.channel_id
          AND c.deleted_at IS NULL AND COALESCE(c.is_deleted, false) = false
@@ -78,7 +88,7 @@ export class CoworkerQueryService {
     );
     for (const row of rows) {
       const list = map.get(Number(row.version_id)) ?? [];
-      list.push({ id: Number(row.id), name: row.name });
+      list.push({ id: Number(row.id), name: row.name, link: row.link });
       map.set(Number(row.version_id), list);
     }
     return map;
@@ -467,12 +477,12 @@ export class CoworkerQueryService {
     let comparison: {
       base_version_id: number | null;
       base_version_no: number | null;
-      base: string | null;
-      incoming: string;
+      base: ChannelLinkPair[] | null;
+      incoming: ChannelLinkPair[];
     } | null = null;
+    let predecessor: CoworkerVersion | null = null;
 
     if (version.state === CoworkerVersionState.PENDING) {
-      let predecessor: CoworkerVersion | null = null;
       if (version.old_version != null) {
         predecessor = await this.versionRepo.findOne({
           where: {
@@ -487,17 +497,19 @@ export class CoworkerQueryService {
           throw new ConflictException('Approved predecessor for this coworker version was not found');
         }
       }
-      comparison = {
-        base_version_id: predecessor?.id ?? null,
-        base_version_no: predecessor?.version_no ?? null,
-        base: predecessor?.link ?? null,
-        incoming: version.link,
-      };
     }
 
     const emailMap = await this.resolveEmails([version.submitted_by, version.reviewed_by].filter(Boolean));
     const meta = await this.loadPackageMeta([pkg]);
-    const channels = await this.loadChannelsByVersionIds([version.id]);
+    const channels = await this.loadChannelsByVersionIds([version.id, predecessor?.id]);
+    if (version.state === CoworkerVersionState.PENDING) {
+      comparison = {
+        base_version_id: predecessor?.id ?? null,
+        base_version_no: predecessor?.version_no ?? null,
+        base: predecessor ? toChannelLinkPairs(channels.get(predecessor.id)) : null,
+        incoming: toChannelLinkPairs(channels.get(version.id)),
+      };
+    }
     const models = await this.loadModelsByIds([version.model_id]);
     const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('coworker_upload'));
     return {
@@ -547,22 +559,17 @@ export class CoworkerQueryService {
       throw new ForbiddenException('You do not have access to this version diff');
     }
 
-    let baseContent: string | null = null;
-    if (pkg?.active_version_id && pkg.active_version_id !== versionId) {
-      const activeVersion = await this.versionRepo.findOne({
-        where: { id: pkg.active_version_id, is_deleted: false },
-      });
-      baseContent = activeVersion?.link ?? null;
-    }
+    // Base = the package's active version when it is a different version than the one diffed.
+    const baseVersionId = pkg?.active_version_id && pkg.active_version_id !== versionId ? pkg.active_version_id : null;
 
     const emailMap = await this.resolveEmails([version.submitted_by]);
     const isUpdate = pkg ? await this.resolveIsUpdate(pkg.id, version, codes.includes('coworker_upload')) : false;
-    const channels = await this.loadChannelsByVersionIds([version.id]);
+    const channels = await this.loadChannelsByVersionIds([version.id, baseVersionId]);
     const models = await this.loadModelsByIds([version.model_id]);
 
     return {
-      base: baseContent,
-      incoming: version.link,
+      base: baseVersionId ? toChannelLinkPairs(channels.get(baseVersionId)) : null,
+      incoming: toChannelLinkPairs(channels.get(version.id)),
       isUpdate,
       metadata: {
         version_id: version.id,

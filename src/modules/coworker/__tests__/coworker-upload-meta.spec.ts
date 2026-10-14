@@ -11,9 +11,8 @@ const baseCreate = {
   publisher_id: 7,
   responsible_user_ids: [11],
   kind: 'personal',
-  channel_ids: [1],
+  channels: [{ channel_id: 1, link: 'https://teams.microsoft.com/l/meetup-join/x' }],
   model_id: 1,
-  link: 'https://teams.microsoft.com/l/meetup-join/x',
 };
 
 const baseBump = {
@@ -22,9 +21,8 @@ const baseBump = {
   publisher_id: 7,
   responsible_user_ids: [11],
   kind: 'personal',
-  channel_ids: [1],
+  channels: [{ channel_id: 1, link: 'https://teams.microsoft.com/l/meetup-join/x' }],
   model_id: 1,
-  link: 'https://teams.microsoft.com/l/meetup-join/x',
   changelog_note: 'bump',
 };
 
@@ -51,9 +49,8 @@ describe('coworker write DTOs', () => {
         publisher_id: baseBump.publisher_id,
         responsible_user_ids: baseBump.responsible_user_ids,
         kind: baseBump.kind,
-        channel_ids: baseBump.channel_ids,
+        channels: baseBump.channels,
         model_id: baseBump.model_id,
-        link: baseBump.link,
       }),
     );
     expect(errors.some((e) => e.property === 'changelog_note')).toBe(true);
@@ -65,5 +62,45 @@ describe('coworker write DTOs', () => {
       forbidNonWhitelisted: true,
     });
     expect(errors.some((e) => e.property === 'code')).toBe(true);
+  });
+
+  describe('channels (one link per channel)', () => {
+    const strict = { whitelist: true, forbidNonWhitelisted: true };
+
+    it('accepts several channel/link pairs', async () => {
+      const channels = [
+        { channel_id: 1, link: 'https://teams.microsoft.com/l/x' },
+        { channel_id: 2, link: 'https://zalo.me/g/abc' },
+      ];
+      expect(await validate(plainToInstance(CreateCoworkerPackageDto, { ...baseCreate, channels }), strict)).toHaveLength(0);
+      expect(await validate(plainToInstance(CreateCoworkerVersionDto, { ...baseBump, channels }), strict)).toHaveLength(0);
+    });
+
+    it.each([
+      ['missing', undefined],
+      ['empty', []],
+      ['duplicate channel_id', [
+        { channel_id: 1, link: 'https://teams.microsoft.com/l/a' },
+        { channel_id: 1, link: 'https://teams.microsoft.com/l/b' },
+      ]],
+      ['item without link', [{ channel_id: 1 }]],
+      ['item with empty link', [{ channel_id: 1, link: '' }]],
+      ['item with bad channel_id', [{ channel_id: 0, link: 'https://teams.microsoft.com/l/a' }]],
+    ])('rejects channels %s', async (_label, channels) => {
+      const errors = await validate(plainToInstance(CreateCoworkerPackageDto, { ...baseCreate, channels }), strict);
+      expect(errors.some((e) => e.property === 'channels')).toBe(true);
+    });
+
+    it('rejects an unknown property inside a channel item', async () => {
+      const channels = [{ channel_id: 1, link: 'https://teams.microsoft.com/l/a', extra: 1 }];
+      const errors = await validate(plainToInstance(CreateCoworkerVersionDto, { ...baseBump, channels }), strict);
+      expect(errors.some((e) => e.property === 'channels')).toBe(true);
+    });
+
+    it.each(['channel_ids', 'link'])('rejects the removed top-level `%s` field', async (field) => {
+      const extra = field === 'link' ? { link: 'https://teams.microsoft.com/l/x' } : { channel_ids: [1] };
+      const errors = await validate(plainToInstance(CreateCoworkerPackageDto, { ...baseCreate, ...extra }), strict);
+      expect(errors.some((e) => e.property === field)).toBe(true);
+    });
   });
 });

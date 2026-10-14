@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument, @typescript-eslint/require-await */
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { CoworkerUploadService } from '../coworker-upload.service';
 import { CoworkerVersionState } from '@modules/databases/coworker-version.entity';
@@ -10,14 +10,20 @@ const OTHER_USER_ID = 200;
 const PACKAGE_ID = 1;
 const VERSION_ID = 5;
 
+const TEAMS = 'https://teams.microsoft.com';
+const TEAMS_LINK = `${TEAMS}/l/meetup-join/x`;
+
 const META = {
   publisher_id: 7,
   responsible_user_ids: [11],
   kind: 'personal',
-  channel_ids: [1],
+  channels: [{ channel_id: 1, link: TEAMS_LINK }],
   model_id: 2,
-  link: 'https://teams.microsoft.com/l/meetup-join/x',
 };
+
+// Live channel rows the lookup query returns: id, name and the configured domain list.
+type ChannelRow = { id: number; name: string; domain: string | null };
+const DEFAULT_CHANNELS: ChannelRow[] = [{ id: 1, name: 'Microsoft Teams', domain: TEAMS }];
 
 function makeItemMeta() {
   return {
@@ -30,10 +36,15 @@ function makeItemMeta() {
   };
 }
 
-function lookupManager(saved: any[] = [], updates: any[] = []) {
+function lookupManager(saved: any[] = [], updates: any[] = [], channels: ChannelRow[] = DEFAULT_CHANNELS) {
   return {
     create: jest.fn((_E: any, data: any) => ({ ...data })),
     save: jest.fn(async (_E: any, obj: any) => {
+      // save(entities[]) — the join-row batch written by replaceVersionChannels.
+      if (Array.isArray(_E)) {
+        saved.push({ entity: 'batch', rows: _E });
+        return _E;
+      }
       const row = { ...obj, id: saved.length + 1 };
       saved.push({ entity: _E?.name, row });
       return row;
@@ -42,8 +53,11 @@ function lookupManager(saved: any[] = [], updates: any[] = []) {
       updates.push({ entity: _E?.name, id, patch });
     }),
     delete: jest.fn(),
-    query: jest.fn().mockImplementation(async (sql: string) => {
-      if (sql.includes('ai_hub_coworker_channels')) return [{ id: 1 }];
+    query: jest.fn().mockImplementation(async (sql: string, params?: any[]) => {
+      if (sql.includes('ai_hub_coworker_channels')) {
+        const ids: number[] = params?.[0] ?? [];
+        return channels.filter((c) => ids.includes(c.id));
+      }
       if (sql.includes('ai_hub_coworker_models')) return [{ id: 2 }];
       if (sql.includes('MAX(version_no)')) return [{ max: '1' }];
       return [];
@@ -86,6 +100,47 @@ describe('CoworkerUploadService', () => {
       const pkg = saved.find((s) => s.entity === 'CoworkerPackage')?.row;
       expect(pkg.code).toBe('CW-A');
       expect(pkg.code).not.toMatch(/^coworker_/);
+    });
+
+    it('stores one link per channel on the join rows; the version row has no link', async () => {
+      const saved: any[] = [];
+      const channels: ChannelRow[] = [
+        { id: 1, name: 'Microsoft Teams', domain: TEAMS },
+        { id: 2, name: 'Zalo', domain: 'https://zalo.me' },
+        { id: 3, name: 'Outlook', domain: 'https://outlook.office.com, https://outlook.live.com' },
+      ];
+      dataSource.transaction = jest.fn(async (cb: any) => cb(lookupManager(saved, [], channels)));
+      service = new CoworkerUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
+      const pairs = [
+        { channel_id: 1, link: `${TEAMS}/l/a` },
+        { channel_id: 2, link: 'https://zalo.me/g/b' },
+        { channel_id: 3, link: 'https://outlook.live.com/mail/c' },
+      ];
+
+      await service.createNew({ ...dto, channels: pairs } as any, USER_ID);
+
+      const version = saved.find((s) => s.entity === 'CoworkerVersion')?.row;
+      expect(version).not.toHaveProperty('link');
+      const batch = saved.find((s) => s.entity === 'batch')?.rows;
+      expect(batch).toEqual(pairs.map((p) => ({ coworker_version_id: version.id, ...p })));
+    });
+
+    it.each([
+      ['unknown channel', [{ channel_id: 9, link: `${TEAMS}/l/a` }], 'INVALID_CHANNELS'],
+      ['channel without domain', [{ channel_id: 4, link: `${TEAMS}/l/a` }], 'has no domain configured'],
+      ['link origin not in channel domain', [{ channel_id: 1, link: 'https://zalo.me/g/b' }], 'does not match channel'],
+      ['look-alike host', [{ channel_id: 1, link: 'https://teams.microsoft.com.evil.vn/x' }], 'does not match channel'],
+    ])('rejects %s with 400 before writing', async (_label, pairs, message) => {
+      const saved: any[] = [];
+      const channels: ChannelRow[] = [...DEFAULT_CHANNELS, { id: 4, name: 'Zalo', domain: null }];
+      dataSource.transaction = jest.fn(async (cb: any) => cb(lookupManager(saved, [], channels)));
+      service = new CoworkerUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
+
+      const err = await service.createNew({ ...dto, channels: pairs } as any, USER_ID).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as BadRequestException).message).toContain(message);
+      expect(saved).toHaveLength(0);
     });
 
     it('maps unique-code 23505 to ConflictException 409', async () => {
@@ -146,7 +201,7 @@ describe('CoworkerUploadService', () => {
       dataSource.transaction = jest.fn(async (cb: any) => {
         const manager = lookupManager();
         manager.query = jest.fn().mockImplementation(async (sql: string) => {
-          if (sql.includes('ai_hub_coworker_channels')) return [{ id: 1 }];
+          if (sql.includes('ai_hub_coworker_channels')) return DEFAULT_CHANNELS;
           if (sql.includes('ai_hub_coworker_models')) return [{ id: 2 }];
           if (sql.includes("state = 'pending'")) return [];
           if (sql.includes('ORDER BY id DESC')) return [{ id: VERSION_ID, state: 'rejected' }];

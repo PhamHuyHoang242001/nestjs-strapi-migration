@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 import { AssetHubTagKind } from '@modules/databases/asset-hub-tag.entity';
 import { MAX_RESPONSIBLE_USERS } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
+import { CoworkerChannelLinkDto, CoworkerChannelsField } from './coworker-channel-link.dto';
 
 export class CreateCoworkerPackageDto {
   @ApiProperty({ description: 'User-provided unique live code', maxLength: 100 })
@@ -70,24 +71,12 @@ export class CreateCoworkerPackageDto {
   @MaxLength(1000)
   readonly short_description: string;
 
-  @ApiProperty({ type: [Number], minItems: 1 })
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayUnique()
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  @Type(() => Number)
-  readonly channel_ids: number[];
+  @CoworkerChannelsField()
+  readonly channels: CoworkerChannelLinkDto[];
 
   @ApiProperty()
   @IsInt()
   @Min(1)
   @Type(() => Number)
   readonly model_id: number;
-
-  @ApiProperty({ description: 'Teams meeting/channel URL' })
-  @IsNotEmpty()
-  @IsString()
-  @MaxLength(2000)
-  readonly link: string;
 }

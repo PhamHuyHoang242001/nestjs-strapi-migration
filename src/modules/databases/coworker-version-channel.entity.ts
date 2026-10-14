@@ -8,4 +8,8 @@ export class CoworkerVersionChannel extends BaseSoftDeleteEntity {
 
   @Column({ type: 'int' })
   public channel_id: number;
+
+  // This channel's link for this version; origin must match the channel's domain list.
+  @Column({ type: 'varchar' })
+  public link: string;
 }

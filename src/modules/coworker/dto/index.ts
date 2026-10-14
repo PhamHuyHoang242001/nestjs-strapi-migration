@@ -1,3 +1,4 @@
+export { CoworkerChannelLinkDto, CoworkerChannelsField, MAX_COWORKER_CHANNELS } from './coworker-channel-link.dto';
 export { CreateCoworkerPackageDto } from './create-coworker-package.dto';
 export { CreateCoworkerVersionDto } from './create-coworker-version.dto';
 export { ListCoworkerQueryDto } from './list-coworker-query.dto';

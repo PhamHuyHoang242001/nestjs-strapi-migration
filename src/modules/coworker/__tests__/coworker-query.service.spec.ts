@@ -201,7 +201,6 @@ describe('CoworkerQueryService', () => {
       is_deleted: false,
       state: CoworkerVersionState.APPROVED,
       model_id: 1,
-      link: 'https://teams.microsoft.com/l/x',
     });
     packageRepo.findOne.mockResolvedValue({
       id: PACKAGE_ID,
@@ -210,5 +209,116 @@ describe('CoworkerQueryService', () => {
     });
     metaRead.getSupportersByPackageIds.mockResolvedValue(new Map([[PACKAGE_ID, [{ id: USER_ID, email: 's@x.com' }]]]));
     await expect(service.getDiff(VERSION_ID, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  describe('per-channel links', () => {
+    const ACTIVE_ID = 4;
+    // Join rows as the channel loader's SQL returns them (one link per channel per version).
+    const channelRows = [
+      { version_id: ACTIVE_ID, id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/old' },
+      { version_id: VERSION_ID, id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/new' },
+      { version_id: VERSION_ID, id: 2, name: 'Zalo', link: 'https://zalo.me/g/z' },
+    ];
+
+    function stubManager() {
+      const query = jest.fn().mockImplementation(async (sql: string, params?: any[]) => {
+        if (sql.includes('coworker_version_channels')) {
+          const ids: number[] = params?.[0] ?? [];
+          return channelRows.filter((r) => ids.includes(r.version_id));
+        }
+        return [];
+      });
+      versionRepo.manager = { query };
+      return query;
+    }
+
+    it('channel loader selects the per-channel link', async () => {
+      const query = stubManager();
+      versionRepo.findOne.mockResolvedValue({
+        id: VERSION_ID,
+        coworker_package_id: PACKAGE_ID,
+        submitted_by: USER_ID,
+        state: CoworkerVersionState.APPROVED,
+        model_id: 1,
+      });
+      packageRepo.findOne.mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID, active_version_id: null });
+      await service.getDiff(VERSION_ID, USER_ID);
+      const sql = query.mock.calls.map((c) => c[0] as string).find((q) => q.includes('coworker_version_channels'));
+      expect(sql).toContain('vc.link');
+    });
+
+    it('getDiff returns channel/link lists for the active (base) and target (incoming) versions', async () => {
+      stubManager();
+      versionRepo.findOne.mockResolvedValue({
+        id: VERSION_ID,
+        coworker_package_id: PACKAGE_ID,
+        submitted_by: USER_ID,
+        state: CoworkerVersionState.PENDING,
+        model_id: 1,
+      });
+      packageRepo.findOne.mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID, active_version_id: ACTIVE_ID });
+
+      const res: any = await service.getDiff(VERSION_ID, USER_ID);
+
+      expect(res.base).toEqual([{ channel_id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/old' }]);
+      expect(res.incoming).toEqual([
+        { channel_id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/new' },
+        { channel_id: 2, name: 'Zalo', link: 'https://zalo.me/g/z' },
+      ]);
+      expect(res.metadata.channels).toEqual([
+        { id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/new' },
+        { id: 2, name: 'Zalo', link: 'https://zalo.me/g/z' },
+      ]);
+    });
+
+    it('getDiff base is null when there is no other active version', async () => {
+      stubManager();
+      versionRepo.findOne.mockResolvedValue({
+        id: VERSION_ID,
+        coworker_package_id: PACKAGE_ID,
+        submitted_by: USER_ID,
+        state: CoworkerVersionState.PENDING,
+        model_id: 1,
+      });
+      packageRepo.findOne.mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID, active_version_id: VERSION_ID });
+
+      const res: any = await service.getDiff(VERSION_ID, USER_ID);
+
+      expect(res.base).toBeNull();
+      expect(res.incoming).toHaveLength(2);
+    });
+
+    it('versionDetail comparison compares predecessor vs pending channel/link lists', async () => {
+      stubManager();
+      versionRepo.findOne.mockImplementation(async ({ where }: any) => {
+        if (where.id === VERSION_ID) {
+          return {
+            id: VERSION_ID,
+            coworker_package_id: PACKAGE_ID,
+            submitted_by: USER_ID,
+            state: CoworkerVersionState.PENDING,
+            old_version: 1,
+            model_id: 1,
+          };
+        }
+        if (where.version_no === 1) return { id: ACTIVE_ID, version_no: 1 };
+        return null;
+      });
+      packageRepo.findOne.mockResolvedValue({ id: PACKAGE_ID, created_by: OTHER_USER_ID, publisher_id: 1 });
+
+      const res: any = await service.versionDetail(VERSION_ID, USER_ID);
+
+      expect(res.comparison).toEqual({
+        base_version_id: ACTIVE_ID,
+        base_version_no: 1,
+        base: [{ channel_id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/old' }],
+        incoming: [
+          { channel_id: 1, name: 'Teams', link: 'https://teams.microsoft.com/l/new' },
+          { channel_id: 2, name: 'Zalo', link: 'https://zalo.me/g/z' },
+        ],
+      });
+      expect(res.version.channels[1]).toEqual({ id: 2, name: 'Zalo', link: 'https://zalo.me/g/z' });
+      expect(res.version).not.toHaveProperty('link');
+    });
   });
 });

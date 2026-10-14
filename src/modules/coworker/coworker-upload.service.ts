@@ -11,6 +11,7 @@ import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm
 import { CoworkerPackage, CoworkerPackageStatus } from '@modules/databases/coworker-package.entity';
 import { CoworkerVersion, CoworkerVersionState } from '@modules/databases/coworker-version.entity';
 import { CoworkerVersionChannel } from '@modules/databases/coworker-version-channel.entity';
+import { CoworkerChannelLinkDto } from './dto/coworker-channel-link.dto';
 import { CreateCoworkerPackageDto } from './dto/create-coworker-package.dto';
 import { CreateCoworkerVersionDto } from './dto/create-coworker-version.dto';
 import { RejectCoworkerVersionDto } from './dto/reject-coworker-version.dto';
@@ -24,7 +25,7 @@ import {
   isAiHubWorkspaceSO,
 } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
-import { assertCoworkerLink } from './coworker-link.util';
+import { assertChannelLink } from './coworker-link.util';
 
 const PG_UNIQUE_VIOLATION = '23505';
 const PENDING_VERSION_CONFLICT_MESSAGE =
@@ -80,18 +81,34 @@ export class CoworkerUploadService {
     }
   }
 
-  private async assertLookups(manager: EntityManager, channelIds: number[], modelId: number): Promise<number[]> {
-    const uniqueChannels = [...new Set(channelIds.filter((id) => Number.isInteger(id) && id > 0))];
-    if (!uniqueChannels.length) {
+  // Validates the channel/link pairs and the model before any write. Each channel must be live and
+  // appear once; each link's origin must match that channel's configured domain(s).
+  private async assertLookups(
+    manager: EntityManager,
+    channels: CoworkerChannelLinkDto[],
+    modelId: number,
+  ): Promise<CoworkerChannelLinkDto[]> {
+    const pairs = (channels ?? []).map((c) => ({ channel_id: Number(c.channel_id), link: c.link }));
+    if (!pairs.length) {
       throw new BadRequestException('INVALID_CHANNELS: at least one channel is required');
     }
-    const channelRows: Array<{ id: number }> = await manager.query(
-      `SELECT id FROM ai_hub_coworker_channels
+    const ids = pairs.map((p) => p.channel_id);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('INVALID_CHANNELS: each channel may appear only once');
+    }
+    const channelRows: Array<{ id: number; name: string; domain: string | null }> = await manager.query(
+      `SELECT id, name, domain FROM ai_hub_coworker_channels
        WHERE id = ANY($1) AND deleted_at IS NULL AND is_deleted IS NOT TRUE`,
-      [uniqueChannels],
+      [ids],
     );
-    if (channelRows.length !== uniqueChannels.length) {
+    if (channelRows.length !== ids.length) {
       throw new BadRequestException('INVALID_CHANNELS: one or more channels do not exist');
+    }
+    const byId = new Map(channelRows.map((r) => [Number(r.id), r]));
+    for (const pair of pairs) {
+      const channel = byId.get(pair.channel_id);
+      if (!channel) throw new BadRequestException('INVALID_CHANNELS: one or more channels do not exist');
+      pair.link = assertChannelLink(pair.link, channel.domain, channel.name);
     }
     const modelRows: Array<{ id: number }> = await manager.query(
       `SELECT id FROM ai_hub_coworker_models
@@ -101,14 +118,19 @@ export class CoworkerUploadService {
     if (!modelRows[0]) {
       throw new BadRequestException('INVALID_MODEL: model does not exist');
     }
-    return uniqueChannels;
+    return pairs;
   }
 
-  private async replaceVersionChannels(manager: EntityManager, versionId: number, channelIds: number[]): Promise<void> {
+  // Full replace of the version's channel/link rows (hard delete, then insert).
+  private async replaceVersionChannels(
+    manager: EntityManager,
+    versionId: number,
+    pairs: CoworkerChannelLinkDto[],
+  ): Promise<void> {
     await manager.delete(CoworkerVersionChannel, { coworker_version_id: versionId });
     await manager.save(
-      channelIds.map((channel_id) =>
-        manager.create(CoworkerVersionChannel, { coworker_version_id: versionId, channel_id }),
+      pairs.map(({ channel_id, link }) =>
+        manager.create(CoworkerVersionChannel, { coworker_version_id: versionId, channel_id, link }),
       ),
     );
   }
@@ -121,12 +143,11 @@ export class CoworkerUploadService {
 
   async createNew(dto: CreateCoworkerPackageDto, userId: number) {
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
-    assertCoworkerLink(dto.link);
     const code = this.normalizeCode(dto.code);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
-        const channelIds = await this.assertLookups(manager, dto.channel_ids, dto.model_id);
+        const channels = await this.assertLookups(manager, dto.channels, dto.model_id);
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'create');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
@@ -156,13 +177,12 @@ export class CoworkerUploadService {
             kind: dto.kind,
             avatar_url: dto.avatar_url ?? null,
             model_id: dto.model_id,
-            link: dto.link,
             changelog_note: null,
             submitted_by: userId,
           }),
         );
 
-        await this.replaceVersionChannels(manager, savedVersion.id, channelIds);
+        await this.replaceVersionChannels(manager, savedVersion.id, channels);
         return { package: { id: savedPkg.id }, version: { id: savedVersion.id, version_no: 1 } };
       });
     } catch (err) {
@@ -196,7 +216,6 @@ export class CoworkerUploadService {
     }
 
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
-    assertCoworkerLink(dto.link);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
@@ -210,7 +229,7 @@ export class CoworkerUploadService {
         const oldVersion = maxRow[0]?.max == null ? null : Number(maxRow[0].max);
         const placeholderVersionNo = oldVersion ?? 1;
 
-        const channelIds = await this.assertLookups(manager, dto.channel_ids, dto.model_id);
+        const channels = await this.assertLookups(manager, dto.channels, dto.model_id);
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
@@ -230,13 +249,12 @@ export class CoworkerUploadService {
             kind: dto.kind,
             avatar_url: dto.avatar_url ?? null,
             model_id: dto.model_id,
-            link: dto.link,
             changelog_note: dto.changelog_note,
             submitted_by: userId,
           }),
         );
 
-        await this.replaceVersionChannels(manager, saved.id, channelIds);
+        await this.replaceVersionChannels(manager, saved.id, channels);
         return { version: { id: saved.id, version_no: placeholderVersionNo } };
       });
     } catch (err) {
@@ -279,7 +297,6 @@ export class CoworkerUploadService {
     }
 
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
-    assertCoworkerLink(dto.link);
 
     try {
       return await this.dataSource.transaction(async (manager) => {
@@ -320,7 +337,7 @@ export class CoworkerUploadService {
           throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
         }
 
-        const channelIds = await this.assertLookups(manager, dto.channel_ids, dto.model_id);
+        const channels = await this.assertLookups(manager, dto.channels, dto.model_id);
         const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'bump');
         await this.itemMeta.assertPublisher(manager, owning.publisher_id);
         const responsibleUserIds = await this.itemMeta.assertUsers(manager, dto.responsible_user_ids);
@@ -333,7 +350,6 @@ export class CoworkerUploadService {
         locked.kind = dto.kind;
         locked.avatar_url = dto.avatar_url ?? null;
         locked.model_id = dto.model_id;
-        locked.link = dto.link;
         locked.changelog_note = dto.changelog_note;
         if (!approverPending) {
           locked.submitted_by = userId;
@@ -343,7 +359,7 @@ export class CoworkerUploadService {
           locked.reviewed_at = null;
         }
         await manager.save(CoworkerVersion, locked);
-        await this.replaceVersionChannels(manager, locked.id, channelIds);
+        await this.replaceVersionChannels(manager, locked.id, channels);
 
         return { version: { id: locked.id, version_no: locked.version_no } };
       });

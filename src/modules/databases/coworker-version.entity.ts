@@ -42,9 +42,6 @@ export class CoworkerVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public model_id: number;
 
-  @Column({ type: 'varchar' })
-  public link: string;
-
   @Column({ type: 'text', nullable: true })
   public changelog_note: string | null;
 

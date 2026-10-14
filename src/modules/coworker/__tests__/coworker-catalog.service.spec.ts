@@ -14,7 +14,11 @@ function makeQb() {
       return qb;
     }),
     orderBy: jest.fn().mockReturnThis(),
-    getMany: jest.fn().mockResolvedValue([{ id: 1, name: 'Microsoft Teams', is_deleted: false }]),
+    getMany: jest
+      .fn()
+      .mockResolvedValue([
+        { id: 1, name: 'Microsoft Teams', domain: 'https://teams.microsoft.com, https://teams.live.com/', is_deleted: false },
+      ]),
     captured,
   };
   return qb;
@@ -29,6 +33,11 @@ describe('CoworkerCatalogService', () => {
 
     const result = await service.listChannels();
     expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toEqual({
+      id: 1,
+      name: 'Microsoft Teams',
+      domains: ['https://teams.microsoft.com', 'https://teams.live.com'],
+    });
     expect(qb.captured.join(' ')).toContain('deleted_at IS NULL');
     expect(qb.captured.join(' ')).toContain('is_deleted IS NOT TRUE');
   });
