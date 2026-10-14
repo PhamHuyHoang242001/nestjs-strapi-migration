@@ -9,6 +9,7 @@ import { AssetHubCatalogService } from './asset-hub-catalog.service';
 import { AssetHubUserDirectoryService } from './asset-hub-user-directory.service';
 import { AssetHubItemMetaService } from './asset-hub-item-meta.service';
 import { AssetHubItemMetaReadService } from './asset-hub-item-meta-read.service';
+import { AssetHubSupporterService } from './asset-hub-supporter.service';
 
 // AuthorizationModule is @Global(), so BearerGuard/PermissionGuard dependencies resolve without
 // re-importing. Only the three read-only tables this module projects are registered.
@@ -22,6 +23,7 @@ import { AssetHubItemMetaReadService } from './asset-hub-item-meta-read.service'
     AssetHubUserDirectoryService,
     AssetHubItemMetaService,
     AssetHubItemMetaReadService,
+    AssetHubSupporterService,
   ],
   exports: [AssetHubItemMetaService, AssetHubItemMetaReadService],
 })

@@ -80,16 +80,6 @@ export class CoworkerUploadService {
     }
   }
 
-  private async applySupporters(
-    manager: EntityManager,
-    packageId: number,
-    supporterIds: number[] | undefined,
-  ): Promise<void> {
-    if (supporterIds === undefined) return;
-    const ids = await this.itemMeta.assertSupporterUsers(manager, supporterIds);
-    await this.itemMeta.replaceSupporters(manager, 'coworker', packageId, ids);
-  }
-
   private async assertLookups(manager: EntityManager, channelIds: number[], modelId: number): Promise<number[]> {
     const uniqueChannels = [...new Set(channelIds.filter((id) => Number.isInteger(id) && id > 0))];
     if (!uniqueChannels.length) {
@@ -153,7 +143,6 @@ export class CoworkerUploadService {
         );
 
         await this.itemMeta.replaceResponsibles(manager, 'coworker', savedPkg.id, responsibleUserIds);
-        await this.applySupporters(manager, savedPkg.id, dto.supporter_ids ?? []);
 
         const savedVersion = await manager.save(
           CoworkerVersion,
@@ -228,7 +217,6 @@ export class CoworkerUploadService {
 
         await manager.update(CoworkerPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'coworker', packageId, responsibleUserIds);
-        await this.applySupporters(manager, packageId, dto.supporter_ids);
 
         const saved = await manager.save(
           CoworkerVersion,
@@ -339,9 +327,6 @@ export class CoworkerUploadService {
 
         await manager.update(CoworkerPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'coworker', pkg.id, responsibleUserIds);
-        if (!approverPending) {
-          await this.applySupporters(manager, pkg.id, dto.supporter_ids);
-        }
 
         locked.name = dto.name;
         locked.short_description = dto.short_description;

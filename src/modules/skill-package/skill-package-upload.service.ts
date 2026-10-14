@@ -23,7 +23,11 @@ import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
 import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
-import { canBumpPackage, canTogglePackage, isAiHubWorkspaceSO } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
+import {
+  canBumpPackage,
+  canTogglePackage,
+  isAiHubWorkspaceSO,
+} from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
@@ -76,12 +80,6 @@ export class SkillPackageUploadService {
     }
   }
 
-  private async applySupporters(manager: EntityManager, packageId: number, supporterIds: number[] | undefined): Promise<void> {
-    if (supporterIds === undefined) return;
-    const ids = await this.itemMeta.assertSupporterUsers(manager, supporterIds);
-    await this.itemMeta.replaceSupporters(manager, 'skill', packageId, ids);
-  }
-
   // Sanitize the submitted guide once, before any transaction is opened. `requireContent` is on for
   // a create (a new artifact must document itself) and off for a bump, where an author revising an
   // artifact that predates the guide may legitimately leave it blank.
@@ -106,11 +104,7 @@ export class SkillPackageUploadService {
     const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, true);
 
     return this.dataSource.transaction(async (manager) => {
-      const resolvedCategory = await this.categoryService?.validateActive(
-        dto.category_id,
-        CategoryType.SKILL,
-        manager,
-      );
+      const resolvedCategory = await this.categoryService?.validateActive(dto.category_id, CategoryType.SKILL, manager);
       // Reject unknown publisher / user / tag ids before writing anything.
       const owning = packageOwningFields(dto.publisher_id, dto.owning_unit_name, 'create');
       await this.itemMeta.assertPublisher(manager, owning.publisher_id);
@@ -130,7 +124,6 @@ export class SkillPackageUploadService {
       );
 
       await this.itemMeta.replaceResponsibles(manager, 'skill', savedPkg.id, responsibleUserIds);
-      await this.applySupporters(manager, savedPkg.id, dto.supporter_ids ?? []);
 
       // code = 'skill_<id>' — set post-insert (id known only now) in the SAME tx.
       await manager.update(SkillPackage, savedPkg.id, { code: `skill_${savedPkg.id}` });
@@ -235,7 +228,6 @@ export class SkillPackageUploadService {
 
         await manager.update(SkillPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', packageId, responsibleUserIds);
-        await this.applySupporters(manager, packageId, dto.supporter_ids);
 
         const version = manager.create(SkillVersion, {
           skill_package_id: packageId,
@@ -370,9 +362,6 @@ export class SkillPackageUploadService {
 
         await manager.update(SkillPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'skill', pkg.id, responsibleUserIds);
-        if (!approverPending) {
-          await this.applySupporters(manager, pkg.id, dto.supporter_ids);
-        }
 
         locked.name = dto.name;
         locked.short_description = dto.short_description;

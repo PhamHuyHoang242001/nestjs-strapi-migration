@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { PromptPackage, PromptPackageStatus } from '@modules/databases/prompt-package.entity';
 import { PromptVersion, PromptVersionState } from '@modules/databases/prompt-version.entity';
 import { CreatePromptPackageDto } from './dto/create-prompt-package.dto';
@@ -20,7 +20,11 @@ import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
 import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
-import { canBumpPackage, canTogglePackage, isAiHubWorkspaceSO } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
+import {
+  canBumpPackage,
+  canTogglePackage,
+  isAiHubWorkspaceSO,
+} from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 
 // PG unique-violation error code; caught to produce 409 on duplicate-pending.
@@ -73,16 +77,6 @@ export class PromptLibraryUploadService {
     }
   }
 
-  private async applySupporters(
-    manager: EntityManager,
-    packageId: number,
-    supporterIds: number[] | undefined,
-  ): Promise<void> {
-    if (supporterIds === undefined) return;
-    const ids = await this.itemMeta.assertSupporterUsers(manager, supporterIds);
-    await this.itemMeta.replaceSupporters(manager, 'prompt', packageId, ids);
-  }
-
   // Sanitize the submitted guide once, before any transaction is opened. `requireContent` is on for
   // a create (a new artifact must document itself) and off for a bump, where an author revising an
   // artifact that predates the guide may legitimately leave it blank.
@@ -127,7 +121,6 @@ export class PromptLibraryUploadService {
       );
 
       await this.itemMeta.replaceResponsibles(manager, 'prompt', savedPkg.id, responsibleUserIds);
-      await this.applySupporters(manager, savedPkg.id, dto.supporter_ids ?? []);
 
       // code = 'prompt_<id>' — set post-insert (id known only now) in the SAME tx.
       await manager.update(PromptPackage, savedPkg.id, { code: `prompt_${savedPkg.id}` });
@@ -220,7 +213,6 @@ export class PromptLibraryUploadService {
 
         await manager.update(PromptPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'prompt', packageId, responsibleUserIds);
-        await this.applySupporters(manager, packageId, dto.supporter_ids);
 
         const version = manager.create(PromptVersion, {
           prompt_package_id: packageId,
@@ -341,9 +333,6 @@ export class PromptLibraryUploadService {
 
         await manager.update(PromptPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'prompt', pkg.id, responsibleUserIds);
-        if (!approverPending) {
-          await this.applySupporters(manager, pkg.id, dto.supporter_ids);
-        }
 
         locked.name = dto.name;
         locked.short_description = dto.short_description;

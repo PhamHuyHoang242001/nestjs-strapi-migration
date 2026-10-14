@@ -21,7 +21,14 @@ Nguồn sự thật sau plan `plans/261009-1424-ai-hub-coworker/`. Bản vẽ c�
 | My Version list | GET versions | submitter ∨ package `created_by` only. Supporter không thấy version người khác |
 | Version detail / diff | GET versions/:vid | submitter ∨ created_by ∨ approver. Supporter không widen |
 
-`supporter_ids` full-replace trên create/bump/editVersion (không PATCH riêng). Bảng `ai_hub_supporters`. Tác giả (`responsible_user_ids`) ≠ supporter.
+Supporter quản lý **độc lập**, không còn nhận `supporter_ids` trong create/bump/editVersion (gửi lên → 400). Bảng `ai_hub_supporters`. Tác giả (`responsible_user_ids`) ≠ supporter.
+
+| API | Ai được | Ghi chú |
+|---|---|---|
+| `GET /v1/asset-hub/:type/supporter-candidates` | Bearer | User có `<ws>_upload` (role hoặc grant ngoại lệ ALLOW còn hạn). Prompt: mọi user. Phân trang + `search` email |
+| `PUT /v1/asset-hub/:type/items/:id/supporters` | created_by ∨ supporter hiện tại | Body `{ supporter_ids }` ghi đè toàn bộ, `[]` xoá hết. Mỗi id phải là candidate. SO/approver **không** |
+
+`:type` = `skill` \| `prompt` \| `api-catalog` \| `coworker`.
 
 SO: child module `/asset-hub/skill|prompt|api-catalog|coworker`, `ROOT_OWNER_CONFIG` + `OWNER_ALL`, **không** `HIERARCHY_MAP` / records browser.
 

@@ -41,16 +41,6 @@ export class CreateCoworkerPackageDto {
   @Type(() => Number)
   readonly responsible_user_ids: number[];
 
-  @ApiProperty({ description: 'Supporter user IDs (full replace)', type: [Number], required: false })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(MAX_RESPONSIBLE_USERS)
-  @ArrayUnique()
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  @Type(() => Number)
-  readonly supporter_ids?: number[];
-
   @ApiProperty({ required: false, maxLength: 500 })
   @IsOptional()
   @IsString()

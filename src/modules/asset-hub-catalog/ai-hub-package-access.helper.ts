@@ -9,6 +9,30 @@ export const AI_HUB_PACKAGE_TABLES = [
   'coworker_packages',
 ] as const;
 
+export const AI_HUB_PACKAGE_TABLE_BY_TYPE: Readonly<Record<AiHubArtifactType, (typeof AI_HUB_PACKAGE_TABLES)[number]>> =
+  {
+    skill: 'skill_packages',
+    prompt: 'prompt_packages',
+    'api-catalog': 'api_catalog_packages',
+    coworker: 'coworker_packages',
+  };
+
+/**
+ * Upload code a user must hold to be added as a supporter of that workspace's packages.
+ * `null` = every live user is eligible (prompt upload is open to every logged-in user).
+ */
+export const AI_HUB_SUPPORTER_UPLOAD_CODE: Readonly<Record<AiHubArtifactType, string | null>> = {
+  skill: 'skill_upload',
+  prompt: null,
+  'api-catalog': 'api_upload',
+  coworker: 'coworker_upload',
+};
+
+/** Manage supporters: package creator or a current supporter. SO and approvers do not widen. */
+export function canManageSupporters(opts: { userId: number; createdBy: number; supporterIds: number[] }): boolean {
+  return opts.createdBy === opts.userId || opts.supporterIds.includes(opts.userId);
+}
+
 export type InactiveListMode = 'active' | 'all-inactive' | 'own-inactive';
 
 /** Bump / rejected-edit. SO is NOT included — pending-edit is a separate check. */

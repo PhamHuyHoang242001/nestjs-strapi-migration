@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { ApiPackage, ApiPackageStatus } from '@modules/databases/api-catalog-package.entity';
 import { ApiVersion, ApiVersionState } from '@modules/databases/api-catalog-version.entity';
 import { CreateApiPackageDto } from './dto/create-api-package.dto';
@@ -20,7 +20,11 @@ import { CategoryService } from '@modules/category/category.service';
 import { CategoryType } from '@modules/databases/category.entity';
 import { AssetHubItemMetaService, packageOwningFields } from '@modules/asset-hub-catalog/asset-hub-item-meta.service';
 import { isUsageGuideEmpty, sanitizeUsageGuideHtml } from '@common/utils/usage-guide-html.util';
-import { canBumpPackage, canTogglePackage, isAiHubWorkspaceSO } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
+import {
+  canBumpPackage,
+  canTogglePackage,
+  isAiHubWorkspaceSO,
+} from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
 import { specColumns, validateAndNormalizeSpec } from './api-spec.util';
 
@@ -74,12 +78,6 @@ export class ApiCatalogUploadService {
     }
   }
 
-  private async applySupporters(manager: EntityManager, packageId: number, supporterIds: number[] | undefined): Promise<void> {
-    if (supporterIds === undefined) return;
-    const ids = await this.itemMeta.assertSupporterUsers(manager, supporterIds);
-    await this.itemMeta.replaceSupporters(manager, 'api-catalog', packageId, ids);
-  }
-
   // Sanitize the submitted guide once, before any transaction is opened. `requireContent` is on for
   // a create (a new artifact must document itself) and off for a bump, where an author revising an
   // artifact that predates the guide may legitimately leave it blank.
@@ -125,7 +123,6 @@ export class ApiCatalogUploadService {
       );
 
       await this.itemMeta.replaceResponsibles(manager, 'api-catalog', savedPkg.id, responsibleUserIds);
-      await this.applySupporters(manager, savedPkg.id, dto.supporter_ids ?? []);
 
       // code = 'api_catalog_<id>' — set post-insert (id known only now) in the SAME tx.
       await manager.update(ApiPackage, savedPkg.id, { code: `api_catalog_${savedPkg.id}` });
@@ -220,7 +217,6 @@ export class ApiCatalogUploadService {
 
         await manager.update(ApiPackage, packageId, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', packageId, responsibleUserIds);
-        await this.applySupporters(manager, packageId, dto.supporter_ids);
 
         const version = manager.create(ApiVersion, {
           api_catalog_package_id: packageId,
@@ -350,9 +346,6 @@ export class ApiCatalogUploadService {
 
         await manager.update(ApiPackage, pkg.id, owning);
         await this.itemMeta.replaceResponsibles(manager, 'api-catalog', pkg.id, responsibleUserIds);
-        if (!approverPending) {
-          await this.applySupporters(manager, pkg.id, dto.supporter_ids);
-        }
 
         locked.name = dto.name;
         locked.short_description = dto.short_description;

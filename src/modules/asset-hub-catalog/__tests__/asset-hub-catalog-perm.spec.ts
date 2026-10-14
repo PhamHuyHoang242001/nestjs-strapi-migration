@@ -10,7 +10,8 @@ const getPerm = (prop: string): string[] | undefined =>
 
 describe('AssetHubCatalogController — perm mapping', () => {
   // listUsers is Bearer-only: prompt upload is open to every user, who needs the picker on the form.
-  it.each(['listUsers', 'listTags', 'listPublishers'])('leaves %s Bearer-only', (prop) => {
+  // Supporter endpoints: Bearer-only; creator/supporter and eligibility are enforced in the service.
+  it.each(['listUsers', 'listTags', 'listPublishers', 'listSupporterCandidates', 'replaceSupporters'])('leaves %s Bearer-only', (prop) => {
     expect(getPerm(prop)).toBeUndefined();
   });
 });
