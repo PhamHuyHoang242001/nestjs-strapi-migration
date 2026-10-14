@@ -29,6 +29,11 @@ describe('assertChannelLink', () => {
     expect(() => assertChannelLink('https://TEAMS.microsoft.com/l/x', `${TEAMS}/`, 'Teams')).not.toThrow();
   });
 
+  it.each([null, undefined, '', '   '])('treats link %p as "no link": returns null, no domain needed', (link) => {
+    expect(assertChannelLink(link, null, 'Teams')).toBeNull();
+    expect(assertChannelLink(link, TEAMS, 'Teams')).toBeNull();
+  });
+
   it('returns the trimmed link (surrounding whitespace is not stored)', () => {
     expect(assertChannelLink(`  ${TEAMS}/l/x\n`, TEAMS, 'Teams')).toBe(`${TEAMS}/l/x`);
   });

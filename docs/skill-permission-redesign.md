@@ -37,7 +37,7 @@ SO: child module `/asset-hub/skill|prompt|api-catalog|coworker`, `ROOT_OWNER_CON
 Prefix `/v1/ai-hub/coworker`. Clone prompt, **không** download / usage_guide / tags / category.
 
 - Create: `code` user nhập, unique live (409 nếu trùng), immutable.
-- Artifact: `channels: [{ channel_id, link }]` (≥1, mỗi channel 1 lần), `model_id`. **Mỗi channel 1 link**, lưu ở `coworker_version_channels.link`; `coworker_versions.link` đã bỏ.
+- Artifact: `channels: [{ channel_id, link? }]` (≥1, mỗi channel 1 lần), `model_id`. **Mỗi channel tối đa 1 link, không bắt buộc** (bỏ trống / `null` / `""` → lưu NULL, không check domain), lưu ở `coworker_version_channels.link`; `coworker_versions.link` đã bỏ.
 - Validate link: `ai_hub_coworker_channels.domain` = origin cho phép, nhiều origin cách nhau `,` (vd `https://outlook.office.com,https://outlook.live.com`). Link hợp lệ khi `new URL(link).origin` khớp 1 origin (không phân biệt hoa thường, bỏ `/` cuối). `domain` NULL/rỗng → 400. Data `domain` do ops tự điền.
 - Response: `channels: [{ id, name, link }]`. Comparison (version detail) + diff: `base` / `incoming` = `[{ channel_id, name, link }]` (`base` null nếu không có bản trước/active).
 - Lookup GET `/channels` (`{ id, name, domains[] }`) `/models` Bearer.

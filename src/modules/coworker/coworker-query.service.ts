@@ -25,9 +25,9 @@ import {
 } from '@modules/asset-hub-catalog/ai-hub-package-access.helper';
 
 // A version's channel with that version's link for it (response shape of `channels[]`).
-type VersionChannel = { id: number; name: string; link: string };
+type VersionChannel = { id: number; name: string; link: string | null };
 // Comparison / diff entry: base and incoming are compared channel by channel.
-type ChannelLinkPair = { channel_id: number; name: string; link: string };
+type ChannelLinkPair = { channel_id: number; name: string; link: string | null };
 
 function toChannelLinkPairs(channels: VersionChannel[] | undefined): ChannelLinkPair[] {
   return (channels ?? []).map((c) => ({ channel_id: c.id, name: c.name, link: c.link }));
@@ -88,7 +88,7 @@ export class CoworkerQueryService {
     );
     for (const row of rows) {
       const list = map.get(Number(row.version_id)) ?? [];
-      list.push({ id: Number(row.id), name: row.name, link: row.link });
+      list.push({ id: Number(row.id), name: row.name, link: row.link ?? null });
       map.set(Number(row.version_id), list);
     }
     return map;

@@ -4,7 +4,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // - ai_hub_coworker_channels.domain: allowed origin(s) for that channel's links, comma-separated
 //   when a channel has several hosts. Filled by ops; NULL = channel not usable for writes yet.
 // - coworker_version_channels.link: backfilled from coworker_versions.link (every existing channel
-//   row of a version gets that version's link), then NOT NULL + one live row per (version, channel).
+//   row of a version gets that version's link). Nullable: a channel's link is optional. One live
+//   row per (version, channel).
 // - coworker_versions.link: dropped once copied.
 // Fails closed instead of silently losing a link or tripping the unique index on existing data.
 export class CoworkerPerChannelLink2610141500 implements MigrationInterface {
@@ -36,20 +37,13 @@ export class CoworkerPerChannelLink2610141500 implements MigrationInterface {
         );
       }
 
-      // All rows, soft-deleted included, so the NOT NULL below holds.
+      // All rows, soft-deleted included, so no existing link is lost.
       await queryRunner.query(`
         UPDATE coworker_version_channels vc
         SET link = v.link
         FROM coworker_versions v
         WHERE v.id = vc.coworker_version_id AND vc.link IS NULL
       `);
-    }
-
-    const missing = (await queryRunner.query(
-      `SELECT id FROM coworker_version_channels WHERE link IS NULL LIMIT 20`,
-    )) as Array<{ id: number }>;
-    if (missing.length) {
-      throw new Error(`coworker_version_channels rows without a link: ${missing.map((r) => r.id).join(', ')}`);
     }
 
     const duplicates = (await queryRunner.query(`
@@ -64,7 +58,6 @@ export class CoworkerPerChannelLink2610141500 implements MigrationInterface {
       throw new Error(`duplicate live coworker_version_channels (version, channel): ${pairs}`);
     }
 
-    await queryRunner.query(`ALTER TABLE coworker_version_channels ALTER COLUMN link SET NOT NULL`);
     await queryRunner.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS uq_coworker_version_channels_live
       ON coworker_version_channels (coworker_version_id, channel_id)
@@ -83,6 +76,7 @@ export class CoworkerPerChannelLink2610141500 implements MigrationInterface {
       FROM (
         SELECT DISTINCT ON (coworker_version_id) coworker_version_id, link
         FROM coworker_version_channels
+        WHERE link IS NOT NULL
         ORDER BY coworker_version_id, (deleted_at IS NOT NULL), id
       ) first_row
       WHERE first_row.coworker_version_id = v.id AND v.link IS NULL

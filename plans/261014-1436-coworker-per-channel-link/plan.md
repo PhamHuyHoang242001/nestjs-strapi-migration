@@ -31,7 +31,7 @@ Source: [brainstorm report](../reports/brainstorm-261014-1436-coworker-per-chann
 
 | Topic | Decision |
 |---|---|
-| Storage | `coworker_version_channels.link VARCHAR NOT NULL`; unique live `(coworker_version_id, channel_id)` |
+| Storage | `coworker_version_channels.link VARCHAR NULL` (link optional per channel — changed 2026-10-14 on user request); unique live `(coworker_version_id, channel_id)` |
 | Old column | Drop `coworker_versions.link` after backfill |
 | Domain | `ai_hub_coworker_channels.domain VARCHAR NULL`, one string that may hold a comma-separated origin list (`https://outlook.office.com,https://outlook.live.com`); data filled by user, no seed |
 | Match | Split domain on `,` → trim, lowercase, strip trailing `/`, drop empties; link valid if `new URL(link).origin` equals **any** entry (not raw `startsWith` — blocks `teams.microsoft.com.evil.vn`, `@evil.vn`) |

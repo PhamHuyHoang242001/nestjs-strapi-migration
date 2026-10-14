@@ -125,6 +125,26 @@ describe('CoworkerUploadService', () => {
       expect(batch).toEqual(pairs.map((p) => ({ coworker_version_id: version.id, ...p })));
     });
 
+    it('a channel may have no link: stored as NULL, even when the channel has no domain configured', async () => {
+      const saved: any[] = [];
+      const channels: ChannelRow[] = [...DEFAULT_CHANNELS, { id: 4, name: 'Zalo', domain: null }];
+      dataSource.transaction = jest.fn(async (cb: any) => cb(lookupManager(saved, [], channels)));
+      service = new CoworkerUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
+      const pairs = [
+        { channel_id: 1, link: `${TEAMS}/l/a` },
+        { channel_id: 4, link: '  ' },
+      ];
+
+      await service.createNew({ ...dto, channels: pairs } as any, USER_ID);
+
+      const version = saved.find((s) => s.entity === 'CoworkerVersion')?.row;
+      const batch = saved.find((s) => s.entity === 'batch')?.rows;
+      expect(batch).toEqual([
+        { coworker_version_id: version.id, channel_id: 1, link: `${TEAMS}/l/a` },
+        { coworker_version_id: version.id, channel_id: 4, link: null },
+      ]);
+    });
+
     it.each([
       ['unknown channel', [{ channel_id: 9, link: `${TEAMS}/l/a` }], 'INVALID_CHANNELS'],
       ['channel without domain', [{ channel_id: 4, link: `${TEAMS}/l/a` }], 'has no domain configured'],

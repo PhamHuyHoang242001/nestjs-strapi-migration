@@ -7,7 +7,7 @@ import {
   ArrayUnique,
   IsArray,
   IsInt,
-  IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   Min,
@@ -17,8 +17,9 @@ import {
 // Upper bound on channels per version; the channel catalog is tiny, this only caps the payload.
 export const MAX_COWORKER_CHANNELS = 20;
 
-// One channel of a coworker version and that channel's link. The link's origin is checked
-// against the channel's configured domain(s) in the service, where the channel row is loaded.
+// One channel of a coworker version and that channel's optional link. When present, the link's
+// origin is checked against the channel's configured domain(s) in the service, where the channel
+// row is loaded; null / empty / whitespace-only means "no link" and is stored as NULL.
 export class CoworkerChannelLinkDto {
   @ApiProperty({ description: 'Channel ID from /v1/ai-hub/coworker/channels' })
   @IsInt()
@@ -26,11 +27,16 @@ export class CoworkerChannelLinkDto {
   @Type(() => Number)
   readonly channel_id: number;
 
-  @ApiProperty({ description: "Link for this channel; origin must match the channel's domain", maxLength: 2000 })
-  @IsNotEmpty()
+  @ApiProperty({
+    description: "Optional link for this channel; when set, origin must match the channel's domain",
+    maxLength: 2000,
+    required: false,
+    nullable: true,
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(2000)
-  readonly link: string;
+  readonly link?: string | null;
 }
 
 // Shared `channels` field for the create and bump bodies: at least one, each channel at most once.

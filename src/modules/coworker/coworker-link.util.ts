@@ -25,13 +25,19 @@ function normalizeOrigin(entry: string): string {
 // The link's origin (scheme + host + port) must equal one configured domain exactly. Comparing
 // parsed origins rather than raw string prefixes rejects look-alikes such as
 // "https://teams.microsoft.com.evil.vn" and "https://teams.microsoft.com@evil.vn".
-// Returns the trimmed link — the value that was actually validated — for storage.
-export function assertChannelLink(link: string, domain: string | null | undefined, channelName: string): string {
+// The link is optional: null / empty / whitespace-only returns null (stored as NULL) without a domain
+// check. Otherwise returns the trimmed link — the value that was actually validated — for storage.
+export function assertChannelLink(
+  link: string | null | undefined,
+  domain: string | null | undefined,
+  channelName: string,
+): string | null {
+  const trimmed = (link ?? '').trim();
+  if (!trimmed) return null;
   const allowed = parseChannelDomains(domain);
   if (!allowed.length) {
     throw new BadRequestException(`INVALID_COWORKER_LINK: channel ${channelName} has no domain configured`);
   }
-  const trimmed = (link ?? '').trim();
   let parsed: URL;
   try {
     parsed = new URL(trimmed);

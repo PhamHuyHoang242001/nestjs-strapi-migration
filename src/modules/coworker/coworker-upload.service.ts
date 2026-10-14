@@ -82,7 +82,7 @@ export class CoworkerUploadService {
   }
 
   // Validates the channel/link pairs and the model before any write. Each channel must be live and
-  // appear once; each link's origin must match that channel's configured domain(s).
+  // appear once; a link is optional, but when given its origin must match the channel's domain(s).
   private async assertLookups(
     manager: EntityManager,
     channels: CoworkerChannelLinkDto[],

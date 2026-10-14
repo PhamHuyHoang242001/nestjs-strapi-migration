@@ -83,11 +83,29 @@ describe('coworker write DTOs', () => {
         { channel_id: 1, link: 'https://teams.microsoft.com/l/a' },
         { channel_id: 1, link: 'https://teams.microsoft.com/l/b' },
       ]],
-      ['item without link', [{ channel_id: 1 }]],
-      ['item with empty link', [{ channel_id: 1, link: '' }]],
       ['item with bad channel_id', [{ channel_id: 0, link: 'https://teams.microsoft.com/l/a' }]],
     ])('rejects channels %s', async (_label, channels) => {
       const errors = await validate(plainToInstance(CreateCoworkerPackageDto, { ...baseCreate, channels }), strict);
+      expect(errors.some((e) => e.property === 'channels')).toBe(true);
+    });
+
+    it.each([
+      ['omitted', { channel_id: 1 }],
+      ['null', { channel_id: 1, link: null }],
+      ['empty', { channel_id: 1, link: '' }],
+    ])('link is optional (%s)', async (_label, item) => {
+      const errors = await validate(
+        plainToInstance(CreateCoworkerPackageDto, { ...baseCreate, channels: [item] }),
+        strict,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rejects a non-string link', async () => {
+      const errors = await validate(
+        plainToInstance(CreateCoworkerPackageDto, { ...baseCreate, channels: [{ channel_id: 1, link: 123 }] }),
+        strict,
+      );
       expect(errors.some((e) => e.property === 'channels')).toBe(true);
     });
 
