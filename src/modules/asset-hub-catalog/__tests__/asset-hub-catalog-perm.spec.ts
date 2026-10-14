@@ -9,21 +9,8 @@ const getPerm = (prop: string): string[] | undefined =>
   Reflect.getMetadata(PERMISSION_META_KEY, AssetHubCatalogController.prototype[prop]);
 
 describe('AssetHubCatalogController — perm mapping', () => {
-  it('gates the user directory behind any upload or approve grant', () => {
-    // PermissionGuard is OR across codes: holding one of the eight is enough.
-    expect(getPerm('listUsers')).toEqual([
-      'skill_upload',
-      'prompt_upload',
-      'skill_approve',
-      'prompt_approve',
-      'api_upload',
-      'api_approve',
-      'coworker_upload',
-      'coworker_approve',
-    ]);
-  });
-
-  it.each(['listTags', 'listPublishers'])('leaves %s Bearer-only', (prop) => {
+  // listUsers is Bearer-only: prompt upload is open to every user, who needs the picker on the form.
+  it.each(['listUsers', 'listTags', 'listPublishers'])('leaves %s Bearer-only', (prop) => {
     expect(getPerm(prop)).toBeUndefined();
   });
 });

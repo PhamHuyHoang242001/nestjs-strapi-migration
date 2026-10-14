@@ -1105,12 +1105,12 @@ describe('PromptLibraryQueryService', () => {
       expect(listSql).not.toContain('AND v.submitted_by = $1');
     });
 
-    it('isUpdate=false when caller lacks prompt_upload even if SQL marks the row editable', async () => {
-      permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
+    it('isUpdate follows SQL even when caller lacks prompt_upload (upload open to all)', async () => {
+      permissionQuery.getUserPermissions.mockResolvedValue([]);
       stub({ count: 1, rows: [rawRow({ state: PromptVersionState.REJECTED, is_update: true })] });
 
       const result = await service.listVersions({ state: 'all' }, USER_ID);
-      expect((result.data[0] as any).isUpdate).toBe(false);
+      expect((result.data[0] as any).isUpdate).toBe(true);
     });
   });
 });

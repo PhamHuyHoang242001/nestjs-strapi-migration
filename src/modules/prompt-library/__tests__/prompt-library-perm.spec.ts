@@ -12,13 +12,13 @@ describe('PromptLibraryController — perm mapping', () => {
   const getDataAccess = (prop: string): unknown =>
     Reflect.getMetadata(DATA_ACCESS_META_KEY, PromptLibraryController.prototype[prop]);
 
-  it('createItem carries prompt_upload', () => {
-    expect(getPerm('createItem')).toEqual(['prompt_upload']);
-  });
-
-  it('createVersion carries prompt_upload', () => {
-    expect(getPerm('createVersion')).toEqual(['prompt_upload']);
-  });
+  // Prompt upload is open to every logged-in user: write routes are Bearer-only, row checks in service.
+  it.each(['createItem', 'createVersion', 'editVersion', 'toggleStatus', 'getDiff'])(
+    '%s has no RequirePermission metadata (upload open to all)',
+    (prop) => {
+      expect(getPerm(prop)).toBeUndefined();
+    },
+  );
 
   it('approveVersion carries prompt_approve', () => {
     expect(getPerm('approveVersion')).toEqual(['prompt_approve']);
@@ -26,10 +26,6 @@ describe('PromptLibraryController — perm mapping', () => {
 
   it('rejectVersion carries prompt_approve', () => {
     expect(getPerm('rejectVersion')).toEqual(['prompt_approve']);
-  });
-
-  it('toggleStatus carries prompt_upload or prompt_approve', () => {
-    expect(getPerm('toggleStatus')).toEqual(['prompt_upload', 'prompt_approve']);
   });
 
   // BearerGuard-only routes must NOT have @RequirePermission (no guard code).
@@ -52,14 +48,6 @@ describe('PromptLibraryController — perm mapping', () => {
 
   it('listReviewSubmitters carries prompt_approve', () => {
     expect(getPerm('listReviewSubmitters')).toEqual(['prompt_approve']);
-  });
-
-  it('getDiff carries prompt_upload or prompt_approve', () => {
-    expect(getPerm('getDiff')).toEqual(['prompt_upload', 'prompt_approve']);
-  });
-
-  it('editVersion carries prompt_upload or prompt_approve', () => {
-    expect(getPerm('editVersion')).toEqual(['prompt_upload', 'prompt_approve']);
   });
 
   it('getVersion has no RequirePermission metadata (service-layer authz only)', () => {

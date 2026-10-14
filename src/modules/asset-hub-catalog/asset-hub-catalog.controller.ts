@@ -1,5 +1,3 @@
-import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
-import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { BearerGuard } from '@common/guards/bearer.guard';
 import { Controller, Get, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -39,22 +37,10 @@ export class AssetHubCatalogController {
   }
 
   // GET /v1/asset-hub/users — the person-in-charge picker: a paginated directory of id + email.
-  // Permission-gated rather than Bearer-only, because it is a browsable user directory: only a
-  // caller who can actually open a create/edit form has a reason to page through it. PermissionGuard
-  // is OR across codes, so holding any one of the eight upload/approve grants is enough.
+  // Bearer-only: prompt upload is open to every logged-in user, so any caller can open the prompt
+  // create/edit form and needs this picker for responsible users / supporters.
   @ApiOperation({ summary: 'List users for the person-in-charge picker' })
   @Get('users')
-  @UseGuards(PermissionGuard)
-  @RequirePermission(
-    'skill_upload',
-    'prompt_upload',
-    'skill_approve',
-    'prompt_approve',
-    'api_upload',
-    'api_approve',
-    'coworker_upload',
-    'coworker_approve',
-  )
   listUsers(@Query() q: ListUsersQueryDto) {
     return this.userDirectoryService.list({ page: q.page, limit: q.limit, search: q.search });
   }

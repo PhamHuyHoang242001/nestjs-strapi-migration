@@ -4,6 +4,8 @@ Nguồn sự thật sau plan `plans/261009-1424-ai-hub-coworker/`. Bản vẽ c�
 
 4 workspace: skill, prompt, api-catalog, coworker. Mỗi WS **2 code**: `*_upload` + `*_approve`.
 
+**Ngoại lệ prompt:** upload mở cho mọi user login. `prompt_upload` vẫn còn trong DB nhưng không còn được kiểm tra; ở mọi rule bên dưới, `upload` của prompt luôn = true (create, bump, sửa rejected, diff, ẩn/hiện chỉ cần Bearer + check owner trong service). `my-permissions.canUpload` luôn `true`. Picker `GET /v1/asset-hub/users` chỉ cần Bearer.
+
 ## Quyền runtime (sau helper)
 
 | Việc | API | Ai được |
