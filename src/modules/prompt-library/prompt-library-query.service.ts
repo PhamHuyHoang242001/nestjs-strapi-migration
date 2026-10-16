@@ -18,6 +18,7 @@ import {
 import { stripGuide } from '@modules/asset-hub-catalog/asset-hub-response.helper';
 import { applyAssetHubCatalogFilters } from '@modules/asset-hub-catalog/asset-hub-list-filters';
 import { OwnerScopeResolverService } from '@common/authorization/services/owner-scope-resolver.service';
+import { AI_HUB_MICRO_CACHE_TTL_MS, MicroCacheService, stableCacheKey } from '@common/micro-cache';
 import {
   canAccessAiHubVersion,
   canBumpPackage,
@@ -38,6 +39,7 @@ export class PromptLibraryQueryService {
     private readonly metaRead: AssetHubItemMetaReadService,
     @Optional() private readonly categoryService?: CategoryService,
     @Optional() private readonly ownerScope?: OwnerScopeResolverService,
+    @Optional() private readonly microCache?: MicroCacheService,
   ) {}
 
   private async isPromptSo(userId: number): Promise<boolean> {
@@ -149,7 +151,27 @@ export class PromptLibraryQueryService {
   // List active packages, joining the active version's fields.
   // Sort: id DESC (deterministic — prevents page drift). Limit capped at 100 via DTO.
   // Filters are always parameter-bound (never string-interpolated into SQL).
+  // The active catalog is identical for every caller, so it is served through the shared 10s
+  // micro-cache (one DB round per burst). The inactive list depends on the caller and is never cached.
   async list(query: ListPromptQueryDto, userId: number) {
+    if (!this.microCache || query.status === PromptPackageStatus.INACTIVE) return this.listFromDb(query, userId);
+    // Normalized so equivalent requests share an entry: omitted status = active, padded search = trimmed.
+    const key = stableCacheKey('prompt:list', {
+      ...query,
+      status: undefined,
+      search: query.search?.trim() || undefined,
+      page: query.page ?? 1,
+      limit: Math.min(query.limit ?? 20, 100),
+    });
+    return this.microCache.getOrLoad(
+      key,
+      AI_HUB_MICRO_CACHE_TTL_MS,
+      () => this.listFromDb(query, userId),
+      'GET /v1/prompt/items',
+    );
+  }
+
+  private async listFromDb(query: ListPromptQueryDto, userId: number) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100); // double-cap even if DTO max bypassed
 

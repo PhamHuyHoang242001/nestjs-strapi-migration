@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SkillVersion } from '@modules/databases/skill-version.entity';
 import { LATEST_ARTIFACTS_LIMIT } from '@configuration/env.config';
+import { AI_HUB_MICRO_CACHE_TTL_MS, MicroCacheService } from '@common/micro-cache';
 
 // The literal artifact kinds surfaced by the feed. Kept as a string union so the `type` field is a
 // stable public discriminator ('skill' | 'prompt') the client can switch on.
@@ -53,6 +54,7 @@ export class LatestArtifactsService {
   constructor(
     @InjectRepository(SkillVersion)
     private readonly versionRepo: Repository<SkillVersion>,
+    @Optional() private readonly microCache?: MicroCacheService,
   ) {}
 
   // Resolve user ids → email for the "người tạo" display field. One batched, deduped, null-safe
@@ -106,8 +108,7 @@ export class LatestArtifactsService {
     versionTable: string,
     packageTable: string,
     fkColumn: string,
-    userId: number,
-  ): Promise<WorkspaceStatRow> {
+  ): Promise<Omit<WorkspaceStatRow, 'my_versions'>> {
     const rows = (await this.versionRepo.manager.query(
       `
       WITH latest AS (
@@ -136,19 +137,10 @@ export class LatestArtifactsService {
             AND p.active_version_id IS NOT NULL
             AND p.deleted_at IS NULL
             AND p.is_deleted = false
-        ) AS published,
-        (
-          SELECT COUNT(*)::int
-          FROM ${versionTable} v
-          INNER JOIN ${packageTable} p ON p.id = v.${fkColumn}
-          WHERE v.deleted_at IS NULL AND v.is_deleted = false
-            AND p.deleted_at IS NULL AND p.is_deleted = false
-            AND (v.submitted_by = $1 OR p.created_by = $1)
-        ) AS my_versions
+        ) AS published
       FROM latest
     `,
-      [userId],
-    )) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published' | 'my_versions', number | string>>;
+    )) as Array<Record<'total' | 'pending' | 'approved' | 'rejected' | 'published', number | string>>;
 
     const row = rows[0];
     return {
@@ -158,34 +150,88 @@ export class LatestArtifactsService {
       approved: Number(row?.approved ?? 0),
       rejected: Number(row?.rejected ?? 0),
       published: Number(row?.published ?? 0),
-      my_versions: Number(row?.my_versions ?? 0),
     };
+  }
+
+  // The caller's own version count per workspace (submitted the version or created the package),
+  // in one round trip. Kept apart from the shared aggregates so those can be cached for everyone.
+  private async fetchMyVersions(userId: number): Promise<Record<ArtifactType, number>> {
+    const mine = (table: string, packageTable: string, fk: string, alias: string) => `
+        (
+          SELECT COUNT(*)::int
+          FROM ${table} v
+          INNER JOIN ${packageTable} p ON p.id = v.${fk}
+          WHERE v.deleted_at IS NULL AND v.is_deleted = false
+            AND p.deleted_at IS NULL AND p.is_deleted = false
+            AND (v.submitted_by = $1 OR p.created_by = $1)
+        ) AS ${alias}`;
+    type MyVersionsRow = Record<'my_skill' | 'my_prompt' | 'my_api_catalog' | 'my_coworker', number | string>;
+    const rows: MyVersionsRow[] = await this.versionRepo.manager.query(
+      `SELECT ${[
+        mine('skill_versions', 'skill_packages', 'skill_package_id', 'my_skill'),
+        mine('prompt_versions', 'prompt_packages', 'prompt_package_id', 'my_prompt'),
+        mine('api_catalog_versions', 'api_catalog_packages', 'api_catalog_package_id', 'my_api_catalog'),
+        mine('coworker_versions', 'coworker_packages', 'coworker_package_id', 'my_coworker'),
+      ].join(',')}`,
+      [userId],
+    );
+    const row = rows[0];
+    return {
+      skill: Number(row?.my_skill ?? 0),
+      prompt: Number(row?.my_prompt ?? 0),
+      'api-catalog': Number(row?.my_api_catalog ?? 0),
+      coworker: Number(row?.my_coworker ?? 0),
+    };
+  }
+
+  // Shared aggregates for all four workspaces (no caller binding) — cacheable across users.
+  private fetchAllWorkspaceStats(): Promise<Array<Omit<WorkspaceStatRow, 'my_versions'>>> {
+    return Promise.all([
+      this.fetchWorkspaceStats('skill', 'skill_versions', 'skill_packages', 'skill_package_id'),
+      this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id'),
+      this.fetchWorkspaceStats('api-catalog', 'api_catalog_versions', 'api_catalog_packages', 'api_catalog_package_id'),
+      this.fetchWorkspaceStats('coworker', 'coworker_versions', 'coworker_packages', 'coworker_package_id'),
+    ]);
   }
 
   // GET /v1/asset-hub/stats — both workspaces' counters in one array, so the dashboard makes a
   // single request. This replaces the per-workspace GET /v1/skill/stats and GET /v1/prompt/stats;
   // the SQL was moved here rather than injected, because neither library module exports its query
   // service. The classification is unchanged — only the transport and the response shape differ.
+  // Shared aggregates go through the 10s micro-cache; my_versions is per caller and always fresh.
+  // Rows are rebuilt per caller so the cached aggregates are never mutated.
   async listStats(userId: number): Promise<{ data: WorkspaceStatRow[] }> {
-    const [skills, prompts, apiCatalogs, coworkers] = await Promise.all([
-      this.fetchWorkspaceStats('skill', 'skill_versions', 'skill_packages', 'skill_package_id', userId),
-      this.fetchWorkspaceStats('prompt', 'prompt_versions', 'prompt_packages', 'prompt_package_id', userId),
-      this.fetchWorkspaceStats(
-        'api-catalog',
-        'api_catalog_versions',
-        'api_catalog_packages',
-        'api_catalog_package_id',
-        userId,
-      ),
-      this.fetchWorkspaceStats('coworker', 'coworker_versions', 'coworker_packages', 'coworker_package_id', userId),
+    const [shared, mine] = await Promise.all([
+      this.microCache
+        ? this.microCache.getOrLoad(
+            'stats:counts',
+            AI_HUB_MICRO_CACHE_TTL_MS,
+            () => this.fetchAllWorkspaceStats(),
+            'GET /v1/asset-hub/stats',
+          )
+        : this.fetchAllWorkspaceStats(),
+      this.fetchMyVersions(userId),
     ]);
-    return { data: [skills, prompts, apiCatalogs, coworkers] };
+    return { data: shared.map((row) => ({ ...row, my_versions: mine[row.type] })) };
   }
 
   // GET /v1/asset-hub/latest — the N newest skills + N newest prompts, each carrying its latest
   // version's fields. N = the optional per-request override, else the configured default. Returns
   // both groups so the client can render "Skill mới nhất" and "Prompt mới nhất" sections separately.
-  async listLatest(limitOverride?: number): Promise<{
+  // The feed is identical for every caller → served through the shared 10s micro-cache, one entry
+  // per resolved limit.
+  async listLatest(limitOverride?: number) {
+    const limit = limitOverride ?? LATEST_ARTIFACTS_LIMIT;
+    if (!this.microCache) return this.listLatestFromDb(limit);
+    return this.microCache.getOrLoad(
+      `latest:${limit}`,
+      AI_HUB_MICRO_CACHE_TTL_MS,
+      () => this.listLatestFromDb(limit),
+      'GET /v1/asset-hub/latest',
+    );
+  }
+
+  private async listLatestFromDb(limitOverride?: number): Promise<{
     data: {
       skills: LatestArtifactItem[];
       prompts: LatestArtifactItem[];

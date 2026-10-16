@@ -17,6 +17,10 @@ Prompt / skill / api-catalog version M2M no longer uses `ai_hub_tags`. Write fie
 
 `GET /v1/ai-hub/coworker/reuse-matrix` (`coworker_upload`): columns = active coworker packages `{id,code,name}`; rows = paged active skills `{id,name,publisher}`; `cells[i]` ticks when the skill **active version** has a live `skill_version_coworkers` row for that column.
 
+## AI Hub read micro-cache
+
+`src/common/micro-cache/` — in-process cache (TTL 10s, single-flight, max 500 keys, no invalidation; staleness ≤10s accepted; single instance). Used by: `GET items` of skill / prompt / api-catalog when `status` ≠ `inactive` (inactive list is per-caller, never cached); `GET /v1/asset-hub/latest` (per limit); `GET /v1/asset-hub/stats` shared counts (`my_versions` is a separate per-user query, never cached). Cached values are shared — never mutate them.
+
 ## Major Areas
 
 | Area | Notes |

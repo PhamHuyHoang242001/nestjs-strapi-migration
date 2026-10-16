@@ -1,3 +1,4 @@
+import { MicroCacheService } from '@common/micro-cache';
 import { LatestArtifactsService } from '../latest-artifacts.service';
 import { LATEST_ARTIFACTS_LIMIT } from '@configuration/env.config';
 
@@ -130,4 +131,33 @@ describe('LatestArtifactsService', () => {
     // No submitters to resolve on the prompt side → empty group, still well-formed.
     expect(res.data.prompts).toEqual([]);
   });
+
+  describe('micro-cache', () => {
+    function makeCachedService() {
+      const query = jest.fn().mockResolvedValue([]);
+      const service = new LatestArtifactsService({ manager: { query } } as any, new MicroCacheService());
+      return { service, query };
+    }
+
+    it('serves a repeated latest feed from cache (same resolved limit)', async () => {
+      const { service, query } = makeCachedService();
+
+      const a = await service.listLatest();
+      const b = await service.listLatest(LATEST_ARTIFACTS_LIMIT);
+
+      expect(b).toBe(a);
+      // 4 workspace fetches (no submitters → no email lookup) for the first call only.
+      expect(query).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps a separate entry per limit', async () => {
+      const { service, query } = makeCachedService();
+
+      await service.listLatest(3);
+      await service.listLatest(5);
+
+      expect(query).toHaveBeenCalledTimes(8);
+    });
+  });
 });
+
