@@ -19,7 +19,7 @@ Prompt / skill / api-catalog version M2M no longer uses `ai_hub_tags`. Write fie
 
 ## AI Hub read micro-cache
 
-`src/common/micro-cache/` — in-process cache (TTL 10s, single-flight, max 500 keys, no invalidation; staleness ≤10s accepted; single instance). Used by: `GET items` of skill / prompt / api-catalog when `status` ≠ `inactive` (inactive list is per-caller, never cached); `GET /v1/asset-hub/latest` (per limit); `GET /v1/asset-hub/stats` shared counts (`my_versions` is a separate per-user query, never cached). Cached values are shared — never mutate them.
+`src/common/micro-cache/` — `MicroCacheService` over `@nestjs/cache-manager` (`cache.wrap`: TTL 10s + single-flight; in-memory LRU store via `cacheable`, max 500 keys; no invalidation, staleness ≤10s accepted). Multi-instance later: swap the store in `MicroCacheModule` for a Redis Keyv store; callers unchanged. Used by: `GET items` of skill / prompt / api-catalog when `status` ≠ `inactive` (inactive list is per-caller, never cached); `GET /v1/asset-hub/latest` (per limit); `GET /v1/asset-hub/stats` shared counts (`my_versions` is a separate per-user query, never cached). Cached values are shared — never mutate them.
 
 ## Major Areas
 

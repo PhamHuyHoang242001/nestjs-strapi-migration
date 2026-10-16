@@ -1,4 +1,4 @@
-import { MicroCacheService } from '@common/micro-cache';
+import { createInMemoryMicroCache } from '@common/micro-cache';
 import { LatestArtifactsService } from '../latest-artifacts.service';
 import { LATEST_ARTIFACTS_LIMIT } from '@configuration/env.config';
 
@@ -135,7 +135,7 @@ describe('LatestArtifactsService', () => {
   describe('micro-cache', () => {
     function makeCachedService() {
       const query = jest.fn().mockResolvedValue([]);
-      const service = new LatestArtifactsService({ manager: { query } } as any, new MicroCacheService());
+      const service = new LatestArtifactsService({ manager: { query } } as any, createInMemoryMicroCache());
       return { service, query };
     }
 
@@ -145,7 +145,7 @@ describe('LatestArtifactsService', () => {
       const a = await service.listLatest();
       const b = await service.listLatest(LATEST_ARTIFACTS_LIMIT);
 
-      expect(b).toBe(a);
+      expect(b).toEqual(a);
       // 4 workspace fetches (no submitters → no email lookup) for the first call only.
       expect(query).toHaveBeenCalledTimes(4);
     });

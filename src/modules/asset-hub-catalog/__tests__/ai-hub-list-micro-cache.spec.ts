@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
-import { MicroCacheService } from '@common/micro-cache';
+import { createInMemoryMicroCache } from '@common/micro-cache';
 import { SkillPackageQueryService } from '@modules/skill-package/skill-package-query.service';
 import { PromptLibraryQueryService } from '@modules/prompt-library/prompt-library-query.service';
 import { ApiCatalogQueryService } from '@modules/api-catalog/api-catalog-query.service';
@@ -51,14 +51,15 @@ describe.each(WORKSPACES)('%s list micro-cache', (_ws, Service) => {
   beforeEach(() => {
     deps = makeDeps();
     const S = Service as any;
-    service = new S(deps.packageRepo, deps.versionRepo, deps.permissionQuery, deps.metaRead, undefined, undefined, new MicroCacheService());
+    service = new S(deps.packageRepo, deps.versionRepo, deps.permissionQuery, deps.metaRead, undefined, undefined, createInMemoryMicroCache());
   });
 
   it('serves a repeated active list from cache (one DB round for two callers)', async () => {
     const a = await service.list({ page: 1, limit: 20 }, 1);
     const b = await service.list({ limit: 20, page: 1 }, 2);
 
-    expect(b).toBe(a);
+    // cache-manager hands back a copy, so compare by value; the DB-call count proves the cache hit.
+    expect(b).toEqual(a);
     // One data query builder + one count query builder for the first call only.
     expect(deps.packageRepo.createQueryBuilder).toHaveBeenCalledTimes(2);
   });
@@ -92,12 +93,12 @@ describe.each(WORKSPACES)('%s list micro-cache', (_ws, Service) => {
         uid === 1 ? [{ rootTable: 'skill_packages', rootId: 0 }, { rootTable: 'prompt_packages', rootId: 0 }, { rootTable: 'api_catalog_packages', rootId: 0 }] : [],
       ),
     };
-    service = new S(deps.packageRepo, deps.versionRepo, deps.permissionQuery, deps.metaRead, undefined, ownerScope, new MicroCacheService());
+    service = new S(deps.packageRepo, deps.versionRepo, deps.permissionQuery, deps.metaRead, undefined, ownerScope, createInMemoryMicroCache());
 
     const so = await service.list({ page: 1 }, 1);
     const regular = await service.list({ page: 1 }, 2);
 
-    expect(regular).toBe(so);
+    expect(regular).toEqual(so);
     expect(deps.metaRead.listSupportedPackageIds).not.toHaveBeenCalled();
   });
 
