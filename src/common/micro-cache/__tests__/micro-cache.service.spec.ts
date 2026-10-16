@@ -1,6 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { createInMemoryMicroCache, MicroCacheModule } from '../micro-cache.module';
 import { MicroCacheService, stableCacheKey } from '../micro-cache.service';
 
 // Deferred promise so a test can hold a loader open while other callers arrive.
@@ -14,27 +12,20 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-describe('MicroCacheService (cache-manager, in-memory LRU)', () => {
+describe('MicroCacheService', () => {
+  let clock: number;
   let cache: MicroCacheService;
-  let log: jest.SpyInstance;
-  const logged = () => (log.mock.calls as unknown[][]).map((c) => c[0] as string);
 
   beforeEach(() => {
-    jest.useFakeTimers({ now: new Date('2026-10-16T00:00:00Z') });
-    log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    cache = createInMemoryMicroCache(3);
-  });
-
-  afterEach(() => {
-    log.mockRestore();
-    jest.useRealTimers();
+    clock = 1_000;
+    cache = new MicroCacheService(3, () => clock);
   });
 
   it('loads on miss and serves the cached value within the TTL', async () => {
     const loader = jest.fn().mockResolvedValue({ n: 1 });
 
     expect(await cache.getOrLoad('k', 10_000, loader)).toEqual({ n: 1 });
-    jest.setSystemTime(Date.now() + 9_000);
+    clock += 9_999;
     expect(await cache.getOrLoad('k', 10_000, loader)).toEqual({ n: 1 });
 
     expect(loader).toHaveBeenCalledTimes(1);
@@ -44,7 +35,7 @@ describe('MicroCacheService (cache-manager, in-memory LRU)', () => {
     const loader = jest.fn().mockResolvedValueOnce('old').mockResolvedValueOnce('new');
 
     await cache.getOrLoad('k', 10_000, loader);
-    jest.setSystemTime(Date.now() + 10_001);
+    clock += 10_000;
 
     expect(await cache.getOrLoad('k', 10_000, loader)).toBe('new');
     expect(loader).toHaveBeenCalledTimes(2);
@@ -82,7 +73,7 @@ describe('MicroCacheService (cache-manager, in-memory LRU)', () => {
     expect(await cache.getOrLoad('b', 10_000, () => Promise.resolve('B'))).toBe('B');
   });
 
-  it('evicts the least recently used entry beyond the size cap', async () => {
+  it('evicts the oldest entry beyond the size cap', async () => {
     for (const k of ['a', 'b', 'c', 'd']) await cache.getOrLoad(k, 10_000, () => Promise.resolve(k));
 
     const reloadA = jest.fn().mockResolvedValue('a2');
@@ -92,33 +83,48 @@ describe('MicroCacheService (cache-manager, in-memory LRU)', () => {
     expect(reloadD).not.toHaveBeenCalled();
   });
 
-  it('clear() drops every entry', async () => {
-    await cache.getOrLoad('k', 10_000, () => Promise.resolve('v'));
-    await cache.clear();
-    const loader = jest.fn().mockResolvedValue('v2');
-    expect(await cache.getOrLoad('k', 10_000, loader)).toBe('v2');
+  it('a load started before clear() does not repopulate the cache, and a newer load keeps single-flight', async () => {
+    const old = deferred<string>();
+    const stale = cache.getOrLoad('k', 10_000, () => old.promise);
+    cache.clear();
+
+    const fresh = deferred<string>();
+    const freshLoader = jest.fn(() => fresh.promise);
+    const a = cache.getOrLoad('k', 10_000, freshLoader);
+    old.resolve('stale');
+    await stale;
+    const b = cache.getOrLoad('k', 10_000, freshLoader);
+    fresh.resolve('fresh');
+
+    expect(await a).toBe('fresh');
+    expect(await b).toBe('fresh');
+    expect(freshLoader).toHaveBeenCalledTimes(1);
   });
 
   describe('logging', () => {
+    let log: jest.SpyInstance;
+    beforeEach(() => {
+      log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    });
+    afterEach(() => log.mockRestore());
+    const logged = () => (log.mock.calls as unknown[][]).map((c) => c[0] as string);
+
     it('logs the API with "Query database" on miss and the seconds left on a cache hit', async () => {
       await cache.getOrLoad('skill:list:x', 10_000, () => Promise.resolve(1), 'GET /v1/skill/items');
-      jest.setSystemTime(Date.now() + 2_500);
+      clock += 2_500;
       await cache.getOrLoad('skill:list:x', 10_000, () => Promise.resolve(2), 'GET /v1/skill/items');
 
       expect(logged()).toEqual(['[GET /v1/skill/items] Query database', '[GET /v1/skill/items] Lấy từ cache (còn 8s)']);
     });
 
-    it('logs one "Query database" per database round; callers sharing it are logged as cache', async () => {
+    it('logs once per database query: callers joining an in-flight query add no line', async () => {
       const d = deferred<number>();
       const a = cache.getOrLoad('k', 10_000, () => d.promise, 'GET /v1/asset-hub/latest');
       const b = cache.getOrLoad('k', 10_000, () => d.promise, 'GET /v1/asset-hub/latest');
       d.resolve(1);
       await Promise.all([a, b]);
 
-      expect(logged().filter((l) => l.endsWith('Query database'))).toEqual([
-        '[GET /v1/asset-hub/latest] Query database',
-      ]);
-      expect(logged()).toContain('[GET /v1/asset-hub/latest] Lấy từ cache (còn 10s)');
+      expect(logged()).toEqual(['[GET /v1/asset-hub/latest] Query database']);
     });
 
     it('falls back to the key as label', async () => {
@@ -126,21 +132,12 @@ describe('MicroCacheService (cache-manager, in-memory LRU)', () => {
       expect(logged()).toEqual(['[stats:counts] Query database']);
     });
   });
-});
 
-describe('MicroCacheModule (Nest DI)', () => {
-  it('provides MicroCacheService backed by the registered cache-manager store', async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [MicroCacheModule] }).compile();
-    const service = moduleRef.get(MicroCacheService);
-    const loader = jest.fn().mockResolvedValue('v');
-    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-    expect(await service.getOrLoad('k', 10_000, loader)).toBe('v');
-    expect(await service.getOrLoad('k', 10_000, loader)).toBe('v');
-    expect(loader).toHaveBeenCalledTimes(1);
-
-    log.mockRestore();
-    await moduleRef.close();
+  it('clear() drops every entry', async () => {
+    await cache.getOrLoad('k', 10_000, () => Promise.resolve('v'));
+    cache.clear();
+    const loader = jest.fn().mockResolvedValue('v2');
+    expect(await cache.getOrLoad('k', 10_000, loader)).toBe('v2');
   });
 });
 

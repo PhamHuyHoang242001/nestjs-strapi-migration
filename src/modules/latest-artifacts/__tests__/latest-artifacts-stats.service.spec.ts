@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { createInMemoryMicroCache, type MicroCacheService } from '@common/micro-cache';
+import { MicroCacheService } from '@common/micro-cache';
 import { LatestArtifactsService } from '../latest-artifacts.service';
 import { LatestArtifactsController } from '../latest-artifacts.controller';
 import { PERMISSION_META_KEY } from '@common/authorization/constants/authorization.constant';
@@ -124,7 +124,7 @@ describe('LatestArtifactsService.listStats', () => {
   });
 
   it('shares cached aggregates across callers; my_versions stays per caller', async () => {
-    const { service, query } = makeService(createInMemoryMicroCache());
+    const { service, query } = makeService(new MicroCacheService());
     routeQueries(query, AGGREGATES, MINE);
 
     const a = await service.listStats(USER_ID);
