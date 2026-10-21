@@ -357,6 +357,8 @@ export class ApiCatalogQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
+      isSo,
     };
   }
 
@@ -621,6 +623,7 @@ export class ApiCatalogQueryService {
       comparison,
       can_review: version.state === ApiVersionState.PENDING && canApprove,
       isUpdate,
+      isSo: await this.isApiSo(userId),
     };
   }
 

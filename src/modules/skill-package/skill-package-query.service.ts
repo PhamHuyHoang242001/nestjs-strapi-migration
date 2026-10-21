@@ -366,6 +366,8 @@ export class SkillPackageQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
+      isSo,
     };
   }
 
@@ -640,6 +642,7 @@ export class SkillPackageQueryService {
       comparison,
       can_review: version.state === SkillVersionState.PENDING && canApprove,
       isUpdate,
+      isSo: await this.isSkillSo(userId),
     };
   }
 

@@ -30,6 +30,8 @@ Supporter quản lý **độc lập**, không còn nhận `supporter_ids` trong 
 
 `:type` = `skill` \| `prompt` \| `api-catalog` \| `coworker`.
 
+Response `isSo` (boolean) trên `GET items/:id` và `GET versions/:vid` của cả 4 WS = caller là SO workspace đó (FE dùng để hiện thao tác chỉ SO được làm).
+
 SO: child module `/asset-hub/skill|prompt|api-catalog|coworker`, `ROOT_OWNER_CONFIG` + `OWNER_ALL`, **không** `HIERARCHY_MAP` / records browser.
 
 ## Coworker

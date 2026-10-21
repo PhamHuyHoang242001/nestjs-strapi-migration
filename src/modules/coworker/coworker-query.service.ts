@@ -167,6 +167,61 @@ export class CoworkerQueryService {
     }
   }
 
+  // Skills "using" a coworker: live, active skill packages whose ACTIVE version links it in
+  // skill_version_coworkers — the same rule the reuse matrix ticks on, so counts and matrix agree.
+  private async loadSkillCountsByCoworkerIds(coworkerIds: number[]): Promise<Map<number, number>> {
+    const ids = Array.from(new Set(coworkerIds.filter((id) => Number.isInteger(id))));
+    if (!ids.length) return new Map();
+    const rows: Array<{ coworker_package_id: number; skill_count: number }> = await this.versionRepo.manager.query(
+      `SELECT vc.coworker_package_id, COUNT(DISTINCT pkg.id)::int AS skill_count
+       FROM skill_version_coworkers vc
+       INNER JOIN skill_packages pkg
+         ON pkg.active_version_id = vc.skill_version_id
+        AND pkg.status = 'active' AND pkg.deleted_at IS NULL AND COALESCE(pkg.is_deleted, false) = false
+       INNER JOIN skill_versions av
+         ON av.id = pkg.active_version_id AND av.deleted_at IS NULL AND COALESCE(av.is_deleted, false) = false
+       WHERE vc.coworker_package_id = ANY($1)
+         AND vc.deleted_at IS NULL AND COALESCE(vc.is_deleted, false) = false
+       GROUP BY vc.coworker_package_id`,
+      [ids],
+    );
+    return new Map(rows.map((r) => [Number(r.coworker_package_id), Number(r.skill_count)]));
+  }
+
+  // Skills using one coworker (same rule as above), with the active version's name and number plus
+  // the package's publisher (khối chủ quản) and owning unit (phòng ban chủ quản).
+  private async loadSkillsUsingCoworker(coworkerId: number) {
+    const rows: Array<{
+      id: number;
+      code: string;
+      name: string;
+      version_no: number;
+      publisher_id: number | null;
+      owning_unit_name: string | null;
+    }> = await this.versionRepo.manager.query(
+      `SELECT DISTINCT pkg.id, pkg.code, av.name, av.version_no, pkg.publisher_id, pkg.owning_unit_name
+       FROM skill_version_coworkers vc
+       INNER JOIN skill_packages pkg
+         ON pkg.active_version_id = vc.skill_version_id
+        AND pkg.status = 'active' AND pkg.deleted_at IS NULL AND COALESCE(pkg.is_deleted, false) = false
+       INNER JOIN skill_versions av
+         ON av.id = pkg.active_version_id AND av.deleted_at IS NULL AND COALESCE(av.is_deleted, false) = false
+       WHERE vc.coworker_package_id = $1
+         AND vc.deleted_at IS NULL AND COALESCE(vc.is_deleted, false) = false
+       ORDER BY av.name, pkg.id`,
+      [coworkerId],
+    );
+    const publishers = await this.metaRead.getPublishersByIds(rows.map((r) => r.publisher_id));
+    return rows.map((r) => ({
+      id: Number(r.id),
+      code: r.code,
+      name: r.name,
+      version_no: Number(r.version_no),
+      publisher: r.publisher_id != null ? (publishers.get(Number(r.publisher_id)) ?? null) : null,
+      owning_unit_name: r.owning_unit_name ?? null,
+    }));
+  }
+
   async list(query: ListCoworkerQueryDto, userId: number) {
     const page = query.page ?? 1;
     const limit = Math.min(query.limit ?? 20, 100);
@@ -228,9 +283,11 @@ export class CoworkerQueryService {
     const meta = await this.loadPackageMeta(data);
     const channels = await this.loadChannelsByVersionIds(data.map((pkg) => pkg.active_version_id));
     const models = await this.loadModelsByIds(data.map((pkg) => pkg.active_version?.model_id));
+    const skillCounts = await this.loadSkillCountsByCoworkerIds(data.map((pkg) => pkg.id));
 
     const shaped = data.map((pkg) => ({
       ...pkg,
+      skill_count: skillCounts.get(pkg.id) ?? 0,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
       supporters: meta.supporters.get(pkg.id) ?? [],
@@ -299,8 +356,11 @@ export class CoworkerQueryService {
         }
       : pkg.active_version;
     const activeId = pkg.active_version_id ?? pkg.active_version?.id;
+    const skills = await this.loadSkillsUsingCoworker(pkg.id);
     return {
       ...pkg,
+      skill_count: skills.length,
+      skills,
       publisher: meta.publishers.get(pkg.publisher_id) ?? null,
       responsible_users: meta.responsibles.get(pkg.id) ?? [],
       supporters: meta.supporters.get(pkg.id) ?? supporterRows.get(pkg.id) ?? [],
@@ -313,6 +373,8 @@ export class CoworkerQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
+      isSo,
     };
   }
 
@@ -535,6 +597,7 @@ export class CoworkerQueryService {
       comparison,
       can_review: version.state === CoworkerVersionState.PENDING && canApprove,
       isUpdate,
+      isSo: await this.isCoworkerSo(userId),
     };
   }
 

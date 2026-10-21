@@ -15,6 +15,8 @@ Coworker module: `src/modules/coworker/` mounted at `/v1/ai-hub/coworker`. Clone
 
 Prompt / skill / api-catalog version M2M no longer uses `ai_hub_tags`. Write field `coworker_package_ids` replaces `tag_ids`. Read field `coworkers: {id,code,name}[]` replaces `tags`. Join tables: `skill_version_coworkers`, `prompt_version_coworkers`, `api_catalog_version_coworkers`. Search matches coworker `code` or live version `name`. GET `/v1/asset-hub/tags` and old `*_version_tags` stay for backfill; `ai_hub_tags` is not dropped. Markdown export still emits YAML `tags:` as coworker display names.
 
+Coworker list returns `skill_count`; detail returns `skills: [{id, code, name, version_no, publisher, owning_unit_name}]` — skills = live active skill packages whose **active version** links the coworker in `skill_version_coworkers` (same rule as reuse-matrix).
+
 `GET /v1/ai-hub/coworker/reuse-matrix` (`coworker_upload`): columns = active coworker packages `{id,code,name}`; rows = paged active skills `{id,name,publisher}`; `cells[i]` ticks when the skill **active version** has a live `skill_version_coworkers` row for that column.
 
 ## AI Hub read micro-cache

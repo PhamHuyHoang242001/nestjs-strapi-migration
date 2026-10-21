@@ -321,4 +321,82 @@ describe('CoworkerQueryService', () => {
       expect(res.version).not.toHaveProperty('link');
     });
   });
+
+  describe('skills using a coworker', () => {
+    const USAGE_JOIN = 'pkg.active_version_id = vc.skill_version_id';
+
+    it('list returns skill_count per coworker from one batched query (0 when unused)', async () => {
+      const qb = makeQueryBuilder([
+        { id: 1, publisher_id: 1, active_version_id: null, active_version: null },
+        { id: 2, publisher_id: 1, active_version_id: null, active_version: null },
+      ]);
+      packageRepo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+      const query = jest.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes('COUNT(DISTINCT pkg.id)')) return [{ coworker_package_id: 1, skill_count: 3 }];
+        return [];
+      });
+      versionRepo.manager = { query };
+
+      const res: any = await service.list({ page: 1, limit: 10 } as any, USER_ID);
+
+      expect(res.data.map((r: any) => r.skill_count)).toEqual([3, 0]);
+      const call = query.mock.calls.find((c) => (c[0] as string).includes('COUNT(DISTINCT pkg.id)'));
+      expect(call[1]).toEqual([[1, 2]]);
+      const sql = call[0] as string;
+      expect(sql).toContain(USAGE_JOIN);
+      expect(sql).toContain("pkg.status = 'active'");
+      expect(sql).toContain('vc.deleted_at IS NULL');
+    });
+
+    it('detail returns the skills using the coworker with version, publisher and owning unit', async () => {
+      packageRepo.findOne.mockResolvedValue({
+        id: PACKAGE_ID,
+        created_by: USER_ID,
+        status: CoworkerPackageStatus.ACTIVE,
+        is_deleted: false,
+        publisher_id: 1,
+        active_version_id: null,
+      });
+      metaRead.getPublishersByIds.mockImplementation(async (ids: number[]) =>
+        new Map(ids.filter((id) => id === 7).map((id) => [id, { id, name: 'EDA' }])),
+      );
+      const query = jest.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes('SELECT DISTINCT pkg.id')) {
+          return [
+            { id: 1, code: 'skill_1', name: 'Skill A', version_no: 2, publisher_id: 7, owning_unit_name: 'DPD' },
+            { id: 2, code: 'skill_2', name: 'Skill B', version_no: 1, publisher_id: null, owning_unit_name: null },
+          ];
+        }
+        return [];
+      });
+      versionRepo.manager = { query };
+
+      const res: any = await service.detail(PACKAGE_ID, USER_ID);
+
+      expect(res.skill_count).toBe(2);
+      expect(res.skills).toEqual([
+        { id: 1, code: 'skill_1', name: 'Skill A', version_no: 2, publisher: { id: 7, name: 'EDA' }, owning_unit_name: 'DPD' },
+        { id: 2, code: 'skill_2', name: 'Skill B', version_no: 1, publisher: null, owning_unit_name: null },
+      ]);
+      const call = query.mock.calls.find((c) => (c[0] as string).includes('SELECT DISTINCT pkg.id'));
+      expect(call[1]).toEqual([PACKAGE_ID]);
+      expect(call[0]).toContain(USAGE_JOIN);
+    });
+
+    it('detail returns an empty list when no active skill uses the coworker', async () => {
+      packageRepo.findOne.mockResolvedValue({
+        id: PACKAGE_ID,
+        created_by: USER_ID,
+        status: CoworkerPackageStatus.ACTIVE,
+        is_deleted: false,
+        publisher_id: 1,
+        active_version_id: null,
+      });
+
+      const res: any = await service.detail(PACKAGE_ID, USER_ID);
+
+      expect(res.skills).toEqual([]);
+      expect(res.skill_count).toBe(0);
+    });
+  });
 });

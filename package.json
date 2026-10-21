@@ -13,7 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"src/**/*.ts\" --fix --max-warnings 0",
-    "test": "node --expose-gc ./node_modules/.bin/jest --testTimeout=60000 --logHeapUsage --detectOpenHandles --forceExit",
+    "test": "node --expose-gc ./node_modules/.bin/jest --testTimeout=60000 --logHeapUsage --forceExit",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -124,6 +124,31 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/",
+      "\\.spec\\.ts$",
+      "/migration/",
+      "/deferred-migrations/",
+      "/data-migrations/",
+      "/seeders/",
+      "/scripts/",
+      "/scripts-tests/",
+      "/dto/",
+      "\\.entity\\.ts$",
+      "\\.module\\.ts$",
+      "/index\\.ts$",
+      "/main\\.ts$",
+      "/seeder\\.ts$"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 59,
+        "branches": 52,
+        "functions": 45,
+        "lines": 61
+      }
+    },
     "testEnvironment": "node",
     "moduleNameMapper": {
       "^@modules/(.*)$": "<rootDir>/modules/$1",

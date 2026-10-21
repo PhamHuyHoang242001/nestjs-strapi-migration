@@ -339,6 +339,8 @@ export class PromptLibraryQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
+      isSo,
     };
   }
 
@@ -600,6 +602,7 @@ export class PromptLibraryQueryService {
       comparison,
       can_review: version.state === PromptVersionState.PENDING && canApprove,
       isUpdate,
+      isSo: await this.isPromptSo(userId),
     };
   }
 
