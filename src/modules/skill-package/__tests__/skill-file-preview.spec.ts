@@ -44,3 +44,29 @@ describe('SkillZipPreviewService', () => {
     await expect(service.preview(7, 99, 'README.md')).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('SkillZipPreviewService.previewPendingVersion', () => {
+  const query = { resolvePendingVersionZip: jest.fn() };
+  const files = { downloadZip: jest.fn() };
+  const service = new SkillZipPreviewService(query as any, files as any);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('resolves the pending zip then returns the named text entry', async () => {
+    query.resolvePendingVersionZip.mockResolvedValue({ fileUrl: '/uploads/p.zip', name: 'S', versionNo: 2 });
+    files.downloadZip.mockResolvedValue({ buffer: zipOf({ 'skill.md': '# pending\n' }) });
+
+    await expect(service.previewPendingVersion(55, 'skill.md')).resolves.toEqual({
+      path: 'skill.md',
+      content: '# pending\n',
+    });
+    expect(query.resolvePendingVersionZip).toHaveBeenCalledWith(55);
+    expect(files.downloadZip).toHaveBeenCalledWith('/uploads/p.zip');
+  });
+
+  it('propagates the 404 for a non-pending version without fetching the zip', async () => {
+    query.resolvePendingVersionZip.mockRejectedValue(new NotFoundException('Pending skill version not found'));
+    await expect(service.previewPendingVersion(55, 'skill.md')).rejects.toBeInstanceOf(NotFoundException);
+    expect(files.downloadZip).not.toHaveBeenCalled();
+  });
+});

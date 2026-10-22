@@ -95,34 +95,7 @@ export class SkillPackageController {
     if (!userId) throw new ForbiddenException('User not authenticated');
 
     const { fileUrl, name, versionNo } = await this.queryService.resolveActiveZip(id, userId);
-    // resolveZipPath applies the same path-traversal guard as the upload fetch; never resolve
-    // the stored file_url against the filesystem without it.
-    const filePath = this.fileFetchService.resolveZipPath(fileUrl);
-    // Must be a regular file (not a directory / special file) that exists — the DB row can
-    // outlive the on-disk file since Strapi shares and sweeps this upload volume.
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(filePath);
-    } catch {
-      throw new NotFoundException('File not found');
-    }
-    if (!stat.isFile()) throw new NotFoundException('File not found');
-
-    // Filename is already a safe slug ([a-z0-9-] + -v<n> + ext) — quote it directly; do NOT
-    // percent-encode inside the quotes (browsers would save the literal %xx sequences).
-    const filename = buildDownloadFilename(name, versionNo, 'zip', 'skill');
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-    // Stream from disk (not the 20MB in-memory buffer) — mirrors transform-file.controller.
-    // Handle a mid-stream read error (TOCTOU deletion / permission race): once headers are sent
-    // an unhandled stream 'error' would hang the socket, so destroy the response explicitly.
-    const stream = fs.createReadStream(filePath);
-    stream.on('error', () => {
-      if (res.headersSent) res.destroy();
-      else res.status(404).end();
-    });
-    stream.pipe(res);
+    this.streamZipAttachment(res, fileUrl, buildDownloadFilename(name, versionNo, 'zip', 'skill'));
   }
 
   // GET /v1/skill/items/:id/files/preview — utf-8 file inside the active zip. Auth = download.
@@ -136,6 +109,26 @@ export class SkillPackageController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.zipPreviewService.preview(id, userId, q.file);
+  }
+
+  // GET /v1/skill/versions/:vid/download — zip of a PENDING version, for review. Approver-only;
+  // non-pending / unknown ids are 404 (see resolvePendingVersionZip).
+  @ApiOperation({ summary: "Download a pending skill version's zip archive (approver-only)" })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('skill_approve')
+  @Get('versions/:vid/download')
+  async downloadPendingVersionZip(@Param('vid', ParseIntPipe) vid: number, @Res() res: Response) {
+    const { fileUrl, name, versionNo } = await this.queryService.resolvePendingVersionZip(vid);
+    this.streamZipAttachment(res, fileUrl, buildDownloadFilename(`${name} pending`, versionNo, 'zip', 'skill'));
+  }
+
+  // GET /v1/skill/versions/:vid/files/preview — utf-8 file inside a PENDING version's zip. Auth = its download.
+  @ApiOperation({ summary: "Preview a text file inside a pending skill version's zip (approver-only)" })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('skill_approve')
+  @Get('versions/:vid/files/preview')
+  previewPendingVersionZipFile(@Param('vid', ParseIntPipe) vid: number, @Query() q: PreviewZipFileQueryDto) {
+    return this.zipPreviewService.previewPendingVersion(vid, q.file);
   }
 
   // GET /v1/skill/reviews/submitters — distinct pending-version creators for the queue filter.
@@ -281,5 +274,36 @@ export class SkillPackageController {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
     return this.uploadService.toggleStatus(id, dto, userId);
+  }
+
+  // Stream a stored skill zip as an attachment (shared by the active and pending-version downloads).
+  private streamZipAttachment(res: Response, fileUrl: string, filename: string): void {
+    // resolveZipPath applies the same path-traversal guard as the upload fetch; never resolve
+    // the stored file_url against the filesystem without it.
+    const filePath = this.fileFetchService.resolveZipPath(fileUrl);
+    // Must be a regular file (not a directory / special file) that exists — the DB row can
+    // outlive the on-disk file since Strapi shares and sweeps this upload volume.
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      throw new NotFoundException('File not found');
+    }
+    if (!stat.isFile()) throw new NotFoundException('File not found');
+
+    // Filename is already a safe slug ([a-z0-9-] + -v<n> + ext) — quote it directly; do NOT
+    // percent-encode inside the quotes (browsers would save the literal %xx sequences).
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Stream from disk (not the 20MB in-memory buffer) — mirrors transform-file.controller.
+    // Handle a mid-stream read error (TOCTOU deletion / permission race): once headers are sent
+    // an unhandled stream 'error' would hang the socket, so destroy the response explicitly.
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', () => {
+      if (res.headersSent) res.destroy();
+      else res.status(404).end();
+    });
+    stream.pipe(res);
   }
 }

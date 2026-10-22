@@ -16,6 +16,7 @@ Nguồn sự thật sau plan `plans/261009-1424-ai-hub-coworker/`. Bản vẽ c�
 | Sửa version pending | `PUT /versions/:vid` | **Chỉ SO** workspace đó (`rootId===0`). Supporter **không** |
 | Diff | `GET versions/:vid/diff` | submitter ∨ created_by ∨ approver |
 | Approve / reject | `POST approve` / `reject` | `*_approve` |
+| Skill: tải / xem trước zip của version **pending** | `GET versions/:vid/download`, `GET versions/:vid/files/preview?file=` | `skill_approve`. Chỉ version pending, package còn sống; khác → 404. Tên file `<slug>-pending-v<số sẽ nhận khi duyệt>.zip` |
 | Ẩn/hiện | `PATCH /items/:id/status` | creator ∨ supporter ∨ SO (guard: upload ∨ approve) |
 | Đọc catalog active | GET items | Bearer. Inactive: own/supporter hoặc SO (approve không widen) |
 | My Version list | GET versions | submitter ∨ package `created_by` only. Supporter không thấy version người khác |

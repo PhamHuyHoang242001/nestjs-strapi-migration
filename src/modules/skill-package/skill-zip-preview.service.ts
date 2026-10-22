@@ -15,4 +15,11 @@ export class SkillZipPreviewService {
     const zip = await this.fileFetch.downloadZip(fileUrl);
     return readZipTextEntry(zip.buffer, file);
   }
+
+  // Same preview, for the zip of a pending version (review; route is approver-only).
+  async previewPendingVersion(versionId: number, file: string | undefined): Promise<{ path: string; content: string }> {
+    const { fileUrl } = await this.queryService.resolvePendingVersionZip(versionId);
+    const zip = await this.fileFetch.downloadZip(fileUrl);
+    return readZipTextEntry(zip.buffer, file);
+  }
 }

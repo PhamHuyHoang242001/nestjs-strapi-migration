@@ -130,3 +130,55 @@ describe('SkillPackageQueryService.resolveActiveZip', () => {
     );
   });
 });
+
+describe('SkillPackageQueryService.resolvePendingVersionZip', () => {
+  const VERSION_ID = 55;
+  const zip = { file_kind: SkillVersionFileKind.ZIP, file_url: '/uploads/pending.zip', is_deleted: false };
+  let service: SkillPackageQueryService;
+  let packageRepo: any;
+  let versionRepo: any;
+
+  function pendingVersion(overrides: any = {}) {
+    return { id: VERSION_ID, skill_package_id: PACKAGE_ID, name: 'My Skill', version_no: 4, old_version: 4, files: [zip], ...overrides };
+  }
+
+  beforeEach(() => {
+    packageRepo = { findOne: jest.fn().mockResolvedValue({ id: PACKAGE_ID }) };
+    versionRepo = { findOne: jest.fn(), manager: { query: jest.fn().mockResolvedValue([]) } };
+    service = new SkillPackageQueryService(packageRepo, versionRepo, {} as never, {} as never);
+  });
+
+  it('returns the pending zip with the number it will get on approval', async () => {
+    versionRepo.findOne.mockResolvedValue(pendingVersion());
+    await expect(service.resolvePendingVersionZip(VERSION_ID)).resolves.toEqual({
+      fileUrl: '/uploads/pending.zip',
+      name: 'My Skill',
+      versionNo: 5,
+    });
+    expect(versionRepo.findOne).toHaveBeenCalledWith({
+      where: { id: VERSION_ID, is_deleted: false, state: 'pending' },
+      relations: ['files'],
+    });
+  });
+
+  it('first-ever pending version (old_version null) is numbered 1', async () => {
+    versionRepo.findOne.mockResolvedValue(pendingVersion({ old_version: null, version_no: 1 }));
+    expect((await service.resolvePendingVersionZip(VERSION_ID)).versionNo).toBe(1);
+  });
+
+  it('404 when the id is not a live pending version', async () => {
+    versionRepo.findOne.mockResolvedValue(null);
+    await expect(service.resolvePendingVersionZip(VERSION_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('404 when the package is deleted', async () => {
+    versionRepo.findOne.mockResolvedValue(pendingVersion());
+    packageRepo.findOne.mockResolvedValue(null);
+    await expect(service.resolvePendingVersionZip(VERSION_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('404 when the pending version has no live zip', async () => {
+    versionRepo.findOne.mockResolvedValue(pendingVersion({ files: [{ ...zip, is_deleted: true }] }));
+    await expect(service.resolvePendingVersionZip(VERSION_ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

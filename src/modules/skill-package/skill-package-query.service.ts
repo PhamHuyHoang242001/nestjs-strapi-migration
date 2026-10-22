@@ -332,7 +332,7 @@ export class SkillPackageQueryService {
       })) > 0;
 
     // Resolve submitter id → email so the client shows "Người đăng" as an email, not a raw id.
-    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by]);
+    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by, pkg.created_by]);
     const addSubmitterEmail = <T extends { submitted_by: number }>(fv: T | null | undefined) =>
       fv
         ? ({ ...fv, submitted_by_email: emailMap.get(fv.submitted_by) ?? null } as T & {
@@ -366,6 +366,10 @@ export class SkillPackageQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Package creator as { id, email } (same shape as responsible_users / supporters); null if the user is gone.
+      created_by_user: emailMap.has(pkg.created_by)
+        ? { id: pkg.created_by, email: emailMap.get(pkg.created_by) }
+        : null,
       // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
       isSo,
     };
@@ -751,6 +755,25 @@ export class SkillPackageQueryService {
     if (!zip) throw new NotFoundException('Active skill version has no downloadable file');
 
     return { fileUrl: zip.file_url, name: active.name, versionNo: active.version_no };
+  }
+
+  // Zip of a PENDING version, for review (route is approver-only). Any other state, a deleted version
+  // or a deleted package is 404, so this cannot be used to fetch arbitrary version history.
+  // versionNo is the number the version will get on approval: (approved predecessor ?? 0) + 1.
+  async resolvePendingVersionZip(versionId: number): Promise<{ fileUrl: string; name: string; versionNo: number }> {
+    const version = await this.versionRepo.findOne({
+      where: { id: versionId, is_deleted: false, state: SkillVersionState.PENDING },
+      relations: ['files'],
+    });
+    if (!version) throw new NotFoundException('Pending skill version not found');
+
+    const pkg = await this.packageRepo.findOne({ where: { id: version.skill_package_id, is_deleted: false } });
+    if (!pkg) throw new NotFoundException('Skill package not found');
+
+    const zip = (version.files ?? []).find((f) => !f.is_deleted && f.file_kind === SkillVersionFileKind.ZIP);
+    if (!zip) throw new NotFoundException('Pending skill version has no downloadable file');
+
+    return { fileUrl: zip.file_url, name: version.name, versionNo: (version.old_version ?? 0) + 1 };
   }
 
   private async attachActiveVersion(pkg: SkillPackage | null): Promise<SkillPackage | null> {

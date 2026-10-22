@@ -87,3 +87,29 @@ describe.each(WORKSPACES)('%s detail / version detail isSo', (_ws, table, Servic
     expect(res.isSo).toBe(expected);
   });
 });
+
+describe.each(WORKSPACES)('%s package detail created_by_user', (_ws, _table, Service, fk, hasCategoryArg) => {
+  it('returns the creator as { id, email } resolved with the submitter lookup', async () => {
+    const deps = makeDeps(fk);
+    deps.versionRepo.manager.query.mockImplementation(async (sql: string, params?: any[]) =>
+      sql.includes('FROM users') ? (params?.[0] ?? []).map((id: number) => ({ id, email: `u${id}@x.vn` })) : [],
+    );
+    const service = build(Service, deps, hasCategoryArg, undefined);
+
+    const res: any = await service.detail(PACKAGE_ID, USER_ID);
+
+    expect(res.created_by).toBe(USER_ID);
+    expect(res.created_by_user).toEqual({ id: USER_ID, email: `u${USER_ID}@x.vn` });
+    const userLookups = deps.versionRepo.manager.query.mock.calls.filter((c: any[]) =>
+      (c[0] as string).includes('FROM users'),
+    );
+    expect(userLookups).toHaveLength(1);
+  });
+
+  it('returns null when the creator user no longer exists', async () => {
+    const service = build(Service, makeDeps(fk), hasCategoryArg, undefined);
+    const res: any = await service.detail(PACKAGE_ID, USER_ID);
+    expect(res.created_by_user).toBeNull();
+  });
+});
+

@@ -310,7 +310,7 @@ export class PromptLibraryQueryService {
         where: { prompt_package_id: packageId, is_deleted: false, state: PromptVersionState.PENDING },
       })) > 0;
 
-    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by]);
+    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by, pkg.created_by]);
     const addSubmitterEmail = <T extends { submitted_by: number }>(fv: T | null | undefined) =>
       fv
         ? ({ ...fv, submitted_by_email: emailMap.get(fv.submitted_by) ?? null } as T & {
@@ -339,6 +339,10 @@ export class PromptLibraryQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Package creator as { id, email } (same shape as responsible_users / supporters); null if the user is gone.
+      created_by_user: emailMap.has(pkg.created_by)
+        ? { id: pkg.created_by, email: emailMap.get(pkg.created_by) }
+        : null,
       // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
       isSo,
     };

@@ -343,7 +343,7 @@ export class CoworkerQueryService {
         where: { coworker_package_id: packageId, is_deleted: false, state: CoworkerVersionState.PENDING },
       })) > 0;
 
-    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by]);
+    const emailMap = await this.resolveEmails([pkg.active_version?.submitted_by, pkg.created_by]);
     const meta = await this.loadPackageMeta([pkg]);
     const channels = await this.loadChannelsByVersionIds([pkg.active_version_id]);
     const models = await this.loadModelsByIds([pkg.active_version?.model_id]);
@@ -373,6 +373,10 @@ export class CoworkerQueryService {
       ),
       isUpdate,
       hasPendingVersion,
+      // Package creator as { id, email } (same shape as responsible_users / supporters); null if the user is gone.
+      created_by_user: emailMap.has(pkg.created_by)
+        ? { id: pkg.created_by, email: emailMap.get(pkg.created_by) }
+        : null,
       // Workspace SO (rootId 0 on this workspace's table): lets the UI show SO-only actions.
       isSo,
     };

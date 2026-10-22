@@ -20,6 +20,10 @@ describe('SkillPackageController — perm mapping', () => {
     expect(getPerm('createVersion')).toEqual(['skill_upload']);
   });
 
+  it.each(['downloadPendingVersionZip', 'previewPendingVersionZipFile'])('%s is approver-only (skill_approve)', (prop) => {
+    expect(getPerm(prop)).toEqual(['skill_approve']);
+  });
+
   it('approveVersion carries skill_approve', () => {
     expect(getPerm('approveVersion')).toEqual(['skill_approve']);
   });
