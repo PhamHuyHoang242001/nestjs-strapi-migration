@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data Hub ERD</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--line:#8a8f98;--text:#1f2328;--muted:#6b7280;--border:#d0d4da;--hl:#d9480f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--border);padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+header h1{font-size:16px;margin:0;font-weight:600;white-space:nowrap}
+button{padding:3px 10px;border:1px solid #bbb;background:#f6f6f6;border-radius:6px;cursor:pointer;font:inherit}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12px;flex-basis:100%}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+#viewport{overflow:auto;height:calc(100vh - 78px)}
+#sizer{position:relative}
+#canvas{position:absolute;left:0;top:0;transform-origin:0 0}
+svg#links{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+svg#links path{fill:none;stroke:var(--line);stroke-width:1.2}
+svg#links path.hl{stroke:var(--hl);stroke-width:2.2}
+.tbl{position:absolute;width:360px;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tbl.hl{outline:2px solid var(--hl)}
+.tbl h3{margin:0;padding:6px 10px;font-size:13px;font-weight:600;color:#fff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) 40px;gap:6px;height:22px;align-items:center;padding:0 10px;border-top:1px solid #eef0f2;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.row:nth-child(even){background:#fafbfc}
+.row .t{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.row .n{white-space:nowrap}
+.row .k{font-size:10px;font-weight:700;color:#8a5a00;min-width:34px;text-align:right}
+.row.fk .n{color:#1c5fb8}
+.row.uid .n{color:#7a3fb0}
+.row .note{grid-column:1/-1}
+.c-svc h3{background:#2f6db5}.c-join h3{background:#7a4fc0}.c-dict h3{background:#2b8a5f}
+.c-con h3{background:#c26a0a}.c-org h3{background:#5f6670}.c-hist h3{background:#8a8f98}
+</style>
+</head>
+<body>
+<header>
+  <h1>Data Hub — ERD</h1>
+  <button onclick="zoom(-0.1)">−</button><span id="lv">100%</span><button onclick="zoom(0.1)">+</button><button onclick="zoom(0)">100%</button>
+  <div class="legend">
+    <span><i style="background:#2f6db5"></i>Data Service</span>
+    <span><i style="background:#7a4fc0"></i>Bảng nối</span>
+    <span><i style="background:#2b8a5f"></i>Từ điển dữ liệu</span>
+    <span><i style="background:#c26a0a"></i>App thụ hưởng</span>
+    <span><i style="background:#5f6670"></i>Đơn vị</span>
+    <span><i style="background:#8a8f98"></i>Lịch sử</span>
+    <span><b style="color:#1c5fb8">xanh</b> = FK (đường nối đi ra từ đúng field) · <b style="color:#7a3fb0">tím</b> = id user, chỉ lưu id, không FK</span>
+    <span>Mọi bảng có thêm created_at, updated_at; bảng chính thêm deleted_at, is_deleted · Di chuột vào bảng để tô sáng quan hệ</span>
+  </div>
+</header>
+<div id="viewport"><div id="sizer"><div id="canvas"><svg id="links"></svg></div></div></div>
+<script>
+// [name, type, key, note]; key: PK | FK>table | FK,UK>table | UK | U (user id, no FK)
+const T = {
+  data_hub_data_services: ['c-svc', [
+    ['id','int','PK'],['service_code','varchar(100)','UK'],['service_type','varchar(50)','','API|SFTP'],
+    ['name','varchar(255)'],['short_description','varchar(1000)'],['purpose','varchar(2000)','','null'],
+    ['request_unit_id','int','FK>data_hub_request_units'],['division_id','int','FK>data_hub_divisions'],
+    ['department_id','int','FK>data_hub_departments'],['source_table','varchar(1000)'],['usage_guide_html','text'],
+    ['status','varchar(50)','','active|inactive'],['version_no','int','','default 1'],
+    ['created_by','int','U'],['updated_by','int','U','null']]],
+  data_hub_data_service_api_specs: ['c-svc', [
+    ['id','int','PK'],['data_service_id','int','FK,UK>data_hub_data_services'],['method','varchar(50)','','enum'],
+    ['base_url','varchar(50)','','enum'],['endpoint_path','varchar(1000)'],['auth_type','varchar(50)','','enum'],
+    ['token_endpoint','varchar(1000)','','null'],['token_auth_method','varchar(50)','','enum, null'],
+    ['peak_tps','varchar(255)','','null'],['update_frequency','varchar(50)','','enum'],
+    ['sync_mode','varchar(50)','','enum'],['timeout','varchar(100)','','null']]],
+  data_hub_data_service_sftp_specs: ['c-svc', [
+    ['id','int','PK'],['data_service_id','int','FK,UK>data_hub_data_services'],['host','varchar(255)'],
+    ['port','int','','default 22'],['auth_type','varchar(50)','','enum'],['key_vault_method','varchar(50)','','enum, null'],
+    ['vault_account','varchar(255)','','null'],['folder_path','varchar(1000)'],['file_name_pattern','varchar(500)'],
+    ['file_format','varchar(50)','','enum'],['export_frequency','varchar(50)','','enum'],['max_file_size','varchar(255)','','null'],
+    ['encryption','varchar(50)','','enum'],['flow_direction','varchar(50)','','enum']]],
+  data_hub_data_service_histories: ['c-hist', [
+    ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],['version_no','int','','UK + service'],
+    ['action','varchar(50)','','CREATE|UPDATE'],['change_note','text','','null'],['changes','jsonb','','changed fields'],
+    ['changed_by','int','U']]],
+  data_hub_data_service_requesters: ['c-join', [
+    ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],['user_id','int','U','Đầu mối yêu cầu (BU)']]],
+  data_hub_data_service_it_supporters: ['c-join', [
+    ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],['user_id','int','U','IT hỗ trợ']]],
+  data_hub_data_service_consumers: ['c-join', [
+    ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],['consumer_id','int','FK>data_hub_consumers']]],
+  data_hub_data_service_physical_terms: ['c-join', [
+    ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],['physical_term_id','int','FK>data_hub_physical_terms']]],
+  data_hub_request_units: ['c-org', [
+    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)'],['category','varchar(100)','','null']]],
+  data_hub_divisions: ['c-org', [
+    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)']]],
+  data_hub_departments: ['c-org', [
+    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)']]],
+  data_hub_consumers: ['c-con', [
+    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)'],
+    ['category','varchar(50)','','INTERNAL_APP|PARTNER_ECOSYSTEM'],['division_id','int','FK>data_hub_divisions'],
+    ['department_id','int','FK>data_hub_departments','null'],['short_description','varchar(1000)'],
+    ['status','varchar(50)','','active|inactive'],['so_user_id','int','U','SO phụ trách'],
+    ['tech_user_id','int','U','Tech SO'],['biz_user_id','int','U','Biz SO, null'],
+    ['created_by','int','U'],['updated_by','int','U','null']]],
+  data_hub_consumer_histories: ['c-hist', [
+    ['id','int','PK'],['consumer_id','int','FK>data_hub_consumers'],['version_no','int','','UK + consumer'],
+    ['action','varchar(50)','','CREATE|UPDATE'],['snapshot','jsonb'],['changed_by','int','U']]],
+  data_hub_physical_terms: ['c-dict', [
+    ['id','int','PK'],['physical_column','varchar(255)','UK'],['technical_description','text'],
+    ['example_value','varchar(1000)'],['logical_term_id','int','FK>data_hub_logical_terms','null'],
+    ['created_by','int','U'],['updated_by','int','U','null']]],
+  data_hub_logical_terms: ['c-dict', [
+    ['id','int','PK'],['code','varchar(255)','UK'],['name','varchar(255)'],['short_description','varchar(1000)'],
+    ['example_value','varchar(1000)','','null'],['created_by','int','U'],['updated_by','int','U','null']]],
+  data_hub_logical_term_histories: ['c-hist', [
+    ['id','int','PK'],['logical_term_id','int','FK>data_hub_logical_terms'],['version_no','int','','UK + term'],
+    ['action','varchar(50)','','CREATE|UPDATE'],['snapshot','jsonb','','incl. physicals'],['changed_by','int','U']]],
+};
+// Column layout: tables stacked top-down per column
+const COLS = [
+  ['data_hub_data_service_api_specs','data_hub_data_service_sftp_specs','data_hub_data_service_histories'],
+  ['data_hub_data_services'],
+  ['data_hub_request_units','data_hub_divisions','data_hub_departments','data_hub_data_service_requesters',
+    'data_hub_data_service_it_supporters','data_hub_data_service_consumers','data_hub_data_service_physical_terms'],
+  ['data_hub_consumers','data_hub_consumer_histories','data_hub_physical_terms'],
+  ['data_hub_logical_terms','data_hub_logical_term_histories'],
+];
+const COL_W = 360, COL_GAP = 120, ROW_GAP = 50, PAD = 30;
+const canvas = document.getElementById('canvas'), svg = document.getElementById('links');
+const rowEls = {}, cardEls = {};
+let maxH = 0;
+COLS.forEach((col, ci) => {
+  let y = PAD;
+  col.forEach(name => {
+    const [cls, rows] = T[name];
+    const card = document.createElement('div');
+    card.className = 'tbl ' + cls; card.dataset.name = name;
+    card.style.left = (PAD + ci * (COL_W + COL_GAP)) + 'px'; card.style.top = y + 'px';
+    card.innerHTML = '<h3>' + name + '</h3>';
+    rows.forEach(([n, t, key = '', note = '']) => {
+      const r = document.createElement('div');
+      const isFk = key.startsWith('FK'), isU = key === 'U';
+      r.className = 'row' + (isFk ? ' fk' : '') + (isU ? ' uid' : '');
+      const label = isFk ? key.split('>')[0] : (isU ? 'user' : key);
+      r.title = n + ' ' + t + (note ? ' · ' + note : '');
+      r.innerHTML = '<span class="n">' + n + '</span><span class="t">' + t + (note ? ' · ' + note : '') +
+        '</span><span class="k">' + label + '</span>';
+      card.appendChild(r);
+      rowEls[name + '.' + n] = r;
+    });
+    canvas.appendChild(card); cardEls[name] = card;
+    y += card.offsetHeight + ROW_GAP;
+  });
+  maxH = Math.max(maxH, y);
+});
+const W = PAD * 2 + COLS.length * COL_W + (COLS.length - 1) * COL_GAP;
+canvas.style.width = W + 'px'; canvas.style.height = maxH + 'px';
+svg.setAttribute('width', W); svg.setAttribute('height', maxH);
+
+// Row anchor in canvas coordinates (left or right edge, vertical middle of the row)
+function anchor(rowEl, side) {
+  const card = rowEl.parentElement;
+  const x = card.offsetLeft + (side === 'r' ? card.offsetWidth : 0);
+  const y = card.offsetTop + rowEl.offsetTop + rowEl.offsetHeight / 2;
+  return [x, y];
+}
+const links = [];
+Object.entries(T).forEach(([name, [, rows]]) => rows.forEach(([n, , key = '', note = '']) => {
+  if (!key.startsWith('FK')) return;
+  const [flags, target] = key.split('>');
+  const from = rowEls[name + '.' + n], to = rowEls[target + '.id'];
+  const fc = cardEls[name], tc = cardEls[target];
+  let fs, ts;
+  if (Math.abs(fc.offsetLeft - tc.offsetLeft) < 5) { fs = ts = 'r'; }
+  else if (tc.offsetLeft > fc.offsetLeft) { fs = 'r'; ts = 'l'; }
+  else { fs = 'l'; ts = 'r'; }
+  const [x1, y1] = anchor(from, fs), [x2, y2] = anchor(to, ts);
+  const d1 = fs === 'r' ? 1 : -1, d2 = ts === 'r' ? 1 : -1;
+  const off = fs === ts ? 70 : Math.max(50, Math.abs(x2 - x1) / 2);
+  const one = flags.includes('UK'), optional = note.includes('null');
+  let d = 'M' + x1 + ' ' + y1 + ' h' + 14 * d1 +
+    ' C' + (x1 + off * d1) + ' ' + y1 + ' ' + (x2 + off * d2) + ' ' + y2 + ' ' + (x2 + 14 * d2) + ' ' + y2 + ' H' + x2;
+  // child end: crow's foot (many) or single bar (1-1)
+  d += one ? ' M' + (x1 + 8 * d1) + ' ' + (y1 - 6) + ' v12'
+    : ' M' + x1 + ' ' + (y1 - 6) + ' L' + (x1 + 10 * d1) + ' ' + y1 + ' L' + x1 + ' ' + (y1 + 6);
+  // parent end: || (required) or o| (optional)
+  d += ' M' + (x2 + 6 * d2) + ' ' + (y2 - 6) + ' v12';
+  d += optional ? ' M' + (x2 + 15 * d2) + ' ' + y2 + ' m-3 0 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0'
+    : ' M' + (x2 + 10 * d2) + ' ' + (y2 - 6) + ' v12';
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', d); svg.appendChild(p);
+  links.push({ p, a: name, b: target, row: from });
+}));
+// Hover a table: highlight its links and the related tables/rows
+Object.values(cardEls).forEach(card => {
+  card.addEventListener('mouseenter', () => {
+    const n = card.dataset.name;
+    links.forEach(l => { if (l.a === n || l.b === n) { l.p.classList.add('hl'); cardEls[l.a].classList.add('hl'); cardEls[l.b].classList.add('hl'); l.row.style.background = '#fff1e6'; } });
+  });
+  card.addEventListener('mouseleave', () => {
+    links.forEach(l => { l.p.classList.remove('hl'); l.row.style.background = ''; });
+    Object.values(cardEls).forEach(c => c.classList.remove('hl'));
+  });
+});
+let scale = 1;
+function zoom(step) {
+  scale = step ? Math.min(2.5, Math.max(0.3, +(scale + step).toFixed(2))) : 1;
+  canvas.style.transform = 'scale(' + scale + ')';
+  const s = document.getElementById('sizer');
+  s.style.width = W * scale + 'px'; s.style.height = maxH * scale + 'px';
+  document.getElementById('lv').textContent = Math.round(scale * 100) + '%';
+}
+zoom(0);
+</script>
+</body>
+</html>

@@ -64,6 +64,9 @@ export class CoworkerReuseMatrixService {
     ]);
 
     const total = Number(countRows[0]?.count ?? 0);
+    // Most-reused skills first. The count only covers coworkers that are matrix columns
+    // (live, active, with an active version) so it matches the ticks in the row; it is
+    // computed in SQL because the ordering must hold across pages, before LIMIT/OFFSET.
     const skillRows: Array<{ id: number; publisher_id: number; name: string; version_id: number }> =
       total === 0
         ? []
@@ -73,10 +76,23 @@ export class CoworkerReuseMatrixService {
              INNER JOIN skill_versions av
                ON av.id = pkg.active_version_id
               AND av.deleted_at IS NULL AND COALESCE(av.is_deleted, false) = false
+             LEFT JOIN LATERAL (
+               SELECT COUNT(DISTINCT vt.coworker_package_id)::int AS coworker_count
+               FROM skill_version_coworkers vt
+               INNER JOIN coworker_packages cp
+                 ON cp.id = vt.coworker_package_id
+                AND ${live('cp')}
+                AND cp.status = 'active'
+               INNER JOIN coworker_versions cv
+                 ON cv.id = cp.active_version_id
+                AND cv.deleted_at IS NULL AND COALESCE(cv.is_deleted, false) = false
+               WHERE vt.skill_version_id = av.id
+                 AND ${live('vt')}
+             ) usage_stats ON TRUE
              WHERE ${live('pkg')}
                AND pkg.status = 'active'
                AND pkg.active_version_id IS NOT NULL
-             ORDER BY av.name, pkg.id
+             ORDER BY usage_stats.coworker_count DESC, av.name, pkg.id
              LIMIT $1 OFFSET $2`,
             [limit, offset],
           );

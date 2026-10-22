@@ -122,6 +122,18 @@ describe('CoworkerReuseMatrixService.getMatrix', () => {
     expect(skill?.sql).toContain('pkg.deleted_at IS NULL');
   });
 
+  it('skill SQL orders by coworker usage desc, then name, before paging', async () => {
+    const { service, captured } = makeHarness({ columns: [], count: 1, skills: [] });
+    await service.getMatrix({ page: 1, limit: 20 });
+    const skill = captured.find((c) => c.sql.includes('FROM skill_packages') && c.sql.includes('LIMIT'));
+    expect(skill?.sql).toMatch(/ORDER BY usage_stats\.coworker_count DESC, av\.name, pkg\.id\s+LIMIT \$1 OFFSET \$2/);
+    // Usage only counts coworkers shown as matrix columns, over live links
+    expect(skill?.sql).toContain('COUNT(DISTINCT vt.coworker_package_id)');
+    expect(skill?.sql).toContain("cp.status = 'active'");
+    expect(skill?.sql).toContain('INNER JOIN coworker_versions cv');
+    expect(skill?.sql).toContain('vt.deleted_at IS NULL');
+  });
+
   it('join SQL filters live skill_version_coworkers only', async () => {
     const { service, captured } = makeHarness({
       columns: [{ id: 1, code: 'a', name: 'A' }],
@@ -130,7 +142,7 @@ describe('CoworkerReuseMatrixService.getMatrix', () => {
       links: [],
     });
     await service.getMatrix({ page: 1, limit: 20 });
-    const links = captured.find((c) => c.sql.includes('skill_version_coworkers'));
+    const links = captured.find((c) => c.sql.includes('vt.skill_version_id = ANY($1)'));
     expect(links?.sql).toContain('vt.deleted_at IS NULL');
     expect(links?.params).toEqual([[99]]);
   });
