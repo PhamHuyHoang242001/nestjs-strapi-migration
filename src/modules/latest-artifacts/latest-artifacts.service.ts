@@ -99,7 +99,7 @@ export class LatestArtifactsService {
     return rows;
   }
 
-  // Dashboard counters for one workspace. Each live package contributes exactly once to the
+  // Dashboard counters for one workspace. Each live, active package contributes exactly once to the
   // lifecycle counters via its greatest live version id. Published is intentionally separate: a
   // package may remain published while a newer update is pending or rejected.
   // The table/column names are hardcoded internal identifiers (never user input).
@@ -117,6 +117,8 @@ export class LatestArtifactsService {
         INNER JOIN ${packageTable} p ON p.id = v.${fkColumn}
         WHERE v.deleted_at IS NULL AND v.is_deleted = false
           AND p.deleted_at IS NULL AND p.is_deleted = false
+          -- Inactive (hidden) packages are left out of the lifecycle counters, as for published.
+          AND p.status = 'active'
         ORDER BY v.${fkColumn}, v.id DESC
       )
       SELECT

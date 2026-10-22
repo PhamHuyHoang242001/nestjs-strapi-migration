@@ -103,6 +103,23 @@ describe('LatestArtifactsService.listStats', () => {
     expect(sql).toContain('p.deleted_at IS NULL AND p.is_deleted = false');
   });
 
+  // Lifecycle counters (total/pending/approved/rejected) skip inactive packages, like `published`.
+  it.each(['skill_versions', 'prompt_versions', 'api_catalog_versions', 'coworker_versions'])(
+    'lifecycle counters for %s exclude inactive packages',
+    async (versionTable) => {
+      const { service, query } = makeService();
+      routeQueries(query, AGGREGATES, MINE);
+
+      await service.listStats(USER_ID);
+
+      const sql = query.mock.calls
+        .map((c) => c[0] as string)
+        .find((q) => isAggregate(q) && q.includes(`FROM ${versionTable} v`)) as string;
+      const latestCte = sql.slice(sql.indexOf('WITH latest AS'), sql.indexOf('ORDER BY'));
+      expect(latestCte).toContain("p.status = 'active'");
+    },
+  );
+
   it('keeps workspace aggregates unscoped and binds the caller only in my_versions', async () => {
     const { service, query } = makeService();
     routeQueries(query, AGGREGATES, MINE);
