@@ -11,6 +11,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DataSource, EntityManager } from 'typeorm';
 import { DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME } from '@configuration/env.config';
+import { DataHubServiceType } from '@modules/databases/data-hub-enums';
+import { buildServiceCode, reserveServiceId } from '@modules/data-hub/data-service/data-service-code.util';
 import * as M from './seed-data-hub-mock-mappers';
 import { backfillUsageGuides, buildUsageGuide } from './seed-data-hub-usage-guide';
 
@@ -69,20 +71,17 @@ async function seed(m: EntityManager, w: M.MapWarnings) {
       name: M.truncate(s.subscriber_name, 255),
       category: s.category === 'PARTNER_ECOSYSTEM' ? 'PARTNER_ECOSYSTEM' : 'INTERNAL_APP',
       division_id: divisions.get(M.consumerDivisionCode(String(s.business_unit ?? ''))),
-      department_id: null,
       short_description: M.truncate(s.short_description ?? s.description, 1000),
+      avatar_url: null,
       status: 'active',
-      business_contact_user_ids: [so],
+      so_app_user_ids: [so],
     };
     const [row]: Row[] = await m.query(
       `INSERT INTO data_hub_consumers (code, name, category, division_id, short_description,
          created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [code, snapshot.name, snapshot.category, snapshot.division_id, snapshot.short_description, so],
     );
-    await m.query(`INSERT INTO data_hub_consumer_business_contacts (consumer_id, user_id) VALUES ($1, $2)`, [
-      row.id,
-      so,
-    ]);
+    await m.query(`INSERT INTO data_hub_consumer_so_apps (consumer_id, user_id) VALUES ($1, $2)`, [row.id, so]);
     await m.query(
       `INSERT INTO data_hub_consumer_histories (consumer_id, version_no, action, snapshot, changed_by)
        VALUES ($1, 1, 'CREATE', $2, $3)`,
@@ -165,19 +164,24 @@ interface Refs {
 async function importService(m: EntityManager, s: Row, marker: string, r: Refs, w: M.MapWarnings) {
   const isApi = s.service_type === 'API';
   const divisionCode = s.owner_workspace_id === 'IT' ? 'IT' : 'EDA';
-  const prefix = `${isApi ? 'API' : 'SFT'}-${divisionCode}`;
-  const [{ next }]: Row[] = await m.query(
-    `SELECT COALESCE(MAX(CAST(SUBSTRING(service_code FROM '-(\\d+)$') AS INT)), 0) + 1 AS next
-     FROM data_hub_data_services WHERE service_code LIKE $1`,
-    [`${prefix}-%`],
-  );
   const owner = r.userId(s.service_owner);
-  const departmentId =
-    r.departments.get(s.business_unit) ?? (w.add(`department:${s.business_unit}`), r.departments.get('EDA'));
+  const departmentCode = r.departments.has(s.business_unit)
+    ? s.business_unit
+    : (w.add(`department:${s.business_unit}`), 'EDA');
+  const departmentId = r.departments.get(departmentCode);
+  // Same rule as the API: [SERVICE]_<division>_<department>_<id>.
+  const serviceType = isApi ? DataHubServiceType.API : DataHubServiceType.SFTP;
+  const id = await reserveServiceId(m);
   const [pkg]: Row[] = await m.query(
-    `INSERT INTO data_hub_data_services (service_code, service_type, status, created_by)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
-    [`${prefix}-${String(next).padStart(3, '0')}`, isApi ? 'API' : 'SFTP', M.serviceStatus(s.status), owner],
+    `INSERT INTO data_hub_data_services (id, service_code, service_type, status, created_by)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [
+      id,
+      buildServiceCode(serviceType, divisionCode, departmentCode, id),
+      serviceType,
+      M.serviceStatus(s.status),
+      owner,
+    ],
   );
   const [ver]: Row[] = await m.query(
     `INSERT INTO data_hub_data_service_versions (data_service_id, version_no, state, name, short_description,

@@ -19,6 +19,8 @@ const own = (over: Record<string, unknown> = {}) => ({
   id: 7,
   code: 'cust_id',
   technical_description: 'd',
+  data_type: 'VARCHAR',
+  is_required: false,
   example_value: null,
   source_table_id: 5,
   logical_term_id: null,
@@ -42,13 +44,19 @@ describe('syncSourceTables', () => {
   it('creates a new table in the service department and a new term in it', async () => {
     const { promise, calls } = run(
       [[/INSERT INTO data_hub_source_tables/, () => [{ id: 20 }]], reserve(30)],
-      [{ name: 'dw.new', description: 'x', terms: [{ code: 'a', technical_description: 'td', example_value: '' }] }],
+      [
+        {
+          name: 'dw.new',
+          description: 'x',
+          terms: [{ code: 'a', technical_description: 'td', data_type: 'VARCHAR', example_value: '' }],
+        },
+      ],
     );
     await expect(promise).resolves.toEqual({ termIds: [30], affectedLogicalIds: [] });
     const table = calls.find((c) => /INSERT INTO data_hub_source_tables/.test(c.sql));
     expect(table?.params).toEqual(['dw.new', 'x', 1, 3]);
     const term = calls.find((c) => /INSERT INTO data_hub_physical_terms/.test(c.sql));
-    expect(term?.params).toEqual([[30], ['a'], ['td'], [null], [20], [null], 10, 3]);
+    expect(term?.params).toEqual([[30], ['a'], ['td'], ['VARCHAR'], [false], [null], [20], [null], 10, 3]);
     expect(calls.find((c) => NAME_CHECK.test(c.sql))?.params).toEqual(['dw.new', null]);
   });
 
@@ -58,7 +66,7 @@ describe('syncSourceTables', () => {
         [TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]],
         [OWN, () => [own(), own({ id: 8, code: 'old', logical_term_id: 4 })]],
       ],
-      [{ id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd' }] }],
+      [{ id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd', data_type: 'VARCHAR' }] }],
     );
     await expect(promise).resolves.toEqual({ termIds: [7], affectedLogicalIds: [4] });
     const del = calls.find((c) => /SET deleted_at = NOW\(\), is_deleted = true/.test(c.sql));
@@ -67,17 +75,42 @@ describe('syncSourceTables', () => {
     expect(calls.some((c) => /UPDATE data_hub_source_tables/.test(c.sql))).toBe(false);
   });
 
+  it('rewrites a term whose only change is Data Type / Required, without touching its logical term', async () => {
+    const { promise, calls } = run(
+      [
+        [TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]],
+        [OWN, () => [own({ logical_term_id: 2 })]],
+      ],
+      [
+        {
+          id: 5,
+          name: 'dw.t',
+          terms: [{ id: 7, code: 'cust_id', technical_description: 'd', data_type: 'NUMBER', is_required: true }],
+        },
+      ],
+    );
+    await expect(promise).resolves.toEqual({ termIds: [7], affectedLogicalIds: [] });
+    const upd = calls.find((c) => TERM_UPDATE.test(c.sql));
+    expect(upd?.params).toEqual([[7], ['cust_id'], ['d'], ['NUMBER'], [true], [null], [5], [2], 3]);
+  });
+
   it('updates an edited term and flags its logical term when the code changes', async () => {
     const { promise, calls } = run(
       [
         [TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]],
         [OWN, () => [own({ logical_term_id: 2 })]],
       ],
-      [{ id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_no', technical_description: 'd2', example_value: 'e' }] }],
+      [
+        {
+          id: 5,
+          name: 'dw.t',
+          terms: [{ id: 7, code: 'cust_no', technical_description: 'd2', data_type: 'VARCHAR', example_value: 'e' }],
+        },
+      ],
     );
     await expect(promise).resolves.toEqual({ termIds: [7], affectedLogicalIds: [2] });
     const upd = calls.find((c) => TERM_UPDATE.test(c.sql));
-    expect(upd?.params).toEqual([[7], ['cust_no'], ['d2'], ['e'], [5], [2], 3]);
+    expect(upd?.params).toEqual([[7], ['cust_no'], ['d2'], ['VARCHAR'], [false], ['e'], [5], [2], 3]);
   });
 
   it('swaps codes between two own terms: both are parked first, then written, then new terms inserted', async () => {
@@ -92,9 +125,9 @@ describe('syncSourceTables', () => {
           id: 5,
           name: 'dw.t',
           terms: [
-            { code: 'z', technical_description: 'd' },
-            { id: 7, code: 'y', technical_description: 'd' },
-            { id: 8, code: 'x', technical_description: 'd' },
+            { code: 'z', technical_description: 'd', data_type: 'VARCHAR' },
+            { id: 7, code: 'y', technical_description: 'd', data_type: 'VARCHAR' },
+            { id: 8, code: 'x', technical_description: 'd', data_type: 'VARCHAR' },
           ],
         },
       ],
@@ -124,7 +157,7 @@ describe('syncSourceTables', () => {
         [/FROM data_hub_logical_terms lt/, () => [{ id: 3 }, { id: 4 }]],
         [OWN, () => [own()]],
       ],
-      [{ id: 5, name: 'dw.t2', terms: [{ id: 7, code: 'cust_id', technical_description: 'd' }] }],
+      [{ id: 5, name: 'dw.t2', terms: [{ id: 7, code: 'cust_id', technical_description: 'd', data_type: 'VARCHAR' }] }],
     );
     await expect(promise).resolves.toEqual({ termIds: [7], affectedLogicalIds: [3] });
     expect(calls.find((c) => MAPPED.test(c.sql))?.params).toEqual([10, [5]]);
@@ -148,19 +181,31 @@ describe('syncSourceTables', () => {
           id: 5,
           name: 'dw.t',
           terms: [
-            { id: 7, code: 'cust_id', technical_description: 'd', logical_term_id: 4 },
-            { code: 'new_col', technical_description: 'n', logical_term_id: 4 },
+            { id: 7, code: 'cust_id', technical_description: 'd', data_type: 'VARCHAR', logical_term_id: 4 },
+            { code: 'new_col', technical_description: 'n', data_type: 'VARCHAR', logical_term_id: 4 },
           ],
         },
       ],
     );
     await expect(promise).resolves.toEqual({ termIds: [7, 9], affectedLogicalIds: [2, 4] });
     expect(calls.find((c) => LOCK.test(c.sql))?.params).toEqual([[2, 4]]);
-    expect(calls.find((c) => TERM_UPDATE.test(c.sql))?.params).toEqual([[7], ['cust_id'], ['d'], [null], [5], [4], 3]);
+    expect(calls.find((c) => TERM_UPDATE.test(c.sql))?.params).toEqual([
+      [7],
+      ['cust_id'],
+      ['d'],
+      ['VARCHAR'],
+      [false],
+      [null],
+      [5],
+      [4],
+      3,
+    ]);
     expect(calls.find((c) => /INSERT INTO data_hub_physical_terms/.test(c.sql))?.params).toEqual([
       [9],
       ['new_col'],
       ['n'],
+      ['VARCHAR'],
+      [false],
       [null],
       [5],
       [4],
@@ -170,7 +215,13 @@ describe('syncSourceTables', () => {
 
     const bad = run(
       [[TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]]],
-      [{ id: 5, name: 'dw.t', terms: [{ code: 'x', technical_description: 'd', logical_term_id: 99 }] }],
+      [
+        {
+          id: 5,
+          name: 'dw.t',
+          terms: [{ code: 'x', technical_description: 'd', data_type: 'VARCHAR', logical_term_id: 99 }],
+        },
+      ],
     );
     await expect(bad.promise).rejects.toThrow('INVALID_LOGICAL_TERMS: 99');
   });
@@ -182,7 +233,7 @@ describe('syncSourceTables', () => {
         [TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]],
         [OWN, () => [own(), own({ id: 8, code: 'old', source_table_id: 6 })]],
       ],
-      [{ id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd' }] }],
+      [{ id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd', data_type: 'VARCHAR' }] }],
     );
     await expect(promise).resolves.toEqual({ termIds: [7], affectedLogicalIds: [] });
     const lock = calls.findIndex((c) => LOCK_TABLES.test(c.sql));
@@ -236,7 +287,7 @@ describe('syncSourceTables', () => {
         [TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]],
         [CODES_TAKEN, () => [{ code: 'cust_id', table_name: 'dw.t' }]],
       ],
-      [{ id: 5, name: 'dw.t', terms: [{ code: 'CUST_ID', technical_description: 'd' }] }],
+      [{ id: 5, name: 'dw.t', terms: [{ code: 'CUST_ID', technical_description: 'd', data_type: 'VARCHAR' }] }],
     );
     await expect(code.promise).rejects.toThrow('PHYSICAL_CODE_EXISTS: dw.t.cust_id');
     const check = code.calls.find((c) => CODES_TAKEN.test(c.sql));
@@ -247,7 +298,7 @@ describe('syncSourceTables', () => {
   it('400 for a term id the service does not own', async () => {
     const { promise } = run(
       [[TABLES, () => [{ id: 5, name: 'dw.t', description: null, usable: true }]]],
-      [{ id: 5, name: 'dw.t', terms: [{ id: 99, code: 'x', technical_description: 'd' }] }],
+      [{ id: 5, name: 'dw.t', terms: [{ id: 99, code: 'x', technical_description: 'd', data_type: 'VARCHAR' }] }],
     );
     await expect(promise).rejects.toThrow('INVALID_PHYSICAL_TERMS: 99');
   });
@@ -259,16 +310,16 @@ describe('syncSourceTables', () => {
     ];
     await expect(run([], twoTables).promise).rejects.toThrow('DUPLICATE_SOURCE_TABLES');
     const sameTermTwice = [
-      { id: 1, name: 'A', terms: [{ id: 3, code: 'x', technical_description: 'd' }] },
-      { id: 2, name: 'B', terms: [{ id: 3, code: 'y', technical_description: 'd' }] },
+      { id: 1, name: 'A', terms: [{ id: 3, code: 'x', technical_description: 'd', data_type: 'VARCHAR' }] },
+      { id: 2, name: 'B', terms: [{ id: 3, code: 'y', technical_description: 'd', data_type: 'VARCHAR' }] },
     ];
     await expect(run([], sameTermTwice).promise).rejects.toThrow('DUPLICATE_PHYSICAL_TERMS');
     const sameCode = [
       {
         name: 'A',
         terms: [
-          { code: 'x', technical_description: 'd' },
-          { code: 'X', technical_description: 'd' },
+          { code: 'x', technical_description: 'd', data_type: 'VARCHAR' },
+          { code: 'X', technical_description: 'd', data_type: 'VARCHAR' },
         ],
       },
     ];
@@ -277,8 +328,8 @@ describe('syncSourceTables', () => {
     const ok = run(
       [[/INSERT INTO data_hub_source_tables/, () => [{ id: 20 }]], reserve(31, 30)],
       [
-        { name: 'A', terms: [{ code: 'x', technical_description: 'd' }] },
-        { name: 'B', terms: [{ code: 'x', technical_description: 'd' }] },
+        { name: 'A', terms: [{ code: 'x', technical_description: 'd', data_type: 'VARCHAR' }] },
+        { name: 'B', terms: [{ code: 'x', technical_description: 'd', data_type: 'VARCHAR' }] },
       ],
     );
     // reserved ids are handed out ascending in body order, as row-by-row inserts would assign them

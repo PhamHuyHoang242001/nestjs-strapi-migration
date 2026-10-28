@@ -50,6 +50,7 @@ export interface VersionSource {
   sftp_spec?: SftpSpecInput | null;
   requester_user_ids: number[];
   it_supporter_user_ids: number[];
+  service_owner_user_ids: number[];
   consumer_ids: number[];
   physical_term_ids: number[];
 }

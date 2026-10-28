@@ -99,6 +99,13 @@ export async function insertApprovedVersion(manager: EntityManager, input: Inser
     versionId,
     source.it_supporter_user_ids,
   );
+  await insertLinks(
+    manager,
+    'data_hub_data_service_version_service_owners',
+    'user_id',
+    versionId,
+    source.service_owner_user_ids,
+  );
   await insertLinks(manager, 'data_hub_data_service_version_consumers', 'consumer_id', versionId, source.consumer_ids);
   await insertLinks(
     manager,

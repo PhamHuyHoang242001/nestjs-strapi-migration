@@ -29,6 +29,8 @@ interface OwnTerm {
   id: number;
   code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
   source_table_id: number;
   logical_term_id: number | null;
@@ -81,7 +83,8 @@ export async function syncSourceTables(
 
   const own = await queryRows<OwnTerm>(
     manager,
-    `SELECT p.id, p.code, p.technical_description, p.example_value, p.source_table_id, p.logical_term_id
+    `SELECT p.id, p.code, p.technical_description, p.data_type, p.is_required, p.example_value, p.source_table_id,
+            p.logical_term_id
      FROM data_hub_physical_terms p WHERE p.data_service_id = $1 AND ${liveSql('p')} ORDER BY p.id FOR UPDATE`,
     [dataServiceId],
   );
@@ -90,6 +93,7 @@ export async function syncSourceTables(
     g.terms.map((t) => ({
       ...t,
       example_value: t.example_value ? t.example_value : null,
+      is_required: t.is_required ?? false,
       source_table_id: tableIds[i],
     })),
   );
@@ -123,6 +127,8 @@ export async function syncSourceTables(
       moved ||
       remapped ||
       cur.technical_description !== t.technical_description ||
+      cur.data_type !== t.data_type ||
+      cur.is_required !== t.is_required ||
       (cur.example_value ?? null) !== t.example_value,
   );
   const moved = changed.filter((c) => c.moved);
@@ -137,16 +143,19 @@ export async function syncSourceTables(
   if (changed.length > 0) {
     await manager.query(
       `UPDATE data_hub_physical_terms p
-       SET code = u.code, technical_description = u.technical_description, example_value = u.example_value,
+       SET code = u.code, technical_description = u.technical_description, data_type = u.data_type,
+           is_required = u.is_required, example_value = u.example_value,
            source_table_id = u.source_table_id, logical_term_id = u.logical_term_id,
-           updated_by = $7, updated_at = NOW()
-       FROM UNNEST($1::int[], $2::text[], $3::text[], $4::text[], $5::int[], $6::int[])
-         AS u(id, code, technical_description, example_value, source_table_id, logical_term_id)
+           updated_by = $9, updated_at = NOW()
+       FROM UNNEST($1::int[], $2::text[], $3::text[], $4::text[], $5::boolean[], $6::text[], $7::int[], $8::int[])
+         AS u(id, code, technical_description, data_type, is_required, example_value, source_table_id, logical_term_id)
        WHERE p.id = u.id`,
       [
         changed.map(({ t }) => t.id),
         changed.map(({ t }) => t.code),
         changed.map(({ t }) => t.technical_description),
+        changed.map(({ t }) => t.data_type),
+        changed.map(({ t }) => t.is_required),
         changed.map(({ t }) => t.example_value),
         changed.map(({ t }) => t.source_table_id),
         changed.map(({ logical }) => logical),

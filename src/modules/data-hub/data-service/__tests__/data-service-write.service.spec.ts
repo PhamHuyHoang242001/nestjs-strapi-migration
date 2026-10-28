@@ -13,11 +13,21 @@ const ownTerm = {
   id: 7,
   code: 'cust_id',
   technical_description: 'd',
+  data_type: 'VARCHAR',
+  is_required: false,
   example_value: null,
   source_table_id: 5,
   logical_term_id: null,
 };
-const termLabelRow = { id: 7, code: 'cust_id', technical_description: 'd', example_value: null, source_table: 'dw.t' };
+const termLabelRow = {
+  id: 7,
+  code: 'cust_id',
+  technical_description: 'd',
+  data_type: 'VARCHAR',
+  is_required: false,
+  example_value: null,
+  source_table: 'dw.t',
+};
 
 // A normal (non super_admin) user-client caller; the department rule is exercised on every test.
 const as = (id: number) => ({ id, type: 'user', client: 'user' });
@@ -46,12 +56,11 @@ function makeHarness(overrides: Handler[] = []) {
         },
       ],
     ],
-    [/pg_advisory_xact_lock/, []],
+    [/nextval\(pg_get_serial_sequence\('data_hub_data_services'/, [{ id: 10 }]],
     // the caller is a member of department 1 unless a test overrides it
     [/FROM data_hub_department_members m/, [{ department_id: 1 }]],
-    [/MAX\(substring/, [{ max_no: 4 }]],
     [/MAX\(version_no\)/, [{ max_no: 1 }]],
-    [/INSERT INTO data_hub_data_services/, [{ id: 10 }]],
+    [/INSERT INTO data_hub_data_services/, []],
     [/INSERT INTO data_hub_data_service_versions/, [{ id: 101 }]],
     [/FROM data_hub_data_service_versions v WHERE v\.id/, [storedVersion]],
     [/SELECT version_no FROM data_hub_data_service_versions/, [{ version_no: 1 }]],
@@ -71,6 +80,7 @@ function makeHarness(overrides: Handler[] = []) {
     [/FROM data_hub_data_service_version_sftp_specs s/, []],
     [/FROM data_hub_data_service_version_requesters l/, [{ id: 1 }]],
     [/FROM data_hub_data_service_version_it_supporters l/, [{ id: 2 }]],
+    [/FROM data_hub_data_service_version_service_owners l/, [{ id: 1 }]],
     [/FROM data_hub_data_service_version_consumers l/, [{ id: 5 }]],
     [/FROM data_hub_data_service_version_physical_terms l/, [{ id: 7 }]],
   ];
@@ -134,7 +144,10 @@ const baseDto = (): CreateDataServiceDto =>
     consumer_ids: [5],
     requester_user_ids: [1],
     it_supporter_user_ids: [2],
-    source_tables: [{ id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd' }] }],
+    service_owner_user_ids: [1],
+    source_tables: [
+      { id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd', data_type: 'VARCHAR' }] },
+    ],
     api_spec: { ...storedApiSpec },
   }) as unknown as CreateDataServiceDto;
 
@@ -164,9 +177,9 @@ describe('DataHubDataServiceWriteService.create', () => {
     const { service, calls, find } = makeHarness();
     const result = await service.create(baseDto(), as(9));
 
-    expect(result).toEqual({ id: 10, service_code: 'API-FIN-005', version_id: 101, version_no: 1 });
-    expect(find(/pg_advisory_xact_lock/)[0].params).toEqual(['API-FIN-']);
-    expect(find(/INSERT INTO data_hub_data_services/)[0].params).toEqual(['API-FIN-005', 'API', 9]);
+    // [SERVICE]_<division>_<department>_<id>, id reserved from the sequence before the insert
+    expect(result).toEqual({ id: 10, service_code: 'API_FIN_D1_10', version_id: 101, version_no: 1 });
+    expect(find(/INSERT INTO data_hub_data_services/)[0].params).toEqual([10, 'API_FIN_D1_10', 'API', 9]);
 
     const versionInsert = find(/INSERT INTO data_hub_data_service_versions/)[0];
     expect(versionInsert.sql).toContain("'approved'");
@@ -243,12 +256,18 @@ describe('DataHubDataServiceWriteService.update', () => {
     const dto = toUpdate({ ...baseDto(), name: 'Renamed', changelog_note: 'why' } as CreateDataServiceDto);
     const result = await service.update(10, dto, as(3));
 
-    expect(result).toEqual({ id: 10, service_code: 'API-FIN-001', version_id: 101, version_no: 5 });
+    // the code is rebuilt from the new version's division/department (an old-format code is replaced)
+    expect(result).toEqual({ id: 10, service_code: 'API_FIN_D1_10', version_id: 101, version_no: 5 });
     const versionInsert = find(/INSERT INTO data_hub_data_service_versions/)[0];
     expect(versionInsert.params.slice(0, 3)).toEqual([10, 5, 1]);
     expect(versionInsert.params[10]).toBe('why');
     expect(versionInsert.params[11]).toBe(3);
-    expect(find(/UPDATE data_hub_data_services SET active_version_id/)[0].params).toEqual([101, 3, 10]);
+    expect(find(/UPDATE data_hub_data_services SET active_version_id/)[0].params).toEqual([
+      101,
+      'API_FIN_D1_10',
+      3,
+      10,
+    ]);
 
     const history = find(/INSERT INTO data_hub_data_service_histories/)[0];
     expect(history.params[3]).toBe('UPDATE');

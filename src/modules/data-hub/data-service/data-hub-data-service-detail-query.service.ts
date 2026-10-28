@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { DATA_HUB_API_BASE_URL_HOSTS, DataHubApiBaseUrl } from '@modules/databases/data-hub-enums';
 import { DataHubUserRefService } from '../common/data-hub-user-ref.service';
 import { activeSql, liveSql } from '../common/data-hub-query.util';
-import { loadBusinessContactUserIds } from '../consumer/consumer-business-contacts.util';
+import { loadSoAppUserIds } from '../consumer/consumer-so-apps.util';
 import { loadVersionSourceTables } from './data-service-source-tables-detail.util';
 import { queryRows } from './data-service-query-rows.util';
 import { API_SPEC_FIELDS, ApiSpecInput, SFTP_SPEC_FIELDS, SftpSpecInput } from './data-service-spec.types';
@@ -128,7 +128,8 @@ export class DataHubDataServiceDetailQueryService {
 
     const requesterIds = requesters.map((r) => Number(r.user_id));
     const supporterIds = supporters.map((r) => Number(r.user_id));
-    const contactIds = await loadBusinessContactUserIds(
+    const ownerIds = (await link('data_hub_data_service_version_service_owners')).map((r) => Number(r.user_id));
+    const soAppIds = await loadSoAppUserIds(
       this.dataSource,
       consumers.map((c) => Number(c.id)),
     );
@@ -139,7 +140,8 @@ export class DataHubDataServiceDetailQueryService {
       row.reviewed_by,
       ...requesterIds,
       ...supporterIds,
-      ...[...contactIds.values()].flat(),
+      ...ownerIds,
+      ...[...soAppIds.values()].flat(),
     ]);
 
     const api = apiRows[0]
@@ -177,13 +179,14 @@ export class DataHubDataServiceDetailQueryService {
         sftp_spec: sftpRows[0] ?? null,
         requesters: this.userRefs.toRefs(users, requesterIds),
         it_supporters: this.userRefs.toRefs(users, supporterIds),
+        service_owners: this.userRefs.toRefs(users, ownerIds),
         consumers: consumers.map((c) => ({
           id: Number(c.id),
           code: c.code,
           name: c.name,
           category: c.category,
           short_description: c.short_description,
-          business_contacts: this.userRefs.toRefs(users, contactIds.get(Number(c.id)) ?? []),
+          so_apps: this.userRefs.toRefs(users, soAppIds.get(Number(c.id)) ?? []),
         })),
         term_count: Number(termCount[0]?.term_count ?? 0),
         // Bảng nguồn dịch vụ of this version, each with its terms (also what the edit form loads).

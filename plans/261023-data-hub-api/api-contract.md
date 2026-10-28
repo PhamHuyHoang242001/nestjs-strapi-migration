@@ -7,7 +7,7 @@ Base: `/api/v1/data-hub/...`. Every controller uses `@ApiTags`, `@ApiBearerAuth(
    - Use explicit column lists in raw SQL or QueryBuilder `.select([...])`.
    - Never `SELECT *`, never return entities as-is, never select password or other user columns.
 2. **Every user reference is returned as `{ id, email }`**, or `null` if the id is null. Resolve with one batched query per request: `SELECT id, email FROM users WHERE id = ANY($1)`. This is the shared `DataHubUserRefService.resolve(ids) → Map<number, {id,email}>`.
-   - Fields: `created_by_user`, `updated_by_user`, `submitted_by_user`, `reviewed_by_user`, `changed_by_user`, `business_contacts[]`, `requesters[]`, `it_supporters[]`.
+   - Fields: `created_by_user`, `updated_by_user`, `submitted_by_user`, `reviewed_by_user`, `changed_by_user`, `so_apps[]`, `requesters[]`, `it_supporters[]`, `service_owners[]`.
    - An unknown id (user deleted) → `{ id, email: null }`.
 3. **Writes validate user ids** exist among live users. Otherwise 400 `INVALID_USERS: <ids>`.
 4. **"Live" filter:** `deleted_at IS NULL AND COALESCE(is_deleted,false) = false` on every soft-delete table in every read.
@@ -61,7 +61,7 @@ Plan: `plans/261026-data-hub-permissions/`. Codes are seeded by migration `26102
 - `GET /` (keyword/page/limit, newest first) → `{ data:[{id,code,name,updated_at,member_count}], meta }`.
 - `GET /:id` → `{ id, code, name, members:[{id,email,can_create,can_update}], created_by_user, updated_by_user, created_at, updated_at }`. Member rights are the user's current codes ("Không có quyền" when both false).
 - `POST /` / `PUT /:id` body `{ code (^[A-Za-z0-9_-]{1,100}$), name(≤255) }`; code unique case-insensitively among live rows → 409 `DEPARTMENT_CODE_EXISTS`; `PUT` with no change → 400 `NO_CHANGES`.
-- `DELETE /:id` → soft delete + removes members; 409 `DEPARTMENT_IN_USE` while a live data service (active version) or live consumer uses it. Locks the row FOR UPDATE; data-service and consumer writes take FOR SHARE on the department they use.
+- `DELETE /:id` → soft delete + removes members; 409 `DEPARTMENT_IN_USE` while a live data service (active version) uses it (consumers have no department since 2026-10-28). Locks the row FOR UPDATE; data-service writes take FOR SHARE on the department they use.
 - `GET /:id/member-candidates?keyword=` → users holding `dh_data_service_create` or `_update` that are not members yet: `{ data:[{id,email,can_create,can_update}], meta }`.
 - `POST /:id/members {user_ids:[1..100 distinct]}` → `{ id, added }` (existing pairs ignored); every id must be a live user holding a data-service right, else 400 `INVALID_MEMBERS: <ids>`.
 - `DELETE /:id/members/:userId` → `{ id, user_id, removed:true }` or 404 `MEMBER_NOT_FOUND`.
@@ -130,16 +130,16 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
     changelog_note, submitted_by_user, reviewed_by_user, reviewed_at, created_at,
     request_unit:{id,code,name}, division:{...}, department:{...},
     api_spec: {...all api spec fields, base_url_host}|null, sftp_spec: {...}|null,
-    requesters:[{id,email}], it_supporters:[{id,email}],
-    consumers:[{id,code,name,category,short_description,business_contacts:[{id,email}]}], term_count,
+    requesters:[{id,email}], it_supporters:[{id,email}], service_owners:[{id,email}] (SO dịch vụ),
+    consumers:[{id,code,name,category,short_description,so_apps:[{id,email}]}], term_count,
     source_tables:[{id,name,description,terms:[{id,code,technical_description,example_value,logical_term:{id,code}|null}]}] } }
 ```
 `source_tables` is the full grouped set of the active version (used to prefill the edit form).
 404 `DATA_SERVICE_NOT_FOUND` if the service is not live or has no active version.
 
 ### B5. "Từ điển dữ liệu" tab — grouped by source table (2026-10-27)
-- `GET /:id/source-tables?keyword&page&limit` → `{ data:[{ id, name, description, term_count, physical_terms:[{ id, code, technical_description, example_value, logical_term }] }], meta }`: tables holding live terms linked to the active version, terms nested (the FE expands rows without another call).
-- `GET /:id/source-tables/:sourceTableId/terms` → `{ data:[{ id, code, technical_description, example_value, logical_term:{id,code}|null }] }`.
+- `GET /:id/source-tables?keyword&page&limit` → `{ data:[{ id, name, description, term_count, physical_terms:[{ id, code, technical_description, data_type, is_required, example_value, logical_term }] }], meta }`: tables holding live terms linked to the active version, terms nested (the FE expands rows without another call).
+- `GET /:id/source-tables/:sourceTableId/terms` → `{ data:[{ id, code, technical_description, data_type, is_required, example_value, logical_term:{id,code}|null }] }`.
 - The former `GET /:id/terms` was removed.
 
 ### B6. `POST /` — create
@@ -147,9 +147,9 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
   ```
   { service_type, name(≤90), short_description(≤400), purpose?(≤1000), request_unit_id, division_id, department_id,
     usage_guide_html? (optional since 2026-10-28; empty/missing stored as ''), consumer_ids (1..20), requester_user_ids (≥1),
-    it_supporter_user_ids (≥1), source_tables?, changelog_note?, api_spec? | sftp_spec? }
+    it_supporter_user_ids (≥1), service_owner_user_ids (SO dịch vụ, 1..50 distinct users, required since 2026-10-28), source_tables?, changelog_note?, api_spec? | sftp_spec? }
   ```
-  - `source_tables` (2026-10-27, replaces `source_table` text and `physical_term_ids`): `[{ id?, name(≤255), description?(≤2000), terms:[{ id?, code(≤255), technical_description(≤2000), example_value?(≤1000), logical_term_id?: number|null }] (1..500) }] (≤50)` — the full desired set.
+  - `source_tables` (2026-10-27, replaces `source_table` text and `physical_term_ids`): `[{ id?, name(≤255), description?(≤2000), terms:[{ id?, code(≤255), technical_description(≤2000), data_type(required, ≤100, free text), is_required?: boolean (default false), example_value?(≤1000), logical_term_id?: number|null }] (1..500) }] (≤50)` — the full desired set.
     - Group `id` = existing live table; it must belong to one of the caller's member departments (its own department, or a department whose live services own live terms in it; super_admin: any) or already be used by this service, else 403 `SOURCE_TABLE_FORBIDDEN: <names>` — once saved, the table is also published to the service's department; unknown → 400 `INVALID_SOURCE_TABLES`. `name`/`description` edits apply to it. No `id` → new table in `department_id`.
     - Term `id` = live term of THIS service (may change fields or move table), else 400 `INVALID_PHYSICAL_TERMS`. No `id` → new term. This service's live terms left out are soft-deleted (old versions keep their links).
     - (2026-10-28) Deleted = gone (only history keeps it); inactive applies to data services only. A table holding terms of inactive services only still exists (its name stays taken → 409 on a new table with that name) but no other service can pick or save it (403 `SOURCE_TABLE_FORBIDDEN`, hidden from `/selectable`); the inactive service itself keeps using its own tables. A table left with no live term (from any service) by a save is soft-deleted in the same transaction, so its name is free again.
@@ -160,7 +160,8 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
   - `timeout` is required (non-empty, ≤100) when `sync_mode = SYNC`; optional for `ASYNC` / `BATCH` (2026-10-26).
   - `sftp_spec`: `host?, port?(1..65535, default 22), auth_type, key_vault_method?, vault_account?, folder_path?, file_name_pattern?, file_format, export_frequency, max_file_size?, encryption, flow_direction?`.
 - **Validation:** every referenced id exists and is live (`INVALID_REQUEST_UNIT`/`INVALID_DIVISION`/`INVALID_DEPARTMENT`/`INVALID_CONSUMERS`/`INVALID_USERS`). Consumers must be active.
-- **service_code:** `{API|SFT}-{division.code}-{NNN}`.
+- **Physical term fields (2026-10-28):** every term in responses carries `data_type: string|null` (null on terms created before the field existed, until their service is edited) and `is_required: boolean`; the history label of a term shows `[data_type, bắt buộc]` when set. Migration 2610281200 adds them and the `data_hub_data_service_version_service_owners` link table.
+- **service_code:** `{API|SFTP}_{division.code}_{department.code}_{id}` (e.g. `API_EDA_DPD_1`, `SFTP_IT_DPIS_23`). Rebuilt on every update from the new version's division/department, so it changes when either changes (old `API-EDA-001` codes switch to the new format on their next edit) (2026-10-28).
   - Take `pg_advisory_xact_lock(hashtext(prefix))`.
   - `NNN` = max existing suffix for that prefix (including soft-deleted rows) + 1, zero-padded to 3.
 - **Writes:**
@@ -213,7 +214,7 @@ Derived "systems out" of a physical term = distinct active consumers linked to t
 - **Item:**
   ```
   { id, code, short_description, example_value, systems_out_count,
-    physical_terms:[{ id, code, technical_description, example_value, source_table:{id,name}, data_service:{id,service_code}, systems_out:[{id,code,name}] }] }
+    physical_terms:[{ id, code, technical_description, data_type, is_required, example_value, source_table:{id,name}, data_service:{id,service_code}, systems_out:[{id,code,name}] }] }
   ```
 - Order by code.
 
@@ -251,15 +252,15 @@ XLSX with C1 filters. One row per physical; unmapped physicals at the end. Colum
 
 ### C10. Source tables — `/v1/data-hub/source-tables` (read-only)
 - `GET /?keyword&department_ids&division_ids&page&limit` — dictionary "Thuật ngữ nghiệp vụ" tab: tables holding live terms of live services, newest first → `{ data:[{ id, name, description, term_count, departments:[{id,code,name}], divisions:[{id,code,name}], physical_terms:[term as in `/:id/terms`] }], meta }`. Terms are nested (one batched query per page) like the physicals of C1, so the FE expands a row without another call. `departments` (Đơn vị phát hành) = the table's creating department + departments of active services' active versions holding its terms; `divisions` (Khối chủ quản) = divisions of those active versions. `department_ids` / `division_ids` (`1,2` or repeated) keep tables whose `departments` / `divisions` include one of them; both given = AND (2026-10-28).
-- `GET /:id/terms` → `{ data:[{ id, code, technical_description, example_value, logical_term:{id,code}|null, data_service:{id,service_code,name} }] }`; 404 `SOURCE_TABLE_NOT_FOUND`.
+- `GET /:id/terms` → `{ data:[{ id, code, technical_description, data_type, is_required, example_value, logical_term:{id,code}|null, data_service:{id,service_code,name} }] }`; 404 `SOURCE_TABLE_NOT_FOUND`.
 - `GET /selectable?data_service_id?&keyword&page&limit` — data-service form picker, listed without choosing the Đơn vị phát hành: live tables of every department the caller is a member of (super_admin: all) plus the tables `data_service_id` already uses, A→Z → `{ data:[{ id, name, description, term_count, departments:[{id,code,name}], divisions:[{id,code,name}] }], meta }` (2026-10-27; divisions 2026-10-28).
 
 ### C10a. `GET /physical-terms/available` — picker for the logical create/edit form
 - **Query:** `keyword` (code, description, table name, service code), `logical_term_id?`, `page`, `limit`. Returns live physicals of live services that are unmapped, or already mapped to `logical_term_id` when given.
-- **Item:** `{ id, code, technical_description, example_value, logical_term:{id,code}|null, source_table:{id,name}, data_service:{id,service_code,name} }`.
+- **Item:** `{ id, code, technical_description, data_type, is_required, example_value, logical_term:{id,code}|null, source_table:{id,name}, data_service:{id,service_code,name} }`.
 
 ### C10b. `GET /physical-terms/:id` — detail (read-only)
-- 404 `PHYSICAL_TERM_NOT_FOUND` when the term or its service is not live. Returns `{ id, code, technical_description, example_value, logical_term:{id,code,short_description}|null, source_table:{id,name,description}, data_service:{id,service_code,service_type,status,name}, systems_out:[{id,code,name}], created_by_user, updated_by_user, created_at, updated_at }`. `systems_out` = active consumers of the owning service's active version.
+- 404 `PHYSICAL_TERM_NOT_FOUND` when the term or its service is not live. Returns `{ id, code, technical_description, data_type, is_required, example_value, logical_term:{id,code,short_description}|null, source_table:{id,name,description}, data_service:{id,service_code,service_type,status,name}, systems_out:[{id,code,name}], created_by_user, updated_by_user, created_at, updated_at }`. `systems_out` = active consumers of the owning service's active version.
 
 ### C11. Removed (2026-10-27)
 `GET /physical-terms` (list), `POST /physical-terms`, `POST /physical-terms/bulk`, `PUT /physical-terms/:id`, `PATCH /physical-terms/:id/status`, `DELETE /physical-terms/:id`.
@@ -277,8 +278,8 @@ Derived `api_count` / `sftp_count` = active data services whose active version l
   - `page`, `limit`
 - **Item:**
   ```
-  { id, code, name, category, short_description, status, division:{id,code,name}, department|null,
-    business_contacts:[{id,email}] (ordered by link id), api_count, sftp_count }
+  { id, code, name, category, short_description, status, division:{id,code,name},
+    so_apps:[{id,email}] (ordered by link id), avatar_url|null, api_count, sftp_count }
   ```
 - Order by code.
 
@@ -292,12 +293,12 @@ XLSX columns: STT, Mã, Tên, Phân loại, Khối, Phòng ban, Số API, Số S
 D1 item + `term_count, version_no, created_by_user, updated_by_user, created_at, updated_at`. The "Dịch vụ kết nối" tab uses B1 with `consumer_ids=<id>`.
 
 ### D5. `POST /`
-- **Body:** `{ code (^[A-Z0-9_]{2,100}$, uppercased server-side), name, category, division_id, department_id?, short_description(≤200), business_contact_user_ids:number[] }`. Đầu mối liên hệ nghiệp vụ is multi-select: 1-20 distinct user ids, each validated as a live user (400 `INVALID_USERS`), stored in link table `data_hub_consumer_business_contacts` (hard-deleted links). Tech SO and Biz SO were removed on 2026-10-26; the single `so_user_id` became `so_user_ids`, renamed to `business_contact_user_ids` (response `business_contacts`, label "Đầu mối liên hệ nghiệp vụ") on 2026-10-26.
+- **Body:** `{ code (^[A-Z0-9_]{2,100}$, uppercased server-side), name, category, division_id, short_description(≤200), avatar_url?:string|null (≤2000, URL from `POST /v1/custom-upload`; null/'' clears), so_app_user_ids:number[] }`. SO APP is multi-select: 1-20 distinct user ids, each validated as a live user (400 `INVALID_USERS`), stored in link table `data_hub_consumer_so_apps` (hard-deleted links). 2026-10-28: Phòng ban (`department_id`) removed (sending it → 400); `business_contact_user_ids`/`business_contacts` ("Đầu mối liên hệ nghiệp vụ") renamed to `so_app_user_ids`/`so_apps` ("SO APP"), table renamed from `data_hub_consumer_business_contacts`; `avatar_url` added (migration 2610281100). Tech SO and Biz SO were removed on 2026-10-26; the single `so_user_id` became `so_user_ids`, renamed to `business_contact_user_ids` (response `business_contacts`, label "Đầu mối liên hệ nghiệp vụ") on 2026-10-26.
 - Status active, `version_no=1`, history `CREATE` snapshot.
 - 409 `CONSUMER_CODE_EXISTS`.
 
 ### D6. `PUT /:id`
-Same body minus `code` (immutable). `business_contact_user_ids` replaces the whole business-contact set. `version_no+1`, history `UPDATE`. Unchanged → 400 `NO_CHANGES`.
+Same body minus `code` (immutable). `so_app_user_ids` replaces the whole SO APP set. `version_no+1`, history `UPDATE`. Unchanged → 400 `NO_CHANGES`.
 
 ### D7. `PATCH /:id/status`
 `version_no+1`, history `STATUS`.
@@ -309,7 +310,7 @@ Same body minus `code` (immutable). `business_contact_user_ids` replaces the who
 ### D8. `GET /:id/histories`
 `data:[{ id, version_no, action, snapshot, changed_by_user, created_at }]`.
 
-Snapshot shape (consumers): `{ code, name, category, division_id, department_id, short_description, status, business_contact_user_ids }` (`business_contact_user_ids` sorted ascending). Older history rows may still carry `so_user_id` / `tech_user_id` / `biz_user_id`.
+Snapshot shape (consumers): `{ code, name, category, division_id, short_description, avatar_url, status, so_app_user_ids }` (`so_app_user_ids` sorted ascending). The migration renamed `business_contact_user_ids` → `so_app_user_ids` in stored snapshots; rows before 2026-10-28 still carry `department_id`. Older history rows may still carry `so_user_id` / `tech_user_id` / `biz_user_id`.
 
 ## Module layout (`src/modules/data-hub/`)
 ```

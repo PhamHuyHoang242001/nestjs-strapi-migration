@@ -16,6 +16,8 @@ export const LOGICAL_TERM_EXPORT_COLUMNS: ExcelColumn[] = [
   { header: 'Thuật ngữ nghiệp vụ', key: 'code', width: 30 },
   { header: 'Data service', key: 'service_code', width: 20 },
   { header: 'Mô tả kỹ thuật', key: 'technical_description', width: 40 },
+  { header: 'Data Type', key: 'data_type', width: 18 },
+  { header: 'Bắt buộc', key: 'is_required', width: 10 },
   { header: 'Ví dụ', key: 'example_value', width: 24 },
   { header: 'Hệ thống đầu ra', key: 'systems_out', width: 30 },
 ];
@@ -28,6 +30,8 @@ interface ExportRow {
   source_table: string;
   service_code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
 }
 
@@ -47,7 +51,7 @@ export class LogicalTermExportService {
     const rows: ExportRow[] = await this.dataSource.query(
       `SELECT p.id AS physical_id, lt.code AS logical_code,
               lt.short_description AS logical_description, p.code, st.name AS source_table, s.service_code,
-              p.technical_description, p.example_value
+              p.technical_description, p.data_type, p.is_required, p.example_value
        FROM data_hub_physical_terms p
        JOIN data_hub_source_tables st ON st.id = p.source_table_id
        JOIN data_hub_data_services s ON s.id = p.data_service_id
@@ -69,6 +73,8 @@ export class LogicalTermExportService {
       code: r.code,
       service_code: r.service_code,
       technical_description: r.technical_description,
+      data_type: r.data_type ?? '',
+      is_required: r.is_required ? 'Có' : 'Không',
       example_value: r.example_value,
       systems_out: (systems.get(Number(r.physical_id)) ?? []).map((s) => s.code).join(', '),
     }));

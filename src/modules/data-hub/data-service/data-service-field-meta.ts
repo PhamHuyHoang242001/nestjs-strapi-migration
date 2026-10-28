@@ -31,6 +31,7 @@ export const FIELD_META: FieldMeta[] = [
   f('department', 'business', 'ref', 'Phòng ban', 'Department'),
   f('requesters', 'business', 'refList', 'Người yêu cầu', 'Requesters'),
   f('it_supporters', 'business', 'refList', 'IT hỗ trợ', 'IT supporters'),
+  f('service_owners', 'business', 'refList', 'SO dịch vụ', 'Service owners'),
 
   f('api_method', 'technical', 'scalar', 'Phương thức', 'HTTP method'),
   f('api_base_url', 'technical', 'scalar', 'Base URL', 'Base URL'),

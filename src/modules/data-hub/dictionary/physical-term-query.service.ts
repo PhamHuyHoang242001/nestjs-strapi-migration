@@ -8,6 +8,8 @@ interface TermRow {
   id: number;
   code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
   logical_id: number | null;
   logical_code: string | null;
@@ -54,7 +56,7 @@ export class PhysicalTermQueryService {
       params,
     );
     const rows: TermRow[] = await this.dataSource.query(
-      `SELECT p.id, p.code, p.technical_description, p.example_value, lt.id AS logical_id, lt.code AS logical_code,
+      `SELECT p.id, p.code, p.technical_description, p.data_type, p.is_required, p.example_value, lt.id AS logical_id, lt.code AS logical_code,
               st.id AS st_id, st.name AS st_name, s.id AS ds_id, s.service_code, v.name AS service_name
        ${where} ORDER BY st.name, p.code, p.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
@@ -64,6 +66,8 @@ export class PhysicalTermQueryService {
         id: Number(r.id),
         code: r.code,
         technical_description: r.technical_description,
+        data_type: r.data_type,
+        is_required: r.is_required,
         example_value: r.example_value,
         logical_term: r.logical_id === null ? null : { id: Number(r.logical_id), code: r.logical_code },
         source_table: { id: Number(r.st_id), name: r.st_name },

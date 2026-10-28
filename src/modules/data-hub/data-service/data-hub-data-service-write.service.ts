@@ -6,7 +6,7 @@ import { isUniqueViolation } from '../common/data-hub-pg-error.util';
 import { liveSql } from '../common/data-hub-query.util';
 import { LogicalTermHistoryService } from '../dictionary/logical-term-history.service';
 import { CreateDataServiceDto, UpdateDataServiceDto } from './dto';
-import { buildServiceCodePrefix, nextServiceCode } from './data-service-code.util';
+import { buildServiceCode, reserveServiceId } from './data-service-code.util';
 import { diffSnapshots, singleFieldChange } from './data-service-diff.util';
 import { DataServiceSnapshotService } from './data-service-snapshot.service';
 import { buildSnapshot, ResolvedRefs } from './data-service-snapshot.util';
@@ -79,14 +79,18 @@ export class DataHubDataServiceWriteService {
         await this.access.assertDepartmentWrite(caller, [dto.department_id], manager);
         assertSpecMatchesType(dto.service_type, dto);
         const refs = await this.snapshots.resolveRefs(manager, source, true);
-        const prefix = buildServiceCodePrefix(dto.service_type, refs.division?.label ?? '');
-        const serviceCode = await nextServiceCode(manager, prefix);
-        const [pkg]: Array<{ id: number }> = await manager.query(
-          `INSERT INTO data_hub_data_services (service_code, service_type, status, created_by)
-           VALUES ($1, $2, 'active', $3) RETURNING id`,
-          [serviceCode, dto.service_type, userId],
+        const dataServiceId = await reserveServiceId(manager);
+        const serviceCode = buildServiceCode(
+          dto.service_type,
+          refs.division?.label ?? '',
+          refs.department?.label ?? '',
+          dataServiceId,
         );
-        const dataServiceId = Number(pkg.id);
+        await manager.query(
+          `INSERT INTO data_hub_data_services (id, service_code, service_type, status, created_by)
+           VALUES ($1, $2, $3, 'active', $4)`,
+          [dataServiceId, serviceCode, dto.service_type, userId],
+        );
         await this.applyTerms(manager, dataServiceId, dto, caller, source, refs);
         const versionId = await insertApprovedVersion(manager, {
           dataServiceId,
@@ -148,9 +152,17 @@ export class DataHubDataServiceWriteService {
           changelogNote: dto.changelog_note ?? null,
           source,
         });
+        // The code follows the division/department of the new version (codes in an older format are rebuilt too).
+        const serviceCode = buildServiceCode(
+          pkg.service_type,
+          refs.division?.label ?? '',
+          refs.department?.label ?? '',
+          id,
+        );
         await manager.query(
-          'UPDATE data_hub_data_services SET active_version_id = $1, updated_by = $2, updated_at = NOW() WHERE id = $3',
-          [versionId, userId, id],
+          `UPDATE data_hub_data_services SET active_version_id = $1, service_code = $2, updated_by = $3,
+             updated_at = NOW() WHERE id = $4`,
+          [versionId, serviceCode, userId, id],
         );
         await insertServiceHistory(manager, {
           dataServiceId: id,
@@ -161,7 +173,7 @@ export class DataHubDataServiceWriteService {
           changes,
           userId,
         });
-        return { id, service_code: pkg.service_code, version_id: versionId, version_no: versionNo };
+        return { id, service_code: serviceCode, version_id: versionId, version_no: versionNo };
       });
     } catch (err) {
       rethrowConflict(err, 'VERSION_CONFLICT: concurrent edit, please retry');

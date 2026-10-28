@@ -21,6 +21,7 @@ export interface RefIds {
   physical_term_ids: number[];
   requester_user_ids: number[];
   it_supporter_user_ids: number[];
+  service_owner_user_ids: number[];
 }
 
 export interface LoadedVersion {
@@ -32,7 +33,13 @@ export interface LoadedVersion {
 // version_no + the VersionSource columns of a stored version row.
 type VersionRow = Omit<
   VersionSource,
-  'api_spec' | 'sftp_spec' | 'requester_user_ids' | 'it_supporter_user_ids' | 'consumer_ids' | 'physical_term_ids'
+  | 'api_spec'
+  | 'sftp_spec'
+  | 'requester_user_ids'
+  | 'it_supporter_user_ids'
+  | 'service_owner_user_ids'
+  | 'consumer_ids'
+  | 'physical_term_ids'
 > & { version_no: number };
 
 const unique = (ids: number[]): number[] => Array.from(new Set(ids));
@@ -41,6 +48,8 @@ interface TermRow {
   id: number;
   code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
   source_table_id: number;
   source_table: string;
@@ -57,7 +66,9 @@ export interface ResolvedTerms {
 const termItem = (r: TermRow): RefItem => {
   const example = r.example_value ? ` (vd: ${r.example_value})` : '';
   const logical = r.logical_code ? ` → ${r.logical_code}` : '';
-  const label = `${r.source_table}.${r.code} — ${r.technical_description}${example}${logical}`;
+  // Terms created before Data Type / Required existed have neither, so their label stays as it was.
+  const kind = [r.data_type, r.is_required ? 'bắt buộc' : null].filter(Boolean).join(', ');
+  const label = `${r.source_table}.${r.code}${kind ? ` [${kind}]` : ''} — ${r.technical_description}${example}${logical}`;
   return { key: `${Number(r.id)}|${label}`, label };
 };
 // One item per table; name and description are in the key so editing only the table shows as a change.
@@ -90,6 +101,7 @@ export class DataServiceSnapshotService {
     const termIds = unique(ids.physical_term_ids);
     const requesterIds = unique(ids.requester_user_ids);
     const supporterIds = unique(ids.it_supporter_user_ids);
+    const ownerIds = unique(ids.service_owner_user_ids);
 
     // Sequential on purpose: all queries share one transaction connection.
     const requestUnit = await this.orgRef(
@@ -127,8 +139,9 @@ export class DataServiceSnapshotService {
       throw new BadRequestException(`INVALID_PHYSICAL_TERMS: ${missing(termIds, termRows).join(',')} not found`);
     }
 
-    if (strict) await this.userRefs.assertUsers(manager, [...requesterIds, ...supporterIds]);
-    const users = await this.userRefs.resolve([...requesterIds, ...supporterIds], manager);
+    const userIds = [...requesterIds, ...supporterIds, ...ownerIds];
+    if (strict) await this.userRefs.assertUsers(manager, userIds);
+    const users = await this.userRefs.resolve(userIds, manager);
     const toUserItems = (list: number[]): RefItem[] =>
       list.map((id) => ({ key: id, label: users.get(id)?.email ?? `#${id}` }));
 
@@ -140,6 +153,7 @@ export class DataServiceSnapshotService {
       ...resolvedTerms(termRows),
       requesters: toUserItems(requesterIds),
       itSupporters: toUserItems(supporterIds),
+      serviceOwners: toUserItems(ownerIds),
     };
   }
 
@@ -172,6 +186,7 @@ export class DataServiceSnapshotService {
     );
     const requesters = await links('data_hub_data_service_version_requesters', 'user_id');
     const supporters = await links('data_hub_data_service_version_it_supporters', 'user_id');
+    const owners = await links('data_hub_data_service_version_service_owners', 'user_id');
     const consumers = await links('data_hub_data_service_version_consumers', 'consumer_id');
     const terms = await links('data_hub_data_service_version_physical_terms', 'physical_term_id');
     const ids = (rows: Array<{ id: number }>) => rows.map((r) => Number(r.id));
@@ -184,6 +199,7 @@ export class DataServiceSnapshotService {
       sftp_spec: sftpRows[0] ?? null,
       requester_user_ids: ids(requesters),
       it_supporter_user_ids: ids(supporters),
+      service_owner_user_ids: ids(owners),
       consumer_ids: ids(consumers),
       physical_term_ids: ids(terms),
     };
@@ -201,7 +217,7 @@ export class DataServiceSnapshotService {
     if (ids.length === 0) return [];
     return queryRows<TermRow>(
       manager,
-      `SELECT t.id, t.code, t.technical_description, t.example_value, t.source_table_id,
+      `SELECT t.id, t.code, t.technical_description, t.data_type, t.is_required, t.example_value, t.source_table_id,
               st.name AS source_table, st.description AS source_table_description, lt.code AS logical_code
        FROM data_hub_physical_terms t JOIN data_hub_source_tables st ON st.id = t.source_table_id
        LEFT JOIN data_hub_logical_terms lt ON lt.id = t.logical_term_id AND ${liveSql('lt')}

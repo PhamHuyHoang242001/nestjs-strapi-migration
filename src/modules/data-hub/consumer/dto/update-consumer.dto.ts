@@ -34,11 +34,6 @@ export class UpdateConsumerDto {
   @IsInt()
   readonly division_id: number;
 
-  @ApiProperty({ required: false, nullable: true })
-  @IsOptional()
-  @IsInt()
-  readonly department_id?: number | null;
-
   @ApiProperty({ maxLength: 200 })
   @Transform(trim)
   @IsString()
@@ -46,12 +41,20 @@ export class UpdateConsumerDto {
   @MaxLength(200)
   readonly short_description: string;
 
-  @ApiProperty({ type: [Number], description: '1-20 distinct user ids' })
+  // URL returned by the upload API; null or '' clears the avatar.
+  @ApiProperty({ required: false, nullable: true, maxLength: 2000 })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  readonly avatar_url?: string | null;
+
+  @ApiProperty({ type: [Number], description: 'SO APP: 1-20 distinct user ids' })
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(20)
   @ArrayUnique()
   @IsInt({ each: true })
   @Min(1, { each: true })
-  readonly business_contact_user_ids: number[];
+  readonly so_app_user_ids: number[];
 }

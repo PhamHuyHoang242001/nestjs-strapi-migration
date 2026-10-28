@@ -64,7 +64,7 @@ export class DepartmentConfigController {
     return this.write.update(id, dto, dataHubCaller(req).id);
   }
 
-  @ApiOperation({ summary: 'Soft-delete a department not used by live data services or consumers' })
+  @ApiOperation({ summary: 'Soft-delete a department not used by live data services' })
   @Delete(':id')
   @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_DELETE)
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo) {

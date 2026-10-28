@@ -22,6 +22,8 @@ export interface GroupedTerm {
   id: number;
   code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
   logical_term: { id: number; code: string } | null;
   data_service: { id: number; service_code: string; name: string };
@@ -113,6 +115,8 @@ export async function listGroupsTerms(
     source_table_id: number;
     code: string;
     technical_description: string;
+    data_type: string | null;
+    is_required: boolean;
     example_value: string | null;
     logical_id: number | null;
     logical_code: string | null;
@@ -120,7 +124,7 @@ export async function listGroupsTerms(
     service_code: string;
     service_name: string | null;
   }> = await runner.query(
-    `SELECT p.id, p.source_table_id, p.code, p.technical_description, p.example_value,
+    `SELECT p.id, p.source_table_id, p.code, p.technical_description, p.data_type, p.is_required, p.example_value,
             lt.id AS logical_id, lt.code AS logical_code,
             s.id AS ds_id, s.service_code, v.name AS service_name
      FROM data_hub_physical_terms p
@@ -137,6 +141,8 @@ export async function listGroupsTerms(
       id: Number(r.id),
       code: r.code,
       technical_description: r.technical_description,
+      data_type: r.data_type,
+      is_required: r.is_required,
       example_value: r.example_value,
       logical_term:
         r.logical_id === null || r.logical_code === null ? null : { id: Number(r.logical_id), code: r.logical_code },

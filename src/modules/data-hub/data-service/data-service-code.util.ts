@@ -3,27 +3,23 @@ import { DataHubServiceType } from '@modules/databases/data-hub-enums';
 
 const TYPE_PREFIX: Record<DataHubServiceType, string> = {
   [DataHubServiceType.API]: 'API',
-  [DataHubServiceType.SFTP]: 'SFT',
+  [DataHubServiceType.SFTP]: 'SFTP',
 };
 
-// `API-<division code>-` / `SFT-<division code>-`; the sequence number is appended by nextServiceCode.
-export const buildServiceCodePrefix = (type: DataHubServiceType, divisionCode: string): string =>
-  `${TYPE_PREFIX[type]}-${divisionCode}-`;
+// `[SERVICE]_<division code>_<department code>_<id>`, e.g. API_EDA_DPD_1, SFTP_IT_DPIS_23. The id makes the
+// code unique, so it is rebuilt whenever the division or department of the active version changes.
+export const buildServiceCode = (
+  type: DataHubServiceType,
+  divisionCode: string,
+  departmentCode: string,
+  id: number,
+): string => `${TYPE_PREFIX[type]}_${divisionCode}_${departmentCode}_${id}`;
 
-export const formatServiceCode = (prefix: string, sequence: number): string =>
-  `${prefix}${String(sequence).padStart(3, '0')}`;
-
-// Next free code for a prefix. The transaction-scoped advisory lock serializes concurrent creates of the same
-// prefix so two requests cannot read the same max. Soft-deleted rows count: a code is never handed out twice.
-// The suffix must be all digits and the prefix exact, so division `FOO` never collides with `FOO-BAR`.
-export async function nextServiceCode(manager: EntityManager, prefix: string): Promise<string> {
-  await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [prefix]);
-  const rows: Array<{ max_no: number | string }> = await manager.query(
-    `SELECT COALESCE(MAX(substring(service_code FROM char_length($1::text) + 1)::int), 0) AS max_no
-     FROM data_hub_data_services
-     WHERE left(service_code, char_length($1::text)) = $1::text
-       AND substring(service_code FROM char_length($1::text) + 1) ~ '^[0-9]+$'`,
-    [prefix],
+// The new service's id is taken from its sequence before the insert, so the code (which carries the id) is
+// written in the same INSERT.
+export async function reserveServiceId(manager: EntityManager): Promise<number> {
+  const [row]: Array<{ id: number | string }> = await manager.query(
+    `SELECT nextval(pg_get_serial_sequence('data_hub_data_services', 'id')) AS id`,
   );
-  return formatServiceCode(prefix, Number(rows[0]?.max_no ?? 0) + 1);
+  return Number(row.id);
 }

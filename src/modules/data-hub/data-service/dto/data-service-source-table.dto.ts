@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -35,6 +36,19 @@ export class DataServiceTermInputDto {
   @IsNotEmpty()
   @MaxLength(2000)
   readonly technical_description: string;
+
+  // Data Type of the column, free text (e.g. VARCHAR(20), NUMBER).
+  @ApiProperty({ maxLength: 100 })
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  readonly data_type: string;
+
+  @ApiProperty({ required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  readonly is_required?: boolean;
 
   @ApiProperty({ required: false, nullable: true, maxLength: 1000 })
   @IsOptional()

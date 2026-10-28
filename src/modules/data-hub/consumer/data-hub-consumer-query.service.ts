@@ -4,7 +4,7 @@ import { DataHubPageQueryDto, liveSql, toPaging } from '../common/data-hub-query
 import { DataHubUserRef, DataHubUserRefService } from '../common/data-hub-user-ref.service';
 import { DataHubConsumerCountsService } from './data-hub-consumer-counts.service';
 import { sqlRows } from './consumer-sql.util';
-import { loadBusinessContactUserIds } from './consumer-business-contacts.util';
+import { loadSoAppUserIds } from './consumer-so-apps.util';
 import { CONSUMER_ITEM_COLUMNS, CONSUMER_ITEM_JOINS, ConsumerListRow, OrgRef } from './consumer-item-sql.util';
 import { ConsumerListFilter, buildConsumerWhere } from './consumer-list-filter.util';
 
@@ -47,13 +47,13 @@ export class DataHubConsumerQueryService {
     );
 
     const ids = rows.map((r) => Number(r.id));
-    const [counts, contactIds] = await Promise.all([
+    const [counts, soAppIds] = await Promise.all([
       this.counts.loadServiceCounts(ids),
-      loadBusinessContactUserIds(this.dataSource, ids),
+      loadSoAppUserIds(this.dataSource, ids),
     ]);
-    const users = await this.userRefs.resolve([...contactIds.values()].flat());
+    const users = await this.userRefs.resolve([...soAppIds.values()].flat());
     return {
-      data: rows.map((r) => this.toItem(r, counts, users, contactIds.get(Number(r.id)) ?? [])),
+      data: rows.map((r) => this.toItem(r, counts, users, soAppIds.get(Number(r.id)) ?? [])),
       meta: { total: Number(countRow?.total ?? 0), page, limit },
     };
   }
@@ -69,15 +69,15 @@ export class DataHubConsumerQueryService {
     );
     if (!row) throw new NotFoundException('CONSUMER_NOT_FOUND');
 
-    const [counts, termCounts, contactIds] = await Promise.all([
+    const [counts, termCounts, soAppIds] = await Promise.all([
       this.counts.loadServiceCounts([id]),
       this.counts.loadTermCounts([id]),
-      loadBusinessContactUserIds(this.dataSource, [id]),
+      loadSoAppUserIds(this.dataSource, [id]),
     ]);
-    const contactUserIds = contactIds.get(id) ?? [];
-    const users = await this.userRefs.resolve([...contactUserIds, row.created_by, row.updated_by]);
+    const soAppUserIds = soAppIds.get(id) ?? [];
+    const users = await this.userRefs.resolve([...soAppUserIds, row.created_by, row.updated_by]);
     return {
-      ...this.toItem(row, counts, users, contactUserIds),
+      ...this.toItem(row, counts, users, soAppUserIds),
       term_count: termCounts.get(id) ?? 0,
       version_no: row.version_no,
       created_by_user: this.userRefs.toRef(users, row.created_by),
@@ -135,7 +135,7 @@ export class DataHubConsumerQueryService {
     r: ConsumerListRow,
     counts: Map<number, { api: number; sftp: number }>,
     users: Map<number, DataHubUserRef>,
-    contactUserIds: number[],
+    soAppUserIds: number[],
   ) {
     const c = counts.get(Number(r.id));
     return {
@@ -144,10 +144,10 @@ export class DataHubConsumerQueryService {
       name: r.name,
       category: r.category,
       short_description: r.short_description,
+      avatar_url: r.avatar_url,
       status: r.status,
       division: org(r.division_id, r.division_code, r.division_name),
-      department: org(r.department_id, r.department_code, r.department_name),
-      business_contacts: this.userRefs.toRefs(users, contactUserIds),
+      so_apps: this.userRefs.toRefs(users, soAppUserIds),
       api_count: c?.api ?? 0,
       sftp_count: c?.sftp ?? 0,
     };

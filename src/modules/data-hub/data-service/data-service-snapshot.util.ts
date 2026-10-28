@@ -11,6 +11,7 @@ export interface ResolvedRefs {
   sourceTables: RefItem[];
   requesters: RefItem[];
   itSupporters: RefItem[];
+  serviceOwners: RefItem[];
 }
 
 // Flatten a version into the keys listed in FIELD_META so two versions can be diffed field by field.
@@ -24,6 +25,7 @@ export function buildSnapshot(source: VersionSource, refs: ResolvedRefs): DiffSn
     department: refs.department,
     requesters: refs.requesters,
     it_supporters: refs.itSupporters,
+    service_owners: refs.serviceOwners,
     usage_guide_html: source.usage_guide_html,
     consumers: refs.consumers,
     source_tables: refs.sourceTables,

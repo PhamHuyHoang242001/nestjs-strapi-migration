@@ -15,6 +15,8 @@ const ownTerm = (t: GroupedTerm): Omit<GroupedTerm, 'data_service'> => ({
   id: t.id,
   code: t.code,
   technical_description: t.technical_description,
+  data_type: t.data_type,
+  is_required: t.is_required,
   example_value: t.example_value,
   logical_term: t.logical_term,
 });

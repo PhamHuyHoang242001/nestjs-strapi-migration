@@ -12,6 +12,13 @@ export class DataHubPhysicalTerm extends BaseSoftDeleteEntity {
   @Column({ type: 'text' })
   public technical_description: string;
 
+  // Data Type of the column (free text); NULL only on terms created before the field existed.
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  public data_type: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  public is_required: boolean;
+
   @Column({ type: 'varchar', length: 1000, nullable: true })
   public example_value: string | null;
 

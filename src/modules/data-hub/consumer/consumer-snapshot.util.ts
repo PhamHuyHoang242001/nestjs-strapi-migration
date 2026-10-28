@@ -4,34 +4,33 @@ export interface ConsumerSnapshot {
   name: string;
   category: string;
   division_id: number;
-  department_id: number | null;
   short_description: string;
+  avatar_url: string | null;
   status: string;
   // Sorted ascending so the same set in any order compares equal.
-  business_contact_user_ids: number[];
+  so_app_user_ids: number[];
 }
-
-const nullableId = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
 export function buildConsumerSnapshot(src: {
   code: string;
   name: string;
   category: string;
   division_id: number | string;
-  department_id?: number | string | null;
   short_description: string;
+  avatar_url?: string | null;
   status: string;
-  business_contact_user_ids: Array<number | string>;
+  so_app_user_ids: Array<number | string>;
 }): ConsumerSnapshot {
   return {
     code: src.code,
     name: src.name,
     category: src.category,
     division_id: Number(src.division_id),
-    department_id: nullableId(src.department_id),
     short_description: src.short_description,
+    // An empty string clears the avatar like null does.
+    avatar_url: src.avatar_url ? src.avatar_url : null,
     status: src.status,
-    business_contact_user_ids: src.business_contact_user_ids.map(Number).sort((a, b) => a - b),
+    so_app_user_ids: src.so_app_user_ids.map(Number).sort((a, b) => a - b),
   };
 }
 

@@ -95,6 +95,16 @@ export class CreateDataServiceDto {
   @Min(1, { each: true })
   readonly it_supporter_user_ids: number[];
 
+  // SO dịch vụ
+  @ApiProperty({ type: [Number] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  readonly service_owner_user_ids: number[];
+
   // Full desired set of the service's source tables and physical terms; terms left out are soft-deleted.
   @ApiProperty({ required: false, type: [DataServiceSourceTableInputDto] })
   @IsOptional()

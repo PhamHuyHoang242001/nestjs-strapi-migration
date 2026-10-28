@@ -7,6 +7,8 @@ interface DetailRow {
   id: number;
   code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
   logical_id: number | null;
   logical_code: string | null;
@@ -35,7 +37,7 @@ export class PhysicalTermDetailService {
   // Read-only: a physical term is created, edited and deleted from its data service's form.
   async getById(id: number) {
     const rows: DetailRow[] = await this.dataSource.query(
-      `SELECT p.id, p.code, p.technical_description, p.example_value,
+      `SELECT p.id, p.code, p.technical_description, p.data_type, p.is_required, p.example_value,
               lt.id AS logical_id, lt.code AS logical_code, lt.short_description AS logical_short_description,
               st.id AS st_id, st.name AS st_name, st.description AS st_description,
               s.id AS ds_id, s.service_code, s.service_type, s.status AS service_status, v.name AS service_name,
@@ -66,6 +68,8 @@ export class PhysicalTermDetailService {
       id: Number(r.id),
       code: r.code,
       technical_description: r.technical_description,
+      data_type: r.data_type,
+      is_required: r.is_required,
       example_value: r.example_value,
       logical_term:
         r.logical_id === null

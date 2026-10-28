@@ -10,6 +10,8 @@ export interface DetailSourceTable {
     id: number;
     code: string;
     technical_description: string;
+    data_type: string | null;
+    is_required: boolean;
     example_value: string | null;
     logical_term: { id: number; code: string } | null;
   }>;
@@ -24,13 +26,15 @@ export async function loadVersionSourceTables(dataSource: DataSource, versionId:
     id: number;
     code: string;
     technical_description: string;
+    data_type: string | null;
+    is_required: boolean;
     example_value: string | null;
     logical_id: number | null;
     logical_code: string | null;
   }>(
     dataSource,
     `SELECT st.id AS st_id, st.name AS st_name, st.description AS st_description,
-            p.id, p.code, p.technical_description, p.example_value, lt.id AS logical_id, lt.code AS logical_code
+            p.id, p.code, p.technical_description, p.data_type, p.is_required, p.example_value, lt.id AS logical_id, lt.code AS logical_code
      FROM data_hub_data_service_version_physical_terms vp
      JOIN data_hub_physical_terms p ON p.id = vp.physical_term_id AND ${liveSql('p')}
      JOIN data_hub_source_tables st ON st.id = p.source_table_id
@@ -47,6 +51,8 @@ export async function loadVersionSourceTables(dataSource: DataSource, versionId:
       id: Number(r.id),
       code: r.code,
       technical_description: r.technical_description,
+      data_type: r.data_type,
+      is_required: r.is_required,
       example_value: r.example_value,
       logical_term:
         r.logical_id === null || r.logical_code === null ? null : { id: Number(r.logical_id), code: r.logical_code },

@@ -184,7 +184,7 @@ describe('DataHubDataServiceDetailQueryService', () => {
         [{ id: 5, code: 'APP1', name: 'A', category: 'INTERNAL_APP', short_description: 'x' }],
       ],
       [
-        /FROM data_hub_consumer_business_contacts/,
+        /FROM data_hub_consumer_so_apps/,
         [
           { consumer_id: 5, user_id: 6 },
           { consumer_id: 5, user_id: 1 },
@@ -203,7 +203,7 @@ describe('DataHubDataServiceDetailQueryService', () => {
     expect(detail.version_active.reviewed_by_user).toEqual({ id: 2, email: 'u2@x.vn' });
     expect(detail.version_active.requesters).toEqual([{ id: 3, email: 'u3@x.vn' }]);
     expect(detail.version_active.it_supporters).toEqual([{ id: 4, email: 'u4@x.vn' }]);
-    expect(detail.version_active.consumers[0].business_contacts).toEqual([
+    expect(detail.version_active.consumers[0].so_apps).toEqual([
       { id: 6, email: 'u6@x.vn' },
       { id: 1, email: 'u1@x.vn' },
     ]);

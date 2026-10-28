@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { PromptAvatarUrlService } from '@modules/prompt-library/prompt-avatar-url.util';
 import { DataHubServiceHistoryAction, DataHubStatus } from '@modules/databases/data-hub-enums';
 import { isUniqueViolation } from '../common/data-hub-pg-error.util';
 import { liveSql } from '../common/data-hub-query.util';
 import { DataHubUserRefService } from '../common/data-hub-user-ref.service';
 import { sqlRows } from './consumer-sql.util';
-import { loadBusinessContactUserIds, replaceBusinessContacts } from './consumer-business-contacts.util';
+import { loadSoAppUserIds, replaceSoApps } from './consumer-so-apps.util';
 import { buildConsumerSnapshot, ConsumerSnapshot, snapshotsEqual } from './consumer-snapshot.util';
 import { CreateConsumerDto, UpdateConsumerDto } from './dto';
 
@@ -19,19 +20,23 @@ export class DataHubConsumerWriteService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly userRefs: DataHubUserRefService,
+    private readonly avatarUrl: PromptAvatarUrlService,
   ) {}
 
+  // The avatar is uploaded first (POST /v1/custom-upload) and its returned url sent here, as in the AI Hub
+  // packages: only a url of the upload host is accepted (422 URL_NOT_ALLOWED / INVALID_URL otherwise).
   async create(dto: CreateConsumerDto, userId: number) {
+    if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
     try {
       return await this.dataSource.transaction(async (manager) => {
-        await this.assertOrg(manager, dto.division_id, dto.department_id ?? null);
-        await this.userRefs.assertUsers(manager, dto.business_contact_user_ids);
+        await this.assertDivision(manager, dto.division_id);
+        await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
         const snapshot = buildConsumerSnapshot({ ...dto, status: DataHubStatus.ACTIVE });
         const [row] = await sqlRows<{ id: number }>(
           manager,
           `INSERT INTO data_hub_consumers
-             (code, name, category, division_id, department_id, short_description, status, version_no,
+             (code, name, category, division_id, short_description, avatar_url, status, version_no,
               created_by)
            VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8)
            RETURNING id`,
@@ -40,14 +45,14 @@ export class DataHubConsumerWriteService {
             snapshot.name,
             snapshot.category,
             snapshot.division_id,
-            snapshot.department_id,
             snapshot.short_description,
+            snapshot.avatar_url,
             snapshot.status,
             userId,
           ],
         );
         // Insert in the submitted order (snapshot ids are sorted) so display order matches the form.
-        await replaceBusinessContacts(manager, row.id, dto.business_contact_user_ids);
+        await replaceSoApps(manager, row.id, dto.so_app_user_ids);
         await this.writeHistory(manager, row.id, 1, DataHubServiceHistoryAction.CREATE, snapshot, userId);
         return { id: row.id, code: snapshot.code, version_no: 1 };
       });
@@ -57,10 +62,11 @@ export class DataHubConsumerWriteService {
   }
 
   async update(id: number, dto: UpdateConsumerDto, userId: number) {
+    if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
     return this.dataSource.transaction(async (manager) => {
       const current = await this.lockCurrent(manager, id);
-      await this.assertOrg(manager, dto.division_id, dto.department_id ?? null);
-      await this.userRefs.assertUsers(manager, dto.business_contact_user_ids);
+      await this.assertDivision(manager, dto.division_id);
+      await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
       // Code and status are not editable here; carry them over from the stored row.
       const next = buildConsumerSnapshot({ ...dto, code: current.code, status: current.status });
@@ -69,12 +75,12 @@ export class DataHubConsumerWriteService {
       const versionNo = current.version_no + 1;
       await manager.query(
         `UPDATE data_hub_consumers
-         SET name = $2, category = $3, division_id = $4, department_id = $5, short_description = $6,
+         SET name = $2, category = $3, division_id = $4, short_description = $5, avatar_url = $6,
              version_no = $7, updated_by = $8, updated_at = NOW()
          WHERE id = $1`,
-        [id, next.name, next.category, next.division_id, next.department_id, next.short_description, versionNo, userId],
+        [id, next.name, next.category, next.division_id, next.short_description, next.avatar_url, versionNo, userId],
       );
-      await replaceBusinessContacts(manager, id, dto.business_contact_user_ids);
+      await replaceSoApps(manager, id, dto.so_app_user_ids);
       await this.writeHistory(manager, id, versionNo, DataHubServiceHistoryAction.UPDATE, next, userId);
       return { id, version_no: versionNo };
     });
@@ -99,9 +105,9 @@ export class DataHubConsumerWriteService {
 
   // Row lock serializes concurrent edits so version_no never skips or collides.
   private async lockCurrent(manager: EntityManager, id: number): Promise<CurrentRow> {
-    const [row] = await sqlRows<Omit<SnapshotSource, 'business_contact_user_ids'> & { id: number; version_no: number }>(
+    const [row] = await sqlRows<Omit<SnapshotSource, 'so_app_user_ids'> & { id: number; version_no: number }>(
       manager,
-      `SELECT c.id, c.code, c.name, c.category, c.division_id, c.department_id, c.short_description,
+      `SELECT c.id, c.code, c.name, c.category, c.division_id, c.short_description, c.avatar_url,
               c.status, c.version_no
        FROM data_hub_consumers c
        WHERE c.id = $1 AND ${liveSql('c')}
@@ -109,9 +115,9 @@ export class DataHubConsumerWriteService {
       [id],
     );
     if (!row) throw new NotFoundException('CONSUMER_NOT_FOUND');
-    const contactUserIds = (await loadBusinessContactUserIds(manager, [id])).get(id) ?? [];
+    const soAppUserIds = (await loadSoAppUserIds(manager, [id])).get(id) ?? [];
     return {
-      ...buildConsumerSnapshot({ ...row, business_contact_user_ids: contactUserIds }),
+      ...buildConsumerSnapshot({ ...row, so_app_user_ids: soAppUserIds }),
       id: Number(row.id),
       version_no: Number(row.version_no),
     };
@@ -121,21 +127,13 @@ export class DataHubConsumerWriteService {
     return buildConsumerSnapshot(row);
   }
 
-  private async assertOrg(manager: EntityManager, divisionId: number, departmentId: number | null): Promise<void> {
+  private async assertDivision(manager: EntityManager, divisionId: number): Promise<void> {
     const [division] = await sqlRows<{ ok: number }>(
       manager,
       `SELECT 1 AS ok FROM data_hub_divisions d WHERE d.id = $1 AND ${liveSql('d')}`,
       [divisionId],
     );
     if (!division) throw new BadRequestException('INVALID_DIVISION: division does not exist');
-    if (departmentId === null) return;
-    // Share lock: a concurrent department delete (FOR UPDATE) waits, so it sees this consumer as a reference.
-    const [department] = await sqlRows<{ ok: number }>(
-      manager,
-      `SELECT 1 AS ok FROM data_hub_departments d WHERE d.id = $1 AND ${liveSql('d')} FOR SHARE`,
-      [departmentId],
-    );
-    if (!department) throw new BadRequestException('INVALID_DEPARTMENT: department does not exist');
   }
 
   private async writeHistory(

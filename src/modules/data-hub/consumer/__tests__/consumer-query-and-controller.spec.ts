@@ -12,13 +12,11 @@ const listRow = {
   name: 'CRM',
   category: 'INTERNAL_APP',
   short_description: 'd',
+  avatar_url: '/uploads/crm.png',
   status: 'active',
   division_id: 1,
   division_code: 'DIV',
   division_name: 'Div',
-  department_id: null,
-  department_code: null,
-  department_name: null,
 };
 
 function makeQueryService(handler: (sql: string, params?: unknown[]) => unknown[]) {
@@ -38,7 +36,7 @@ describe('DataHubConsumerQueryService', () => {
           { consumer_id: 1, service_type: 'API', cnt: 2 },
           { consumer_id: 1, service_type: 'SFTP', cnt: 1 },
         ];
-      if (sql.includes('FROM data_hub_consumer_business_contacts'))
+      if (sql.includes('FROM data_hub_consumer_so_apps'))
         return [
           { consumer_id: 1, user_id: 7 },
           { consumer_id: 1, user_id: 8 },
@@ -59,10 +57,10 @@ describe('DataHubConsumerQueryService', () => {
       name: 'CRM',
       category: 'INTERNAL_APP',
       short_description: 'd',
+      avatar_url: '/uploads/crm.png',
       status: 'active',
       division: { id: 1, code: 'DIV', name: 'Div' },
-      department: null,
-      business_contacts: [
+      so_apps: [
         { id: 7, email: 'so@x.vn' },
         { id: 8, email: 'so2@x.vn' },
       ],
@@ -76,21 +74,19 @@ describe('DataHubConsumerQueryService', () => {
     // counts and users are batched once for the whole page
     expect(query.mock.calls.filter(([sql]) => sql.includes('GROUP BY l.consumer_id'))).toHaveLength(1);
     expect(query.mock.calls.filter(([sql]) => sql.includes('FROM users'))).toHaveLength(1);
-    expect(query.mock.calls.filter(([sql]) => sql.includes('FROM data_hub_consumer_business_contacts'))).toHaveLength(
-      1,
-    );
+    expect(query.mock.calls.filter(([sql]) => sql.includes('FROM data_hub_consumer_so_apps'))).toHaveLength(1);
   });
 
   it('list: consumer without active links gets zero counts', async () => {
     const { service } = makeQueryService((sql) => {
       if (sql.includes('COUNT(*)::int AS total')) return [{ total: 1 }];
-      if (sql.includes('FROM data_hub_consumer_business_contacts')) return [{ consumer_id: 1, user_id: 7 }];
+      if (sql.includes('FROM data_hub_consumer_so_apps')) return [{ consumer_id: 1, user_id: 7 }];
       if (sql.includes('FROM users')) return [];
       if (sql.includes('GROUP BY')) return [];
       return [listRow];
     });
     const res = await service.list({});
-    expect(res.data[0]).toMatchObject({ api_count: 0, sftp_count: 0, business_contacts: [{ id: 7, email: null }] });
+    expect(res.data[0]).toMatchObject({ api_count: 0, sftp_count: 0, so_apps: [{ id: 7, email: null }] });
   });
 
   it('detail: adds term_count, version_no and all user refs; 404 when missing', async () => {

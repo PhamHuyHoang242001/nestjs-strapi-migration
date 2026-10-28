@@ -55,7 +55,7 @@ describe('DepartmentConfigWriteService', () => {
     expect(upd?.params).toEqual([5, 'DPD2', 'Data Platform', 3]);
   });
 
-  it('delete is refused while a live data service (active version) or consumer uses the department', async () => {
+  it('delete is refused while a live data service (active version) uses the department', async () => {
     const usedByService = make([
       [LOCK, () => [live]],
       [/FROM data_hub_data_services s/, () => [{ n: 1 }]],
@@ -63,12 +63,8 @@ describe('DepartmentConfigWriteService', () => {
     await expect(usedByService.service.remove(5, 3)).rejects.toThrow('DEPARTMENT_IN_USE');
     expect(usedByService.calls[0].sql).toContain('FOR UPDATE');
     expect(usedByService.calls.some((c) => /SET deleted_at/.test(c.sql))).toBe(false);
-
-    const usedByConsumer = make([
-      [LOCK, () => [live]],
-      [/FROM data_hub_consumers c/, () => [{ n: 2 }]],
-    ]);
-    await expect(usedByConsumer.service.remove(5, 3)).rejects.toThrow('DEPARTMENT_IN_USE');
+    // consumers no longer have a department
+    expect(usedByService.calls.some((c) => /FROM data_hub_consumers/.test(c.sql))).toBe(false);
   });
 
   it('delete soft-deletes and drops the members', async () => {

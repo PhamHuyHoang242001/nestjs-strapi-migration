@@ -24,6 +24,8 @@ interface PhysicalRow {
   logical_term_id: number;
   code: string;
   technical_description: string;
+  data_type: string | null;
+  is_required: boolean;
   example_value: string | null;
   st_id: number;
   st_name: string;
@@ -127,7 +129,7 @@ export class LogicalTermQueryService {
   private async buildTree(rows: LogicalRow[]) {
     if (rows.length === 0) return [];
     const physicals: PhysicalRow[] = await this.dataSource.query(
-      `SELECT p.id, p.logical_term_id, p.code, p.technical_description, p.example_value,
+      `SELECT p.id, p.logical_term_id, p.code, p.technical_description, p.data_type, p.is_required, p.example_value,
               st.id AS st_id, st.name AS st_name, s.id AS ds_id, s.service_code
        FROM data_hub_physical_terms p
        JOIN data_hub_source_tables st ON st.id = p.source_table_id
@@ -158,6 +160,8 @@ export class LogicalTermQueryService {
           id: c.id,
           code: c.code,
           technical_description: c.technical_description,
+          data_type: c.data_type,
+          is_required: c.is_required,
           example_value: c.example_value,
           source_table: { id: Number(c.st_id), name: c.st_name },
           data_service: { id: Number(c.ds_id), service_code: c.service_code },

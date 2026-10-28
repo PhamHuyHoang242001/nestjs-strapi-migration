@@ -53,7 +53,7 @@ export class DepartmentConfigWriteService {
     }
   }
 
-  // A department referenced by a live data service (through its active version) or a live consumer stays.
+  // A department referenced by a live data service (through its active version) stays.
   async remove(id: number, userId: number): Promise<{ id: number; deleted: true }> {
     return this.dataSource.transaction(async (manager) => {
       await this.lock(manager, id, 'UPDATE');
@@ -63,11 +63,7 @@ export class DepartmentConfigWriteService {
          WHERE ${liveSql('s')} AND v.department_id = $1`,
         [id],
       );
-      const [consumers]: Array<{ n: number }> = await manager.query(
-        `SELECT COUNT(*)::int AS n FROM data_hub_consumers c WHERE ${liveSql('c')} AND c.department_id = $1`,
-        [id],
-      );
-      if (Number(services?.n ?? 0) > 0 || Number(consumers?.n ?? 0) > 0) {
+      if (Number(services?.n ?? 0) > 0) {
         throw new ConflictException('DEPARTMENT_IN_USE');
       }
       await manager.query(

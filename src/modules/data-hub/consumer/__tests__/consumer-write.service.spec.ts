@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { DataHubStatus } from '@modules/databases/data-hub-enums';
+import { PromptAvatarUrlService } from '@modules/prompt-library/prompt-avatar-url.util';
 import { DataHubConsumerWriteService } from '../data-hub-consumer-write.service';
 import { ConsumerSnapshot } from '../consumer-snapshot.util';
 import { CreateConsumerDto, UpdateConsumerDto } from '../dto';
@@ -13,8 +14,8 @@ const stored = {
   name: 'CRM',
   category: 'INTERNAL_APP',
   division_id: 1,
-  department_id: null,
   short_description: 'd',
+  avatar_url: null,
   status: 'active',
   version_no: 3,
 };
@@ -30,7 +31,7 @@ function setup(opts: { current?: unknown; insertError?: Error; soRows?: unknown[
       if (/INSERT INTO data_hub_consumers\s/.test(sql)) {
         return opts.insertError ? Promise.reject(opts.insertError) : Promise.resolve([{ id: 9 }]);
       }
-      if (sql.includes('FROM data_hub_consumer_business_contacts'))
+      if (sql.includes('FROM data_hub_consumer_so_apps'))
         return Promise.resolve(opts.soRows ?? [{ consumer_id: 9, user_id: 1 }]);
       if (sql.includes('FOR UPDATE')) return Promise.resolve(opts.current === undefined ? [stored] : opts.current);
       return Promise.resolve([]);
@@ -38,7 +39,7 @@ function setup(opts: { current?: unknown; insertError?: Error; soRows?: unknown[
   };
   const dataSource = { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) };
   const userRefs = { assertUsers: jest.fn().mockResolvedValue(undefined) };
-  const service = new DataHubConsumerWriteService(dataSource as never, userRefs as never);
+  const service = new DataHubConsumerWriteService(dataSource as never, userRefs as never, new PromptAvatarUrlService());
   return { service, calls, userRefs };
 }
 
@@ -48,7 +49,7 @@ const createDto = {
   category: 'INTERNAL_APP',
   division_id: 1,
   short_description: 'd',
-  business_contact_user_ids: [1],
+  so_app_user_ids: [1],
 } as CreateConsumerDto;
 
 const historyOf = (calls: Call[]) => calls.find((c) => c.sql.includes('data_hub_consumer_histories'));
@@ -66,23 +67,41 @@ describe('DataHubConsumerWriteService', () => {
       name: 'CRM',
       category: 'INTERNAL_APP',
       division_id: 1,
-      department_id: null,
       short_description: 'd',
+      avatar_url: null,
       status: 'active',
-      business_contact_user_ids: [1],
+      so_app_user_ids: [1],
     });
     expect(h?.params[4]).toBe(5);
   });
 
   it('create with several SOs validates all, links them in submitted order and snapshots sorted ids', async () => {
     const { service, calls, userRefs } = setup();
-    await service.create({ ...createDto, business_contact_user_ids: [5, 2] } as CreateConsumerDto, 5);
+    await service.create({ ...createDto, so_app_user_ids: [5, 2] } as CreateConsumerDto, 5);
     expect(userRefs.assertUsers).toHaveBeenCalledWith(expect.anything(), [5, 2]);
-    const link = calls.find((c) => c.sql.includes('INSERT INTO data_hub_consumer_business_contacts'));
+    const link = calls.find((c) => c.sql.includes('INSERT INTO data_hub_consumer_so_apps'));
     expect(link?.params).toEqual([9, [5, 2]]);
-    expect((JSON.parse(historyOf(calls)?.params[3] as string) as ConsumerSnapshot).business_contact_user_ids).toEqual([
-      2, 5,
-    ]);
+    expect((JSON.parse(historyOf(calls)?.params[3] as string) as ConsumerSnapshot).so_app_user_ids).toEqual([2, 5]);
+  });
+
+  it('stores the avatar url (no department column any more) and records it in the snapshot', async () => {
+    const { service, calls } = setup();
+    await service.create({ ...createDto, avatar_url: '/uploads/crm.png' } as CreateConsumerDto, 5);
+    const insert = calls.find((c) => /INSERT INTO data_hub_consumers\s/.test(c.sql));
+    expect(insert?.sql).not.toContain('department_id');
+    expect(insert?.params[5]).toBe('/uploads/crm.png');
+    expect((JSON.parse(historyOf(calls)?.params[3] as string) as ConsumerSnapshot).avatar_url).toBe('/uploads/crm.png');
+  });
+
+  it('rejects an avatar url that does not come from the upload host (422) before writing anything', async () => {
+    const { service, calls } = setup();
+    await expect(
+      service.create({ ...createDto, avatar_url: 'https://evil.example.com/a.png' } as CreateConsumerDto, 5),
+    ).rejects.toThrow('URL_NOT_ALLOWED');
+    await expect(
+      service.update(9, { ...createDto, avatar_url: 'https://evil.example.com/a.png' } as UpdateConsumerDto, 5),
+    ).rejects.toThrow('URL_NOT_ALLOWED');
+    expect(calls).toHaveLength(0);
   });
 
   it('create maps the live-code unique violation to 409 CONSUMER_CODE_EXISTS', async () => {
@@ -117,30 +136,28 @@ describe('DataHubConsumerWriteService', () => {
     expect(JSON.parse(h?.params[3] as string)).toMatchObject({ code: 'CRM', name: 'CRM v2', status: 'active' });
   });
 
-  it('update replaces the whole business-contact set (delete then insert) and snapshots the new ids', async () => {
+  it('update replaces the whole SO APP set (delete then insert) and snapshots the new ids', async () => {
     const { service, calls } = setup();
-    await service.update(9, { ...createDto, business_contact_user_ids: [4, 2] } as UpdateConsumerDto, 5);
+    await service.update(9, { ...createDto, so_app_user_ids: [4, 2] } as UpdateConsumerDto, 5);
     const sqls = calls.map((c) => c.sql);
-    const del = sqls.findIndex((s) => s.includes('DELETE FROM data_hub_consumer_business_contacts'));
-    const ins = sqls.findIndex((s) => s.includes('INSERT INTO data_hub_consumer_business_contacts'));
+    const del = sqls.findIndex((s) => s.includes('DELETE FROM data_hub_consumer_so_apps'));
+    const ins = sqls.findIndex((s) => s.includes('INSERT INTO data_hub_consumer_so_apps'));
     expect(del).toBeGreaterThan(-1);
     expect(ins).toBeGreaterThan(del);
     expect(calls[ins].params).toEqual([9, [4, 2]]);
-    expect((JSON.parse(historyOf(calls)?.params[3] as string) as ConsumerSnapshot).business_contact_user_ids).toEqual([
-      2, 4,
-    ]);
+    expect((JSON.parse(historyOf(calls)?.params[3] as string) as ConsumerSnapshot).so_app_user_ids).toEqual([2, 4]);
   });
 
-  it('update with the same business-contact set in a different order fails NO_CHANGES', async () => {
+  it('update with the same SO APP set in a different order fails NO_CHANGES', async () => {
     const { service, calls } = setup({
       soRows: [
         { consumer_id: 9, user_id: 3 },
         { consumer_id: 9, user_id: 1 },
       ],
     });
-    const dto = { ...createDto, business_contact_user_ids: [1, 3] } as UpdateConsumerDto;
+    const dto = { ...createDto, so_app_user_ids: [1, 3] } as UpdateConsumerDto;
     await expect(service.update(9, dto, 5)).rejects.toThrow('NO_CHANGES');
-    expect(calls.some((c) => c.sql.includes('DELETE FROM data_hub_consumer_business_contacts'))).toBe(false);
+    expect(calls.some((c) => c.sql.includes('DELETE FROM data_hub_consumer_so_apps'))).toBe(false);
   });
 
   it('update with identical data fails NO_CHANGES and writes nothing', async () => {
