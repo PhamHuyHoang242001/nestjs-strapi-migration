@@ -3,8 +3,7 @@ import { RequestWithInfo } from '@common/types/request-with-info';
 import { Controller, Get, Param, ParseIntPipe, Query, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { dataHubCaller } from '../common/data-hub-caller.util';
-import { DataHubPageQueryDto } from '../common/data-hub-query.util';
-import { SelectableSourceTableQueryDto } from './dto';
+import { ListSourceTableQueryDto, SelectableSourceTableQueryDto } from './dto';
 import { SourceTableQueryService } from './source-table-query.service';
 
 // Bảng nguồn dịch vụ (read-only here; written from the data-service form). Static routes come before ':id'.
@@ -16,9 +15,11 @@ import { SourceTableQueryService } from './source-table-query.service';
 export class SourceTableController {
   constructor(private readonly query: SourceTableQueryService) {}
 
-  @ApiOperation({ summary: 'Dictionary: source tables with terms, paged (newest first)' })
+  @ApiOperation({
+    summary: 'Dictionary: source tables with terms, paged (newest first), filterable by department/division',
+  })
   @Get()
-  list(@Query() q: DataHubPageQueryDto, @Req() req: RequestWithInfo) {
+  list(@Query() q: ListSourceTableQueryDto, @Req() req: RequestWithInfo) {
     dataHubCaller(req);
     return this.query.list(q);
   }

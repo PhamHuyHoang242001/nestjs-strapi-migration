@@ -27,12 +27,16 @@ export interface GroupedTerm {
   data_service: { id: number; service_code: string; name: string };
 }
 
+// Extra conditions on the table (alias `st`); `bind` appends a parameter and returns its placeholder.
+export type SourceTableFilter = (bind: (value: unknown) => string) => string[];
+
 // Source tables holding at least one term of the scope, newest first, with the number of those terms.
 // `keyword` matches the table name/description or a term code/description inside the scope.
 export async function listSourceTableGroups(
   runner: Runner,
   scope: TermScope,
   q: { keyword?: string; page?: number; limit?: number },
+  filter?: SourceTableFilter,
 ): Promise<{ data: SourceTableGroup[]; meta: DataHubPageMeta }> {
   const { page, limit, offset } = toPaging(q);
   const params = [...scope.params];
@@ -45,6 +49,11 @@ export async function listSourceTableGroups(
                OR EXISTS (SELECT 1 FROM data_hub_physical_terms p WHERE p.source_table_id = st.id AND ${liveSql('p')}
                           AND (${scope.sql}) AND (p.code ILIKE $${n} ESCAPE '\\' OR p.technical_description ILIKE $${n} ESCAPE '\\')))`;
   }
+  const bind = (value: unknown): string => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  search += (filter?.(bind) ?? []).map((c) => ` AND (${c})`).join('');
   const inScope = `FROM data_hub_physical_terms p WHERE p.source_table_id = st.id AND ${liveSql('p')} AND (${scope.sql})`;
   // The total only needs "has a term in scope" (same rows as term_count > 0) so it stops at the first term;
   // the page counts the terms of its own rows only.
@@ -74,8 +83,9 @@ export async function listSourceTableGroupsWithTerms(
   runner: Runner,
   scope: TermScope,
   q: { keyword?: string; page?: number; limit?: number },
+  filter?: SourceTableFilter,
 ): Promise<{ data: Array<SourceTableGroup & { physical_terms: GroupedTerm[] }>; meta: DataHubPageMeta }> {
-  const res = await listSourceTableGroups(runner, scope, q);
+  const res = await listSourceTableGroups(runner, scope, q, filter);
   const terms = await listGroupsTerms(
     runner,
     scope,

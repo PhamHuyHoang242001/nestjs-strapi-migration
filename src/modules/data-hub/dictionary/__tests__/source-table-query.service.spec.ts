@@ -17,11 +17,12 @@ const termRow = {
 };
 
 describe('SourceTableQueryService (dictionary)', () => {
-  it('pages tables holding terms of live services, newest first, with their departments and nested terms', async () => {
+  it('pages tables holding terms of live services, newest first, with their departments, divisions and nested terms', async () => {
     const { dataSource, calls } = makeSqlMock([
       [/COUNT\(\*\)::int AS total/, () => [{ total: 1 }]],
       [/SELECT st.id, st.name, st.description, tc.term_count/, () => [group]],
       [/SELECT DISTINCT x.st_id/, () => [{ st_id: 5, id: 1, code: 'DPD', name: 'DPD' }]],
+      [/JOIN data_hub_divisions d/, () => [{ st_id: 5, id: 9, code: 'KHCN', name: 'Khối KHCN' }]],
       [/WHERE p.source_table_id = ANY\(\$1::int\[\]\)/, () => [{ ...termRow, source_table_id: 5 }]],
     ]);
     const res = await new SourceTableQueryService(dataSource as never, access as never).list({
@@ -33,6 +34,7 @@ describe('SourceTableQueryService (dictionary)', () => {
         {
           ...group,
           departments: [{ id: 1, code: 'DPD', name: 'DPD' }],
+          divisions: [{ id: 9, code: 'KHCN', name: 'Khối KHCN' }],
           physical_terms: [
             {
               id: 1,
@@ -89,7 +91,25 @@ describe('SourceTableQueryService (dictionary)', () => {
     expect(calls[0].sql).toContain('st.department_id = ANY($1::int[])');
     expect(calls[0].sql).toContain('sp.data_service_id = $2::int');
     expect(calls[0].sql).toContain('st.name ILIKE $3');
-    expect(res.data).toEqual([{ ...group, departments: [{ id: 2, code: 'C360', name: 'C360' }] }]);
+    expect(res.data).toEqual([{ ...group, departments: [{ id: 2, code: 'C360', name: 'C360' }], divisions: [] }]);
+  });
+
+  it('filters tables by department (creating or active-version) and division of active versions', async () => {
+    const { dataSource, calls } = makeSqlMock([[/COUNT\(\*\)::int AS total/, () => [{ total: 0 }]]]);
+    await new SourceTableQueryService(dataSource as never, access as never).list({
+      keyword: 'dw',
+      department_ids: [1, 2],
+      division_ids: [9],
+      page: 1,
+      limit: 10,
+    } as never);
+    const [count, page] = calls;
+    expect(count.params).toEqual(['%dw%', [1, 2], [9]]);
+    expect(count.sql).toContain('st.department_id = ANY($2::int[])');
+    expect(count.sql).toContain('fv.department_id = ANY($2::int[])');
+    expect(count.sql).toContain('fv.division_id = ANY($3::int[])');
+    expect(page.params).toEqual(['%dw%', [1, 2], [9], 10, 0]);
+    expect(page.sql).toContain('LIMIT $4 OFFSET $5');
   });
 });
 

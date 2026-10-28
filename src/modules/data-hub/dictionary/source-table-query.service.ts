@@ -1,15 +1,43 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DataHubAccessService, DataHubCaller } from '../common/data-hub-access.service';
-import { DataHubPageQueryDto, escapeLike, liveSql, searchTerm, toPaging } from '../common/data-hub-query.util';
+import { escapeLike, liveSql, searchTerm, toPaging } from '../common/data-hub-query.util';
 import {
   dictionaryScope,
   listGroupTerms,
   listSourceTableGroupsWithTerms,
+  SourceTableFilter,
   sourceTableScopeSql,
   termOfActiveServiceSql,
 } from '../common/source-table-groups.util';
-import { SelectableSourceTableQueryDto } from './dto';
+import { ListSourceTableQueryDto, SelectableSourceTableQueryDto } from './dto';
+
+type OrgRef = { id: number; code: string; name: string };
+
+// Terms of active services (active version) inside table `st`, joined to that version as `fv`.
+const ACTIVE_VERSION_TERMS_SQL = `FROM data_hub_physical_terms fp
+  JOIN data_hub_data_services fs ON fs.id = fp.data_service_id
+  JOIN data_hub_data_service_versions fv ON fv.id = fs.active_version_id
+  WHERE fp.source_table_id = st.id AND ${termOfActiveServiceSql('fp')}`;
+
+// Same sets as orgsOf: Đơn vị phát hành = creating department + departments of active versions using the table;
+// Khối chủ quản = divisions of those active versions.
+const orgFilter =
+  (q: ListSourceTableQueryDto): SourceTableFilter =>
+  (bind) => {
+    const conds: string[] = [];
+    if (q.department_ids?.length) {
+      const ids = bind(q.department_ids);
+      conds.push(`st.department_id = ANY(${ids}::int[])
+        OR EXISTS (SELECT 1 ${ACTIVE_VERSION_TERMS_SQL} AND fv.department_id = ANY(${ids}::int[]))`);
+    }
+    if (q.division_ids?.length) {
+      conds.push(
+        `EXISTS (SELECT 1 ${ACTIVE_VERSION_TERMS_SQL} AND fv.division_id = ANY(${bind(q.division_ids)}::int[]))`,
+      );
+    }
+    return conds;
+  };
 
 // Bảng nguồn dịch vụ in the dictionary (read-only: tables and terms are written from the data-service form).
 @Injectable()
@@ -19,12 +47,20 @@ export class SourceTableQueryService {
     private readonly access: DataHubAccessService,
   ) {}
 
-  // "Thuật ngữ nghiệp vụ" tab: tables holding terms of live services, paged, plus the departments they serve and
-  // their terms (nested like the physicals of the logical list, so expanding a row needs no extra call).
-  async list(q: DataHubPageQueryDto) {
-    const res = await listSourceTableGroupsWithTerms(this.dataSource, dictionaryScope(), q);
-    const departments = await this.departmentsOf(res.data.map((g) => g.id));
-    return { ...res, data: res.data.map((g) => ({ ...g, departments: departments.get(g.id) ?? [] })) };
+  // "Thuật ngữ nghiệp vụ" tab: tables holding terms of live services, paged, plus the departments and divisions
+  // they serve and their terms (nested like the physicals of the logical list, so expanding a row needs no extra
+  // call). department_ids / division_ids keep the tables whose badges include one of them.
+  async list(q: ListSourceTableQueryDto) {
+    const res = await listSourceTableGroupsWithTerms(this.dataSource, dictionaryScope(), q, orgFilter(q));
+    const orgs = await this.orgsOf(res.data.map((g) => g.id));
+    return {
+      ...res,
+      data: res.data.map((g) => ({
+        ...g,
+        departments: orgs.departments.get(g.id) ?? [],
+        divisions: orgs.divisions.get(g.id) ?? [],
+      })),
+    };
   }
 
   async terms(id: number) {
@@ -58,40 +94,49 @@ export class SourceTableQueryService {
          ${where} ORDER BY st.name, st.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset],
       );
-    const departments = await this.departmentsOf(rows.map((r) => Number(r.id)));
+    const orgs = await this.orgsOf(rows.map((r) => Number(r.id)));
     return {
       data: rows.map((r) => ({
         ...r,
         id: Number(r.id),
         term_count: Number(r.term_count),
-        departments: departments.get(Number(r.id)) ?? [],
+        departments: orgs.departments.get(Number(r.id)) ?? [],
+        divisions: orgs.divisions.get(Number(r.id)) ?? [],
       })),
       meta: { total, page, limit },
     };
   }
 
-  // Department of the creating service plus departments of active services' active versions holding its terms.
-  private async departmentsOf(ids: number[]): Promise<Map<number, Array<{ id: number; code: string; name: string }>>> {
-    const out = new Map<number, Array<{ id: number; code: string; name: string }>>();
-    if (ids.length === 0) return out;
-    const rows: Array<{ st_id: number; id: number; code: string; name: string }> = await this.dataSource.query(
-      `SELECT DISTINCT x.st_id, d.id, d.code, d.name FROM (
-         SELECT st.id AS st_id, st.department_id AS dept_id FROM data_hub_source_tables st WHERE st.id = ANY($1)
-         UNION
-         SELECT p.source_table_id, v.department_id FROM data_hub_physical_terms p
+  // Departments: the creating service's department plus the departments of active services' active versions
+  // holding its terms. Divisions: the divisions of those active versions (a table has no division of its own).
+  private async orgsOf(
+    ids: number[],
+  ): Promise<{ departments: Map<number, OrgRef[]>; divisions: Map<number, OrgRef[]> }> {
+    if (ids.length === 0) return { departments: new Map(), divisions: new Map() };
+    const [departments, divisions] = await Promise.all([
+      this.dataSource.query<Array<OrgRef & { st_id: number }>>(
+        `SELECT DISTINCT x.st_id, d.id, d.code, d.name FROM (
+           SELECT st.id AS st_id, st.department_id AS dept_id FROM data_hub_source_tables st WHERE st.id = ANY($1)
+           UNION
+           SELECT p.source_table_id, v.department_id FROM data_hub_physical_terms p
+           JOIN data_hub_data_services s ON s.id = p.data_service_id
+           JOIN data_hub_data_service_versions v ON v.id = s.active_version_id
+           WHERE p.source_table_id = ANY($1) AND ${termOfActiveServiceSql('p')}
+         ) x JOIN data_hub_departments d ON d.id = x.dept_id
+         ORDER BY d.code`,
+        [ids],
+      ),
+      this.dataSource.query<Array<OrgRef & { st_id: number }>>(
+        `SELECT DISTINCT p.source_table_id AS st_id, d.id, d.code, d.name FROM data_hub_physical_terms p
          JOIN data_hub_data_services s ON s.id = p.data_service_id
          JOIN data_hub_data_service_versions v ON v.id = s.active_version_id
+         JOIN data_hub_divisions d ON d.id = v.division_id
          WHERE p.source_table_id = ANY($1) AND ${termOfActiveServiceSql('p')}
-       ) x JOIN data_hub_departments d ON d.id = x.dept_id
-       ORDER BY d.code`,
-      [ids],
-    );
-    for (const r of rows) {
-      const list = out.get(Number(r.st_id)) ?? [];
-      list.push({ id: Number(r.id), code: r.code, name: r.name });
-      out.set(Number(r.st_id), list);
-    }
-    return out;
+         ORDER BY d.code`,
+        [ids],
+      ),
+    ]);
+    return { departments: groupByTable(departments), divisions: groupByTable(divisions) };
   }
 
   private async assertLive(id: number): Promise<void> {
@@ -101,4 +146,14 @@ export class SourceTableQueryService {
     );
     if (rows.length === 0) throw new NotFoundException('SOURCE_TABLE_NOT_FOUND');
   }
+}
+
+function groupByTable(rows: Array<OrgRef & { st_id: number }>): Map<number, OrgRef[]> {
+  const out = new Map<number, OrgRef[]>();
+  for (const r of rows) {
+    const list = out.get(Number(r.st_id)) ?? [];
+    list.push({ id: Number(r.id), code: r.code, name: r.name });
+    out.set(Number(r.st_id), list);
+  }
+  return out;
 }
