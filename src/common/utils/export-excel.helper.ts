@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import dayjs from 'dayjs';
+import * as dayjs from 'dayjs';
 import { Response } from 'express';
 
 export interface ExcelColumn {
