@@ -1,10 +1,12 @@
 ---
 phase: 3
-title: "Verify and docs"
-status: pending
+title: Verify and docs
+status: completed
 priority: P2
-effort: "1h"
-dependencies: [1, 2]
+effort: 1h
+dependencies:
+  - 1
+  - 2
 ---
 
 <!-- Updated: Validation Session 1 - renumbered from phase 4 (seed phase removed); enum + join probes -->
@@ -26,7 +28,7 @@ dependencies: [1, 2]
 5. Docs: add a short "Data Exchange schema (data_hub_*)" section to `docs/codebase-summary.md` that links the brainstorm report.
 
 ## Success Criteria
-- [ ] All probes behave as designed; no drift; tsc clean; tests green; docs updated
+- [x] All probes behave as designed; no drift; tsc clean; tests green; docs updated
 
 ## Next
 - Separate plan: Data Exchange APIs (catalog/detail/create/edit + history diff builder, dictionary, consumers).

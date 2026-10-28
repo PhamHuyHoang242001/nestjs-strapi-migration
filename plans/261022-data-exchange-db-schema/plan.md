@@ -1,14 +1,20 @@
 ---
-title: "Data Exchange DB schema"
-description: "Create the data_hub_* tables for Data Services (API/SFTP), data dictionary (logical/physical) and consumer apps, with entities and enums."
-status: pending
+title: Data Exchange DB schema
+description: >-
+  Create the data_hub_* tables for Data Services (API/SFTP), data dictionary
+  (logical/physical) and consumer apps, with entities and enums.
+status: completed
 priority: P2
-branch: "main"
-tags: [backend, database, migration, data-exchange]
+branch: main
+tags:
+  - backend
+  - database
+  - migration
+  - data-exchange
 blockedBy: []
 blocks: []
-created: "2026-10-22T09:02:51.927Z"
-createdBy: "ck:plan"
+created: '2026-10-22T09:02:51.927Z'
+createdBy: 'ck:plan'
 source: skill
 ---
 
@@ -35,7 +41,7 @@ Source of truth: [brainstorm report](../reports/brainstorm-261022-data-exchange-
 - **Links:**
   - N-N: service↔physical, service↔consumer.
   - Data service people (multi-select): `data_hub_data_service_requesters` (Đầu mối yêu cầu BU), `data_hub_data_service_it_supporters` (IT hỗ trợ).
-  - Consumer people (1 each): columns `so_user_id`, `tech_user_id`, `biz_user_id` (null) on `data_hub_consumers`.
+  - Consumer business contacts ("Đầu mối liên hệ nghiệp vụ", multi-select): link table `data_hub_consumer_business_contacts` (consumer_id, user_id). Tech/Biz SO removed 2026-10-26.
   - Join rows are **hard-deleted**.
 - **Org data:** `data_hub_divisions` and `data_hub_departments` (shared, independent of each other) and `data_hub_request_units` are tables.
 - **Technical lists** (method, auth, frequency, format…) are **enums** (VARCHAR + CHECK); there is no options table.
@@ -47,9 +53,9 @@ Source of truth: [brainstorm report](../reports/brainstorm-261022-data-exchange-
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | [Migration create data_hub tables](./phase-01-migration-create-data-hub-tables.md) | Pending |
-| 2 | [TypeORM entities and enums](./phase-02-typeorm-entities-and-enums.md) | Pending |
-| 3 | [Verify and docs](./phase-03-verify-and-docs.md) | Pending |
+| 1 | [Migration create data_hub tables](./phase-01-migration-create-data-hub-tables.md) | Completed |
+| 2 | [TypeORM entities and enums](./phase-02-typeorm-entities-and-enums.md) | Completed |
+| 3 | [Verify and docs](./phase-03-verify-and-docs.md) | Completed |
 
 ## Dependencies
 
@@ -82,9 +88,9 @@ Source of truth: [brainstorm report](../reports/brainstorm-261022-data-exchange-
 
 | # | Question | Answer |
 |---|---|---|
-| 1 | FK `users` on audit columns? | **No FK** (coworker convention). `user_id` in join tables keeps its FK. |
-| 2 | How to unlink N-N rows? | **Hard-delete** the join row. Join tables drop `deleted_at`/`is_deleted` and use a plain UNIQUE. |
-| 3 | Where to seed `dx_options`? | Migration. This became moot after Q4. |
+| 1 | FK `users` on audit columns? | Completed |
+| 2 | How to unlink N-N rows? | Completed |
+| 3 | Where to seed `dx_options`? | Completed |
 | 4 | DB can't stop an option from the wrong group | User: "mấy cái đơn giản như method thì để enum thôi" → **all 12 technical groups become enums; `dx_options` and the seed phase are dropped**. This reverses brainstorm decision #10 at the user's request. |
 
 #### Propagation
@@ -112,9 +118,9 @@ Source of truth: [brainstorm report](../reports/brainstorm-261022-data-exchange-
 
 | # | Question | Answer |
 |---|---|---|
-| 1 | Table prefix | `data_hub_` + full name; the service group becomes `data_hub_data_service*` (e.g. `dx_services` → `data_hub_data_services`). FK column `service_id` → `data_service_id`. |
-| 2 | Relations to users | User: "chỉ lưu id của user thôi… tương tự như ở các bảng khác". All user ids are plain INT, with no FK to `users` (this reverses session 1 Q1, where `user_id` in link tables had an FK). |
-| 3 | People tables | Consumer SO/Tech/Biz are single → columns on `data_hub_consumers`, and `dx_consumer_users` is dropped. Data service BU/IT support are multi-select → keep link tables, named after the field (`..._requesters`, `..._it_supporters`), with the `role` column dropped. |
+| 1 | Table prefix | Completed |
+| 2 | Relations to users | Completed |
+| 3 | People tables | Completed |
 | 4 | Diagram | Each line must start from the exact FK field. Custom HTML diagram at `visuals/data-hub-erd.html` replaces the mermaid version. |
 
 #### Propagation
@@ -148,3 +154,23 @@ Source of truth: [brainstorm report](../reports/brainstorm-261022-data-exchange-
 
 ### Session 4 — 2026-10-22
 - User: divisions and departments are independent → removed `data_hub_departments.division_id` (phase 1 + diagram). Data services and consumers still reference both separately.
+
+## Implementation — 2026-10-22
+- Migration `src/migration/2610221500-create-data-hub-tables.ts`, 16 entities `src/modules/databases/data-hub-*.entity.ts`, enums `data-hub-enums.ts`.
+- Verified on scratch schema (real Postgres):
+  - up / re-up / down / up OK
+  - all TS enum values pass their CHECK
+  - bad values, port 0, orphan FK and duplicate pairs are rejected
+  - `physical_column` uniqueness is case-insensitive
+  - spec + link rows cascade on hard delete of a service
+  - 0 entity/DB drift over 165 columns
+- tsc and eslint clean; full jest suite 148/148.
+- Review follow-ups applied:
+  - History version uniqueness is a full (non-partial) unique.
+  - Relation `onDelete` matches the DB.
+  - The histories FK stays RESTRICT on purpose, so a data service with history cannot be hard-deleted.
+- For the API plan (not enforced by DB):
+  - spec row must match `service_type`
+  - links to soft-deleted consumers/physicals
+  - `version_no` race → catch 23505 or bump with `UPDATE … RETURNING`
+  - user ids validated in the service layer
