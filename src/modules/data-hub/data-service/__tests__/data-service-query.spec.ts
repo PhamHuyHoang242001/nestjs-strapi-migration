@@ -86,6 +86,9 @@ describe('buildListWhere', () => {
   });
 });
 
+const listService = (dataSource: unknown) =>
+  new DataHubDataServiceListQueryService(dataSource as never, new DataHubUserRefService(dataSource as never));
+
 describe('DataHubDataServiceListQueryService', () => {
   it('selects explicit columns, batches consumers + term counts, maps the item shape', async () => {
     const { dataSource, calls } = makeDataSource([
@@ -93,8 +96,16 @@ describe('DataHubDataServiceListQueryService', () => {
       [/SELECT\s+s\.id, s\.service_code/, [listRow]],
       [/FROM data_hub_data_service_version_consumers/, [{ version_id: 11, id: 5, code: 'APP1', name: 'App 1' }]],
       [/FROM data_hub_data_service_version_physical_terms/, [{ version_id: 11, term_count: 3 }]],
+      [
+        /FROM data_hub_data_service_version_service_owners/,
+        [
+          { version_id: 11, user_id: 8 },
+          { version_id: 11, user_id: 7 },
+        ],
+      ],
+      [/SELECT id, email FROM users/, [{ id: 7, email: 'so@x.vn' }]],
     ]);
-    const service = new DataHubDataServiceListQueryService(dataSource as never);
+    const service = listService(dataSource);
     const result = await service.list({ page: 2, limit: 10 } as never);
 
     expect(result.meta).toEqual({ total: 1, page: 2, limit: 10 });
@@ -115,6 +126,11 @@ describe('DataHubDataServiceListQueryService', () => {
       frequency: 'REALTIME',
       file_format: null,
       consumers: [{ id: 5, code: 'APP1', name: 'App 1' }],
+      // SO dịch vụ in link order; an unknown user still shows its id
+      service_owners: [
+        { id: 8, email: null },
+        { id: 7, email: 'so@x.vn' },
+      ],
       term_count: 3,
       updated_at: listRow.updated_at,
     });
@@ -122,6 +138,7 @@ describe('DataHubDataServiceListQueryService', () => {
     // one query per relation for the whole page, never per row
     expect(calls.filter((c) => /version_consumers/.test(c.sql))).toHaveLength(1);
     expect(calls.filter((c) => /version_physical_terms/.test(c.sql))).toHaveLength(1);
+    expect(calls.filter((c) => /version_service_owners/.test(c.sql))).toHaveLength(1);
     // inactive / soft-deleted consumers are not listed on a service row (also feeds the export)
     expect(calls.find((c) => /version_consumers/.test(c.sql)).sql).toContain(ACTIVE_CONSUMER);
     // a deleted physical term is not counted toward term_count (terms have no status)
@@ -133,7 +150,7 @@ describe('DataHubDataServiceListQueryService', () => {
 
   it('skips relation queries for an empty page', async () => {
     const { dataSource, calls } = makeDataSource([[/COUNT\(\*\)::int AS total/, [{ total: 0 }]]]);
-    const result = await new DataHubDataServiceListQueryService(dataSource as never).list({} as never);
+    const result = await listService(dataSource).list({} as never);
     expect(result).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
     expect(calls.some((c) => /version_consumers/.test(c.sql))).toBe(false);
   });
@@ -179,6 +196,7 @@ describe('DataHubDataServiceDetailQueryService', () => {
       [/FROM data_hub_data_service_version_api_specs/, [{ method: 'GET', base_url: 'API_INT' }]],
       [/version_requesters/, [{ user_id: 3 }]],
       [/version_it_supporters/, [{ user_id: 4 }]],
+      [/version_service_owners/, [{ user_id: 6 }]],
       [
         /FROM data_hub_data_service_version_consumers/,
         [{ id: 5, code: 'APP1', name: 'A', category: 'INTERNAL_APP', short_description: 'x' }],
@@ -203,6 +221,7 @@ describe('DataHubDataServiceDetailQueryService', () => {
     expect(detail.version_active.reviewed_by_user).toEqual({ id: 2, email: 'u2@x.vn' });
     expect(detail.version_active.requesters).toEqual([{ id: 3, email: 'u3@x.vn' }]);
     expect(detail.version_active.it_supporters).toEqual([{ id: 4, email: 'u4@x.vn' }]);
+    expect(detail.version_active.service_owners).toEqual([{ id: 6, email: 'u6@x.vn' }]);
     expect(detail.version_active.consumers[0].so_apps).toEqual([
       { id: 6, email: 'u6@x.vn' },
       { id: 1, email: 'u1@x.vn' },
@@ -394,7 +413,7 @@ describe('DataHubDataServiceExportService', () => {
         ],
       ],
     ]);
-    const exporter = new DataHubDataServiceExportService(new DataHubDataServiceListQueryService(dataSource as never));
+    const exporter = new DataHubDataServiceExportService(listService(dataSource));
     const rows = await exporter.buildRows({ status: 'all' } as never);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
@@ -414,9 +433,7 @@ describe('DataHubDataServiceExportService', () => {
 
   it('caps the export at 5000 rows', async () => {
     const { dataSource, calls } = makeDataSource([]);
-    await new DataHubDataServiceExportService(new DataHubDataServiceListQueryService(dataSource as never)).buildRows(
-      {} as never,
-    );
+    await new DataHubDataServiceExportService(listService(dataSource)).buildRows({} as never);
     expect(calls[0].params.slice(-2)).toEqual([5000, 0]);
   });
 

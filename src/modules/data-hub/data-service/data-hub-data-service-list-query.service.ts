@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { activeSql, DataHubPageMeta, liveSql, toPaging } from '../common/data-hub-query.util';
+import { DataHubUserRef, DataHubUserRefService } from '../common/data-hub-user-ref.service';
 import { queryRows } from './data-service-query-rows.util';
 import { buildListWhere, LIST_FROM_SQL, ListFilterInput, listOrderBy } from './data-service-list-filter.util';
 import { ListDataServiceQueryDto } from './dto';
@@ -54,7 +55,10 @@ const ref = (id: number, code: string, name: string): OrgRef => ({ id: Number(id
 
 @Injectable()
 export class DataHubDataServiceListQueryService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly userRefs: DataHubUserRefService,
+  ) {}
 
   async list(q: ListDataServiceQueryDto): Promise<{ data: unknown[]; meta: DataHubPageMeta }> {
     const { page, limit, offset } = toPaging(q);
@@ -67,7 +71,11 @@ export class DataHubDataServiceListQueryService {
       ),
       this.fetchRows(q, limit, offset),
     ]);
-    const [consumers, termCounts] = await this.loadPageRelations(rows.map((r) => r.version_id));
+    const versionIds = rows.map((r) => r.version_id);
+    const [[consumers, termCounts], owners] = await Promise.all([
+      this.loadPageRelations(versionIds),
+      this.loadServiceOwners(versionIds),
+    ]);
     const data = rows.map((r) => ({
       id: Number(r.id),
       service_code: r.service_code,
@@ -85,6 +93,7 @@ export class DataHubDataServiceListQueryService {
       frequency: r.update_frequency ?? r.export_frequency,
       file_format: r.file_format,
       consumers: consumers.get(Number(r.version_id)) ?? [],
+      service_owners: owners.get(Number(r.version_id)) ?? [],
       term_count: termCounts.get(Number(r.version_id)) ?? 0,
       updated_at: r.updated_at,
     }));
@@ -101,6 +110,25 @@ export class DataHubDataServiceListQueryService {
        ORDER BY ${listOrderBy(q.sort_by)} LIMIT $${n + 1} OFFSET $${n + 2}`,
       [...params, limit, offset],
     );
+  }
+
+  // SO dịch vụ of every version on the page as { id, email }, in the order they were added (one query + one user lookup).
+  private async loadServiceOwners(versionIds: number[]): Promise<Map<number, DataHubUserRef[]>> {
+    const out = new Map<number, DataHubUserRef[]>();
+    if (versionIds.length === 0) return out;
+    const rows = await queryRows<{ version_id: number; user_id: number }>(
+      this.dataSource,
+      `SELECT l.data_service_version_id AS version_id, l.user_id FROM data_hub_data_service_version_service_owners l
+       WHERE l.data_service_version_id = ANY($1) ORDER BY l.id`,
+      [versionIds],
+    );
+    const users = await this.userRefs.resolve(rows.map((r) => r.user_id));
+    for (const r of rows) {
+      const list = out.get(Number(r.version_id)) ?? [];
+      list.push(...this.userRefs.toRefs(users, [Number(r.user_id)]));
+      out.set(Number(r.version_id), list);
+    }
+    return out;
   }
 
   // Consumers and term counts for a whole page in two queries (no per-row lookups).

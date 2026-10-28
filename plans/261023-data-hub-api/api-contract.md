@@ -110,7 +110,7 @@ Read model:
   { id, service_code, service_type, status, version_no, name, short_description,
     division:{id,code,name}, department:{id,code,name}, request_unit:{id,code,name},
     method|null, endpoint_path|null, flow_direction|null, frequency (api update_frequency | sftp export_frequency),
-    file_format|null, consumers:[{id,code,name}], term_count, updated_at }
+    file_format|null, consumers:[{id,code,name}], service_owners:[{id,email}] (SO dịch vụ, [] on versions saved before it existed), term_count, updated_at }
   ```
 - Batch-load consumers and term counts for the page ids. No N+1.
 
