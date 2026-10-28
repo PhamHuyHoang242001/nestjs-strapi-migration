@@ -1,0 +1,112 @@
+import { QueryFailedError } from 'typeorm';
+import { makeSqlMock, SqlHandler } from '../../dictionary/__tests__/dictionary-test-helpers';
+import { DepartmentConfigWriteService } from '../department-config-write.service';
+
+const uniqueError = () =>
+  new QueryFailedError(
+    'q',
+    [],
+    Object.assign(new Error('dup'), { code: '23505', constraint: 'uq_data_hub_departments_code_live' }),
+  );
+
+const make = (handlers: SqlHandler[], liveUserIds: number[] = []) => {
+  const mock = makeSqlMock(handlers);
+  const assertUsers = jest.fn((_m: unknown, ids: number[]) =>
+    ids.every((id) => liveUserIds.includes(id)) ? Promise.resolve() : Promise.reject(new Error('INVALID_USERS')),
+  );
+  return {
+    ...mock,
+    assertUsers,
+    service: new DepartmentConfigWriteService(mock.dataSource as never, { assertUsers } as never),
+  };
+};
+
+const LOCK = /FROM data_hub_departments d WHERE d.id = \$1/;
+const live = { id: 5, code: 'DPD', name: 'Data Platform' };
+
+describe('DepartmentConfigWriteService', () => {
+  it('create inserts code + name + author and maps the case-insensitive unique index to 409', async () => {
+    const ok = make([[/INSERT INTO data_hub_departments/, () => [{ id: 9 }]]]);
+    await expect(ok.service.create({ code: 'NEW', name: 'New' }, 3)).resolves.toEqual({ id: 9 });
+    expect(ok.calls[0].params).toEqual(['NEW', 'New', 3]);
+
+    const dup = make([
+      [
+        /INSERT INTO data_hub_departments/,
+        () => {
+          throw uniqueError();
+        },
+      ],
+    ]);
+    await expect(dup.service.create({ code: 'dpd', name: 'x' }, 3)).rejects.toThrow('DEPARTMENT_CODE_EXISTS');
+  });
+
+  it('update locks the row, rejects no-op and missing rows', async () => {
+    const { service, calls } = make([[LOCK, () => [live]]]);
+    await expect(service.update(5, { code: 'DPD', name: 'Data Platform' }, 3)).rejects.toThrow('NO_CHANGES');
+    expect(calls[0].sql).toContain('FOR UPDATE');
+    await expect(make([]).service.update(5, { code: 'A', name: 'B' }, 3)).rejects.toThrow('DEPARTMENT_NOT_FOUND');
+  });
+
+  it('update writes the new values', async () => {
+    const { service, calls } = make([[LOCK, () => [live]]]);
+    await expect(service.update(5, { code: 'DPD2', name: 'Data Platform' }, 3)).resolves.toEqual({ id: 5 });
+    const upd = calls.find((c) => /UPDATE data_hub_departments SET code/.test(c.sql));
+    expect(upd?.params).toEqual([5, 'DPD2', 'Data Platform', 3]);
+  });
+
+  it('delete is refused while a live data service (active version) or consumer uses the department', async () => {
+    const usedByService = make([
+      [LOCK, () => [live]],
+      [/FROM data_hub_data_services s/, () => [{ n: 1 }]],
+    ]);
+    await expect(usedByService.service.remove(5, 3)).rejects.toThrow('DEPARTMENT_IN_USE');
+    expect(usedByService.calls[0].sql).toContain('FOR UPDATE');
+    expect(usedByService.calls.some((c) => /SET deleted_at/.test(c.sql))).toBe(false);
+
+    const usedByConsumer = make([
+      [LOCK, () => [live]],
+      [/FROM data_hub_consumers c/, () => [{ n: 2 }]],
+    ]);
+    await expect(usedByConsumer.service.remove(5, 3)).rejects.toThrow('DEPARTMENT_IN_USE');
+  });
+
+  it('delete soft-deletes and drops the members', async () => {
+    const { service, calls } = make([[LOCK, () => [live]]]);
+    await expect(service.remove(5, 3)).resolves.toEqual({ id: 5, deleted: true });
+    expect(calls.some((c) => /SET deleted_at = NOW\(\), is_deleted = true/.test(c.sql))).toBe(true);
+    expect(calls.some((c) => /DELETE FROM data_hub_department_members WHERE department_id = \$1/.test(c.sql))).toBe(
+      true,
+    );
+  });
+
+  it('addMembers: department locked FOR SHARE, users must be live and hold a data-service right', async () => {
+    const holders = [/FROM data_hub_dh_right_holders|WITH holders AS/, () => [{ user_id: 11 }]] as SqlHandler;
+    const { service, calls } = make([[LOCK, () => [live]], holders], [11, 12]);
+    await expect(service.addMembers(5, [11, 12], 3)).rejects.toThrow('INVALID_MEMBERS: 12');
+    expect(calls[0].sql).toContain('FOR SHARE');
+    expect(calls.some((c) => /INSERT INTO data_hub_department_members/.test(c.sql))).toBe(false);
+  });
+
+  it('addMembers inserts idempotently', async () => {
+    const holders = [/WITH holders AS/, () => [{ user_id: 11 }, { user_id: 12 }]] as SqlHandler;
+    const { service, calls } = make(
+      [[LOCK, () => [live]], holders, [/INSERT INTO data_hub_department_members/, () => [{ user_id: 12 }]]],
+      [11, 12],
+    );
+    await expect(service.addMembers(5, [11, 12], 3)).resolves.toEqual({ id: 5, added: 1 });
+    const ins = calls.find((c) => /INSERT INTO data_hub_department_members/.test(c.sql));
+    expect(ins?.sql).toContain('ON CONFLICT (department_id, user_id) DO NOTHING');
+  });
+
+  it('addMembers on a missing department → 404', async () => {
+    await expect(make([], [11]).service.addMembers(5, [11], 3)).rejects.toThrow('DEPARTMENT_NOT_FOUND');
+  });
+
+  it('removeMember deletes the link or 404s', async () => {
+    const ok = make([[/DELETE FROM data_hub_department_members/, () => [[{ id: 1 }], 1]]]);
+    await expect(ok.service.removeMember(5, 11)).resolves.toEqual({ id: 5, user_id: 11, removed: true });
+    const missing = make([[/DELETE FROM data_hub_department_members/, () => [[], 0]]]);
+    await expect(missing.service.removeMember(5, 11)).rejects.toThrow('MEMBER_NOT_FOUND');
+  });
+});

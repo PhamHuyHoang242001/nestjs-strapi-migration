@@ -1,10 +1,11 @@
 ---
 phase: 2
-title: "TypeORM entities and enums"
-status: pending
+title: TypeORM entities and enums
+status: completed
 priority: P1
-effort: "2h"
-dependencies: [1]
+effort: 2h
+dependencies:
+  - 1
 ---
 
 <!-- Updated: Validation Session 1 - no options entity, enums for technical lists, join entities extend BaseColumn -->
@@ -46,9 +47,9 @@ One entity per table under `src/modules/databases/` (repo convention) plus one e
 3. Run `npx tsc --noEmit`.
 
 ## Success Criteria
-- [ ] tsc clean
-- [ ] The entity glob `src/**/*.entity.ts` picks the new files up (`src/configuration/orm.config.ts:14`)
-- [ ] DataSource metadata builds without error
+- [x] tsc clean
+- [x] The entity glob `src/**/*.entity.ts` picks the new files up (`src/configuration/orm.config.ts:14`)
+- [x] DataSource metadata builds without error
 
 ## Risk Assessment
 - **Entity/migration drift** (no synchronize): Phase 3 compares `information_schema.columns` against entity metadata.

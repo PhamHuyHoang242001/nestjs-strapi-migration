@@ -17,7 +17,28 @@ Prompt / skill / api-catalog version M2M no longer uses `ai_hub_tags`. Write fie
 
 Coworker list returns `skill_count`; detail returns `skills: [{id, code, name, version_no, publisher, owning_unit_name}]` — skills = live active skill packages whose **active version** links the coworker in `skill_version_coworkers` (same rule as reuse-matrix).
 
-`GET /v1/ai-hub/coworker/reuse-matrix` (`coworker_upload`): columns = active coworker packages `{id,code,name}`; rows = paged active skills `{id,name,publisher}`; `cells[i]` ticks when the skill **active version** has a live `skill_version_coworkers` row for that column.
+`GET /v1/ai-hub/coworker/reuse-matrix` (`coworker_upload`): columns = active coworker packages `{id,code,name}`; rows = paged active skills `{id,name,publisher}`; `cells[i]` ticks when the skill **active version** has a live `skill_version_coworkers` row for that column. Rows are ordered by the number of ticked coworkers (desc), then skill name, before paging.
+
+## Data Hub schema (`data_hub_*`)
+
+Migration `src/migration/2610221500-create-data-hub-tables.ts`; entities `src/modules/databases/data-hub-*.entity.ts`; enums `data-hub-enums.ts`. ERD: `plans/261022-data-exchange-db-schema/visuals/data-hub-erd.html`.
+- Data services: `data_hub_data_services` (shared fields) + 1-1 `..._api_specs` / `..._sftp_specs`; edit log `..._histories` (JSONB `changes`, changed fields only).
+- Dictionary: `data_hub_logical_terms` 1-N `data_hub_physical_terms` (`logical_term_id` nullable); `data_hub_logical_term_histories` (JSONB snapshot incl. physicals).
+- Source tables (migration `2610271000-create-data-hub-source-tables.ts`): `data_hub_source_tables` (Bảng nguồn dịch vụ; name unique system-wide, `department_id` = creating service's department, `link` unused) 1-N physical terms. A physical term belongs to one data service (`data_service_id`) and one table; `code` unique per table; no status, delete = soft delete. Terms/tables are written only by the data-service create/edit body `source_tables` (`data-service/data-service-source-tables.util.ts`); dictionary/consumer/service term tabs read grouped by table (`common/source-table-groups.util.ts`).
+- Consumers: `data_hub_consumers` + `data_hub_consumer_histories`.
+- Org: `data_hub_divisions`, `data_hub_departments` (independent), `data_hub_request_units`.
+- Link tables (hard delete, extend `BaseColumn`): `..._requesters`, `..._it_supporters`, `..._data_service_consumers`, `..._data_service_physical_terms` (a version keeps links to terms deleted later).
+- `liveSql` is written exactly like the partial-index WHERE (`deleted_at IS NULL AND is_deleted IS NOT TRUE`) so the existing partial indexes stay usable; keep the two in sync.
+- Conventions: user ids are plain INT (no FK to `users`); technical lists are VARCHAR + CHECK (TS enum must match the migration); codes unique among live rows only; generous VARCHAR sizes, form limits belong in DTOs.
+- Consumers' business contacts (Đầu mối liên hệ nghiệp vụ) live in `data_hub_consumer_business_contacts` (Tech/Biz SO removed).
+- API module `src/modules/data-hub` (common, data-service, dictionary, consumer, department); contract `plans/261023-data-hub-api/api-contract.md`.
+
+### Data Hub permissions
+- 10 codes `dh_*` (the 3 physical-term codes were dropped by `2610271000`) (migration `2610261000-add-data-hub-permissions.ts`, module `/data-hub`, ids MAX+1 by code); consts in `data-hub/common/data-hub-permission-codes.ts`.
+- `DataHubPermissionGuard` + `@RequireDataHubPermission` / `@RequireDataHubSuperAdmin` gate every write; `DataHubAccessService` is the single rule (explicit role codes of user-client callers via `PermissionCacheService`, super_admin bypass) also used by `GET /v1/data-hub/my-permissions` and `is_update` on details. `common/__tests__/data-hub-write-route-permissions.spec.ts` fails on any ungated write route.
+- Data services are scoped by department (Đơn vị phát hành): writes need the code AND membership in `data_hub_department_members` (migration `2610261100-create-data-hub-department-members.ts`), checked inside the write transaction with the department row FOR SHARE (department delete takes FOR UPDATE). `GET /v1/data-hub/departments/writable?action=` feeds the form.
+- Department config API `/v1/data-hub/department-configs` (CRUD + members + candidates with current rights). The logical/physical Excel import was removed.
+- Local test accounts: `src/scripts/seed-data-hub-permission-test-users.ts` (dev-only, password from `DH_TEST_USER_PASSWORD`).
 
 ## AI Hub read micro-cache
 

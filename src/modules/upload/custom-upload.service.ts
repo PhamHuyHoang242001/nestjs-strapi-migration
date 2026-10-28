@@ -1,6 +1,6 @@
 import { RequestInfo } from '@common/types/request-with-info';
 import { Media } from '@modules/databases/media.entity';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as fsp from 'fs/promises';
 import * as mime from 'mime-types';
 import * as path from 'path';
@@ -31,7 +31,7 @@ export class CustomUploadService {
   /** `uploadDir` is injectable so specs can write to a scratch dir instead of public/. */
   constructor(
     private readonly mediaRepository: MediaRepository,
-    private readonly uploadDir: string = UPLOAD_DIR,
+    @Optional() private readonly uploadDir: string = UPLOAD_DIR,
   ) {}
 
   /**

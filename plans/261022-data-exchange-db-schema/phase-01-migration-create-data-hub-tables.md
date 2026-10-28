@@ -1,9 +1,9 @@
 ---
 phase: 1
-title: "Migration create data_hub tables"
-status: pending
+title: Migration create data_hub tables
+status: completed
 priority: P1
-effort: "3h"
+effort: 3h
 dependencies: []
 ---
 
@@ -24,7 +24,7 @@ One migration creating the 16 `data_hub_*` tables in dependency order, with FKs 
 - **Link tables** (4: `data_hub_data_service_requesters`, `data_hub_data_service_it_supporters`, `data_hub_data_service_consumers`, `data_hub_data_service_physical_terms`):
   - A row is hard-deleted when the link is removed; the old state is kept in history JSONB.
   - Columns `id, created_at, updated_at` only, plus a plain `UNIQUE` constraint.
-- **User ids** (`created_by`, `updated_by`, `changed_by`, `user_id`, `so_user_id`, `tech_user_id`, `biz_user_id`):
+- **User ids** (`created_by`, `updated_by`, `changed_by`, `user_id`):
   - Plain `INT`. **No FK to `users`** and no relation, same as the other modules.
 - **FKs between module tables:**
   - Default `REFERENCES … ON DELETE RESTRICT`.
@@ -61,8 +61,8 @@ One migration creating the 16 `data_hub_*` tables in dependency order, with FKs 
 | 1 | `data_hub_divisions` | code VARCHAR(100) NN, name VARCHAR(255) NN | UQ code (live) |
 | 2 | `data_hub_departments` | code VARCHAR(100) NN, name VARCHAR(255) NN | UQ code (live) |
 | 3 | `data_hub_request_units` | code VARCHAR(100) NN, name VARCHAR(255) NN, category VARCHAR(100) NULL | UQ code (live) |
-| 4 | `data_hub_consumers` | code VARCHAR(100) NN, name VARCHAR(255) NN, category VARCHAR(50) NN, division_id FK NN, department_id FK NULL, short_description VARCHAR(1000) NN, status VARCHAR(50) NN DEFAULT 'active', so_user_id INT NN, tech_user_id INT NN, biz_user_id INT NULL, created_by INT NN, updated_by INT NULL | UQ code (live); CHECK category, status |
-| 5 | `data_hub_logical_terms` | code VARCHAR(255) NN, name VARCHAR(255) NN, short_description VARCHAR(1000) NN, example_value VARCHAR(1000) NULL, created_by NN, updated_by NULL | UQ code (live) |
+| 4 | `data_hub_consumers` | code VARCHAR(100) NN, name VARCHAR(255) NN, category VARCHAR(50) NN, division_id FK NN, department_id FK NULL, short_description VARCHAR(1000) NN, status VARCHAR(50) NN DEFAULT 'active', created_by INT NN, updated_by INT NULL | UQ code (live); CHECK category, status |
+| 5 | `data_hub_logical_terms` | code VARCHAR(255) NN, short_description VARCHAR(1000) NN, example_value VARCHAR(1000) NULL, created_by NN, updated_by NULL | UQ code (live) |
 | 6 | `data_hub_physical_terms` | physical_column VARCHAR(255) NN, technical_description TEXT NN, example_value VARCHAR(1000) NN, logical_term_id FK NULL, created_by NN, updated_by NULL | UQ lower(physical_column) (live) |
 | 7 | `data_hub_data_services` | service_code VARCHAR(100) NN, service_type VARCHAR(50) NN, name VARCHAR(255) NN, short_description VARCHAR(1000) NN, purpose VARCHAR(2000) NULL, request_unit_id FK NN, division_id FK NN, department_id FK NN, source_table VARCHAR(1000) NN, usage_guide_html TEXT NN DEFAULT '', status VARCHAR(50) NN DEFAULT 'active', version_no INT NN DEFAULT 1, created_by NN, updated_by NULL | UQ service_code (live); CHECK service_type, status |
 | 8 | `data_hub_data_service_api_specs` | data_service_id INT NN FK CASCADE, method VARCHAR(50) NN, base_url VARCHAR(50) NN, endpoint_path VARCHAR(1000) NN, auth_type VARCHAR(50) NN, token_endpoint VARCHAR(1000) NULL, token_auth_method VARCHAR(50) NULL, peak_tps VARCHAR(255) NULL, update_frequency VARCHAR(50) NN, sync_mode VARCHAR(50) NN, timeout VARCHAR(100) NULL | UQ data_service_id (live, 1-1); CHECK each enum |
@@ -87,8 +87,8 @@ History rows are append-only and are never soft-deleted in practice. They still 
 4. Comments explain the reason (no plan refs). The file is long, but migrations are exempt from the 200-line rule.
 
 ## Success Criteria
-- [ ] Up on scratch DB creates 16 tables; re-run up is no-op; down removes all
-- [ ] Constraints reject: duplicate live code, bad enum value, port 0, orphan module FK, duplicate link pair; soft-deleted duplicate code is allowed
+- [x] Up on scratch DB creates 16 tables; re-run up is no-op; down removes all
+- [x] Constraints reject: duplicate live code, bad enum value, port 0, orphan module FK, duplicate link pair; soft-deleted duplicate code is allowed
 
 ## Risk Assessment
 - Adding an enum value later requires a migration that drops and recreates the CHECK. This trade-off was accepted in validation session 1.
