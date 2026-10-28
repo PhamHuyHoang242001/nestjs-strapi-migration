@@ -48,6 +48,7 @@ import { SkillPackageModule } from '@modules/skill-package/skill-package.module'
 import { PromptLibraryModule } from '@modules/prompt-library/prompt-library.module';
 import { ApiCatalogModule } from '@modules/api-catalog/api-catalog.module';
 import { CoworkerModule } from '@modules/coworker/coworker.module';
+import { DataHubModule } from '@modules/data-hub/data-hub.module';
 import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
 import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { CategoryModule } from '@modules/category/category.module';
@@ -123,6 +124,7 @@ import { ConfigsModule } from '@modules/configs/configs.module';
     PromptLibraryModule,
     ApiCatalogModule,
     CoworkerModule,
+    DataHubModule,
     LatestArtifactsModule,
     AssetHubCatalogModule,
     CategoryModule,
