@@ -9,11 +9,16 @@ import { DataHubDataServiceTermsQueryService } from './data-hub-data-service-ter
 import { DataHubDataServiceWriteService } from './data-hub-data-service-write.service';
 import { DataServiceSnapshotService } from './data-service-snapshot.service';
 import { LogicalTermHistoryService } from '../dictionary/logical-term-history.service';
+import { LogicalTermWriteService } from '../dictionary/logical-term-write.service';
+import { DataServiceImportController } from './import/data-service-import.controller';
+import { DataServiceImportReferenceLookupService } from './import/data-service-import-reference-lookup.service';
+import { DataServiceImportTemplateService } from './import/data-service-import-template.service';
+import { DataServiceImportService } from './import/data-service-import.service';
 
-// Data services (package + version): catalog, detail, create/edit, status, history, export.
+// Data services (package + version): catalog, detail, create/edit, status, history, export, bulk import.
 @Module({
   imports: [DataHubCommonModule],
-  controllers: [DataHubDataServiceController],
+  controllers: [DataHubDataServiceController, DataServiceImportController],
   providers: [
     DataHubDataServiceListQueryService,
     DataHubDataServiceDetailQueryService,
@@ -24,6 +29,11 @@ import { LogicalTermHistoryService } from '../dictionary/logical-term-history.se
     DataServiceSnapshotService,
     // Logical history is written when a service's terms that are mapped to a logical change.
     LogicalTermHistoryService,
+    // Bulk import: creates services through the write service and new logical terms through their write service.
+    LogicalTermWriteService,
+    DataServiceImportReferenceLookupService,
+    DataServiceImportTemplateService,
+    DataServiceImportService,
   ],
 })
 export class DataHubDataServiceModule {}

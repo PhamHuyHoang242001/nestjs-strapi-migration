@@ -201,6 +201,33 @@ Update the package `status`, then write history `STATUS` (`version_no` = active 
 ### B11. `GET /:id/versions` — kept for future review
 `data:[{ id, version_no, old_version, state, changelog_note, submitted_by_user, reviewed_by_user, reviewed_at, created_at }]`.
 
+### B12. Bulk import — `/v1/data-hub/data-service-imports` (2026-10-29)
+Own base path (under `/data-services` the `:id` routes would capture "import"). Both routes need `dh_data_service_create`.
+- `GET /template?example=false|true` → `.xlsx`. Sheets (fixed names, matched exactly): `HUONG_DAN`, `DICH_VU_API`,
+  `DICH_VU_SFTP`, `BANG_NGUON_PHYSICAL_TERM`, `LOGICAL_TERM_MOI`, `DANH_MUC`. Data cells are Text-formatted; code /
+  enum columns have dropdowns pointing at `DANH_MUC` (filled from the DB at download: live request units, divisions,
+  departments, active consumers, every enum). `example=true` adds sample rows (real codes, caller's email, unique
+  table/logical names) that import as-is. Column layout = `import/data-service-import-sheet-columns.ts`.
+- `POST /?dry_run=true|false` (multipart `file`, ≤ 5 MB, default `dry_run=true` = check only) →
+  `{ dry_run, summary:{ services:{total,valid,created,failed}, term_rows:{total,failed}, logical_terms:{total,valid,created,failed} },
+  services:[{ sheet, row, ref, status: valid|created|failed, id?, service_code? }], issues:[{ sheet, row, column?, code, message, warning? }],
+  result_file:{ file_name, content_base64 } }` — the uploaded workbook with "Kết quả" / "Chi tiết" columns appended.
+- Rows: 1 service per row on `DICH_VU_API` / `DICH_VU_SFTP` (linked by a file-only "Mã tham chiếu"); 1 physical term
+  per row on `BANG_NGUON_PHYSICAL_TERM` (same ref + same table name = one source table); `LOGICAL_TERM_MOI` = new
+  logical terms only. Users by email, consumers/org by code, multi-values split on `;`.
+- Each service is checked with `CreateDataServiceDto` + the same lookups as `POST /data-services`, then created through
+  `DataHubDataServiceWriteService.create` (own transaction). A service is created only when its row and **all** its
+  term rows are valid. Source tables are always new (name taken in the system or by 2 services of the file → error).
+  Logical code on a term: existing → mapped; else must be on `LOGICAL_TERM_MOI`, created after the services via
+  `LogicalTermWriteService.create` with the physicals just created (skipped if none was created).
+- Whole-file 400: `INVALID_FILE`, `INVALID_TEMPLATE` (sheet/header mismatch), `EMPTY_FILE`, `TOO_MANY_ROWS`
+  (200 services, 5000 term rows, 1000 logical rows). Row codes: `REQUIRED`, `TOO_LONG`, `INVALID_VALUE`, `INVALID_NUMBER`,
+  `INVALID_COUNT`, `DUPLICATE_VALUE`, `CODE_NOT_FOUND`, `CONSUMER_INACTIVE`, `USER_NOT_FOUND`, `USER_AMBIGUOUS`,
+  `DEPARTMENT_FORBIDDEN`, `INVALID_JSON`, `DUPLICATE_REF`, `SERVICE_REF_NOT_FOUND`, `SOURCE_TABLE_NAME_EXISTS`,
+  `SOURCE_TABLE_NAME_DUPLICATE`, `PHYSICAL_CODE_DUPLICATE`, `LOGICAL_TERM_NOT_FOUND`, `LOGICAL_TERM_INVALID`,
+  `LOGICAL_TERM_CODE_EXISTS`, `LOGICAL_TERM_UNUSED`, `LOGICAL_TERM_FORBIDDEN`, `DUPLICATE_IN_FILE`, `CREATE_FAILED`;
+  warning `TABLE_DESCRIPTION_IGNORED`.
+
 ## C. Dictionary — `/v1/data-hub/logical-terms` and `/v1/data-hub/physical-terms`
 **Physical model (2026-10-27):** a physical term belongs to one data service (`data_service_id`) and one source table (`source_table_id`); `code` (was `physical_column`) is unique inside its table; there is no `status`. Physicals are written only from the data-service form (B6/B7). Everywhere a physical is listed or counted it must be live (`liveSql`) and owned by a live service.
 
@@ -322,6 +349,7 @@ common/  data-hub-common.module.ts       exports the shared providers below
          data-hub-org.controller.ts / data-hub-org.service.ts
 data-service/  controller(s), *-query.service.ts, *-write.service.ts, *-history.service.ts, *-export.service.ts,
                data-service-code.util.ts, data-service-diff.util.ts, dto/, __tests__/
+               import/  bulk import: template, workbook reader, lookups, row builders, result workbook, controller
 dictionary/    logical-term.controller.ts, physical-term.controller.ts (read-only), source-table.controller.ts, *-query/-write/-export services, dto/, __tests__/
                (physical/source-table writes live in data-service/data-service-source-tables.util.ts)
 consumer/      controller, query/write/export services, dto/, __tests__/
