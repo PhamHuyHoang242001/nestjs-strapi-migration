@@ -5,7 +5,6 @@ import {
   DataHubApiBaseUrl,
   DataHubApiMethod,
   DataHubApiSyncMode,
-  DataHubApiTokenAuthMethod,
   DataHubApiUpdateFrequency,
 } from './data-hub-enums';
 import { DataHubDataServiceVersion } from './data-hub-data-service-version.entity';
@@ -27,12 +26,6 @@ export class DataHubDataServiceVersionApiSpec extends BaseSoftDeleteEntity {
 
   @Column({ type: 'varchar', length: 50 })
   public auth_type: DataHubApiAuthType;
-
-  @Column({ type: 'varchar', length: 1000, nullable: true })
-  public token_endpoint: string | null;
-
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  public token_auth_method: DataHubApiTokenAuthMethod | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   public peak_tps: string | null;

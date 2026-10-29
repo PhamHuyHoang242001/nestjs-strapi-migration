@@ -11,7 +11,7 @@ const base = () => ({
   ],
   consumers: [{ key: 5, label: 'APP1' }],
   api_sample_request: { b: 1, a: [1, 2] },
-  sftp_port: 22,
+  api_timeout: 22,
 });
 
 describe('diffSnapshots', () => {
@@ -63,14 +63,14 @@ describe('diffSnapshots', () => {
   });
 
   it('compares numbers by value', () => {
-    expect(diffSnapshots(base(), { ...base(), sftp_port: 2222 })[0]).toMatchObject({ old: 22, new: 2222 });
+    expect(diffSnapshots(base(), { ...base(), api_timeout: 2222 })[0]).toMatchObject({ old: 22, new: 2222 });
   });
 
   it('with no previous snapshot lists every non-empty field once', () => {
     const changes = diffSnapshots(null, base());
     const fields = changes.map((c) => c.field).sort();
     expect(fields).toEqual(
-      ['api_sample_request', 'consumers', 'division', 'name', 'requesters', 'sftp_port', 'short_description'].sort(),
+      ['api_sample_request', 'api_timeout', 'consumers', 'division', 'name', 'requesters', 'short_description'].sort(),
     );
     expect(changes.find((c) => c.field === 'name')).toMatchObject({ old: null, new: 'A' });
   });

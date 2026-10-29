@@ -7,7 +7,8 @@ import type { ImportList } from './data-service-import-template.service';
 export function fillExampleRows(workbook: ExcelJS.Workbook, lists: ImportList[], email: string): void {
   const first = (key: ImportList['key']) => lists.find((l) => l.key === key)?.codes[0] ?? '';
   const twoConsumers = (lists.find((l) => l.key === 'consumers')?.codes ?? []).slice(0, 2).join('; ');
-  const tag = new Date().toISOString().replace(/\D/g, '').slice(2, 12);
+  // yyMMddHHmmssSSS: two downloads in the same minute must not share table / logical names.
+  const tag = new Date().toISOString().replace(/\D/g, '').slice(2, 17);
   const common = (ref: string, name: string, desc: string, purpose: string) => ({
     ref,
     name,
@@ -34,8 +35,6 @@ export function fillExampleRows(workbook: ExcelJS.Workbook, lists: ImportList[],
       base_url: 'API_INT',
       endpoint_path: '/v1/customers/{cif}/profile',
       auth_type: 'BEARER_TOKEN',
-      token_endpoint: '/oauth2/token',
-      token_auth_method: 'BASIC',
       peak_tps: '200',
       update_frequency: 'REALTIME',
       sync_mode: 'SYNC',
@@ -62,11 +61,6 @@ export function fillExampleRows(workbook: ExcelJS.Workbook, lists: ImportList[],
         'File giao dịch thẻ tín dụng phát sinh trong ngày D-1',
         'Đối soát với đối tác',
       ),
-      host: 'sftp-int.vpbank.local',
-      port: '22',
-      auth_type: 'SSH_KEY',
-      key_vault_method: 'CYBERARK_PAM',
-      vault_account: 'svc_card_export',
       folder_path: '/outbound/card/',
       file_name_pattern: 'CARD_TXN_{yyyyMMdd}.csv',
       file_format: 'CSV_PIPE',

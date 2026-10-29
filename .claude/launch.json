@@ -1,0 +1,40 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:dev"
+      ],
+      "port": 3002
+    },
+    {
+      "name": "data-hub-fe",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "-y",
+        "http-server",
+        "/Users/phamhoang/Documents/project-1/Mock-EDA-Portal-api-test",
+        "-p",
+        "3001",
+        "-c-1"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "data-services-fe",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "-y",
+        "serve",
+        "-s",
+        "/private/tmp/claude-501/-Users-phamhoang-Documents-project-1-nestjs-new-base-be-ts-sql/409554ac-f5e1-427c-b91b-ad51c93867c1/scratchpad/ds-dev",
+        "-l",
+        "3000"
+      ],
+      "port": 3000
+    }
+  ]
+}

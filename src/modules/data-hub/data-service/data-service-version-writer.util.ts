@@ -11,8 +11,6 @@ export interface InsertVersionInput {
   source: VersionSource;
 }
 
-const SFTP_DEFAULT_PORT = 22;
-
 // JSON samples go in as text cast to jsonb so any JSON value (object, array, scalar) round-trips.
 const specValue = (field: string, value: unknown): unknown => {
   if (value === undefined || value === null || value === '') return null;
@@ -27,7 +25,7 @@ async function insertSpec(
   spec: Record<string, unknown>,
 ): Promise<void> {
   const columns = ['data_service_version_id', ...fields];
-  const values = [versionId, ...fields.map((f) => specValue(f, spec[f] ?? (f === 'port' ? SFTP_DEFAULT_PORT : null)))];
+  const values = [versionId, ...fields.map((f) => specValue(f, spec[f] ?? null))];
   const placeholders = columns.map((c, i) => (c.startsWith('sample_') ? `$${i + 1}::jsonb` : `$${i + 1}`));
   await manager.query(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`, values);
 }

@@ -138,7 +138,7 @@ describe('DataServiceImportService', () => {
     });
     expect(sf01).toMatchObject({
       service_type: DataHubServiceType.SFTP,
-      sftp_spec: { port: 22, encryption: 'PGP_KEY' },
+      sftp_spec: { folder_path: '/outbound/card/', encryption: 'PGP_KEY' },
     });
     // CUSTOMER_CIF is used by API01 and API02 (one CIF_NO each), DATE_OF_BIRTH by API01 only.
     const calls = h.logicalWrite.create.mock.calls as unknown as Array<[{ code: string; physical_term_ids: number[] }]>;
@@ -174,13 +174,14 @@ describe('DataServiceImportService', () => {
 
   it('rejects a table name already in the system and a logical code that already exists', async () => {
     const refs = references();
+    const file = await exampleFile();
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load((await exampleFile()) as unknown as ArrayBuffer);
+    await wb.xlsx.load(file as unknown as ArrayBuffer);
     const table = cellText(wb.getWorksheet(IMPORT_SHEETS.TERMS).getCell('B2').value).toLowerCase();
     const logical = cellText(wb.getWorksheet(IMPORT_SHEETS.LOGICAL).getCell('A3').value).toLowerCase();
     refs.sourceTableNames.add(table);
     refs.logicalTerms.set(logical, 77);
-    const res = await harness(refs).service.import(await exampleFile(), true, CALLER);
+    const res = await harness(refs).service.import(file, true, CALLER);
     expect(res.issues.find((i) => i.sheet === 'TERMS' && i.row === 2)?.code).toBe('SOURCE_TABLE_NAME_EXISTS');
     expect(res.issues.find((i) => i.sheet === 'LOGICAL' && i.row === 3)?.code).toBe('LOGICAL_TERM_CODE_EXISTS');
     expect(res.services.find((s) => s.ref === 'API01')?.status).toBe('failed');

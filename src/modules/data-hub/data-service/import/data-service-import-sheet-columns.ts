@@ -25,11 +25,8 @@ export type ImportListKey =
   | 'method'
   | 'base_url'
   | 'api_auth_type'
-  | 'token_auth_method'
   | 'update_frequency'
   | 'sync_mode'
-  | 'sftp_auth_type'
-  | 'key_vault_method'
   | 'file_format'
   | 'export_frequency'
   | 'encryption'
@@ -88,8 +85,6 @@ export const API_COLUMNS: ImportColumn[] = [
   col('base_url', 'Base URL', 'r', 14, 'Mã base URL (không nhập host).', 'base_url'),
   col('endpoint_path', 'Endpoint path', 'r', 36, 'Đường dẫn sau base URL, tối đa 1000 ký tự. Vd /v1/customers/{cif}.'),
   col('auth_type', 'Auth type', 'r', 22, 'Cách xác thực khi gọi API.', 'api_auth_type'),
-  col('token_endpoint', 'Token endpoint', 'o', 26, 'Tối đa 1000 ký tự. Nên điền khi Auth type = BEARER_TOKEN.'),
-  col('token_auth_method', 'Token auth method', 'o', 18, 'Cách xác thực khi lấy token.', 'token_auth_method'),
   col('peak_tps', 'Peak TPS', 'o', 12, 'Số hoặc chữ, tối đa 255 ký tự.'),
   col('update_frequency', 'Tần suất cập nhật', 'r', 18, 'Độ mới của dữ liệu.', 'update_frequency'),
   col('sync_mode', 'Chế độ đồng bộ', 'r', 16, 'Kiểu gọi.', 'sync_mode'),
@@ -100,11 +95,6 @@ export const API_COLUMNS: ImportColumn[] = [
 
 export const SFTP_COLUMNS: ImportColumn[] = [
   ...SERVICE_COMMON,
-  col('host', 'Host', 'o', 24, 'Máy chủ SFTP, tối đa 255 ký tự.'),
-  col('port', 'Port', 'o', 8, 'Số nguyên 1-65535. Để trống = 22.'),
-  col('auth_type', 'Auth type', 'r', 14, 'Cách xác thực.', 'sftp_auth_type'),
-  col('key_vault_method', 'Phương thức lưu khoá', 'o', 20, 'Nơi giữ khoá/mật khẩu.', 'key_vault_method'),
-  col('vault_account', 'Vault account', 'o', 20, 'Tối đa 255 ký tự. Không ghi mật khẩu thật vào file.'),
   col('folder_path', 'Thư mục', 'o', 24, 'Tối đa 1000 ký tự.'),
   col('file_name_pattern', 'Mẫu tên file', 'o', 26, 'Tối đa 500 ký tự. Vd CARD_TXN_{yyyyMMdd}.csv.'),
   col('file_format', 'Định dạng file', 'r', 14, 'Định dạng file.', 'file_format'),

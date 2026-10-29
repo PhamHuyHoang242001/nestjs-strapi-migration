@@ -45,7 +45,7 @@ const listRow = {
   flow_direction: null,
   export_frequency: null,
   file_format: null,
-  sftp_host: null,
+  sftp_folder_path: null,
 };
 
 const ACTIVE_CONSUMER = "c.deleted_at IS NULL AND c.is_deleted IS NOT TRUE AND c.status = 'active'";
@@ -400,7 +400,7 @@ describe('DataHubDataServiceExportService', () => {
             flow_direction: 'PUSH',
             export_frequency: 'HOURLY',
             file_format: 'CSV',
-            sftp_host: 'h',
+            sftp_folder_path: '/outbound/',
             name: '=cmd',
           },
         ],
@@ -418,14 +418,14 @@ describe('DataHubDataServiceExportService', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       stt: 1,
-      endpoint_or_host: 'api-int.vpbank.com.vn/v1/x',
+      endpoint_or_folder: 'api-int.vpbank.com.vn/v1/x',
       consumers: 'A, B',
       status: 'Hoạt động',
     });
     expect(rows[1]).toMatchObject({
       stt: 2,
       method_or_direction: 'PUSH',
-      endpoint_or_host: 'h',
+      endpoint_or_folder: '/outbound/',
       name: "'=cmd",
       status: 'Ngừng hoạt động',
     });

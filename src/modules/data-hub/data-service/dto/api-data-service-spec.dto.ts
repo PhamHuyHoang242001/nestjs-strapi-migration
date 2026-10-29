@@ -6,7 +6,6 @@ import {
   DataHubApiBaseUrl,
   DataHubApiMethod,
   DataHubApiSyncMode,
-  DataHubApiTokenAuthMethod,
   DataHubApiUpdateFrequency,
 } from '@modules/databases/data-hub-enums';
 import { numberToString, trimString } from './data-service-dto-transforms';
@@ -33,18 +32,6 @@ export class ApiDataServiceSpecDto {
   @IsEnum(DataHubApiAuthType)
   readonly auth_type: DataHubApiAuthType;
 
-  @ApiProperty({ required: false, maxLength: 1000 })
-  @IsOptional()
-  @Transform(trimString)
-  @IsString()
-  @MaxLength(1000)
-  readonly token_endpoint?: string;
-
-  @ApiProperty({ required: false, enum: DataHubApiTokenAuthMethod })
-  @IsOptional()
-  @IsEnum(DataHubApiTokenAuthMethod)
-  readonly token_auth_method?: DataHubApiTokenAuthMethod;
-
   @ApiProperty({ required: false, maxLength: 255 })
   @IsOptional()
   @Transform(numberToString)
@@ -60,7 +47,7 @@ export class ApiDataServiceSpecDto {
   @IsEnum(DataHubApiSyncMode)
   readonly sync_mode: DataHubApiSyncMode;
 
-  // A synchronous call must declare its timeout; async and batch calls may leave it empty.
+  // A synchronous call must declare its timeout; an async call may leave it empty.
   @ApiProperty({ required: false, maxLength: 100, description: 'Required when sync_mode = SYNC' })
   @ValidateIf((o: ApiDataServiceSpecDto) => o.sync_mode === DataHubApiSyncMode.SYNC || hasValue(o.timeout))
   @Transform(numberToString)

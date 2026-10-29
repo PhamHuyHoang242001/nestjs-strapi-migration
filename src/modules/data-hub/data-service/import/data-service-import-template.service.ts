@@ -6,14 +6,11 @@ import {
   DataHubApiBaseUrl,
   DataHubApiMethod,
   DataHubApiSyncMode,
-  DataHubApiTokenAuthMethod,
   DataHubApiUpdateFrequency,
-  DataHubSftpAuthType,
   DataHubSftpEncryption,
   DataHubSftpExportFrequency,
   DataHubSftpFileFormat,
   DataHubSftpFlowDirection,
-  DataHubSftpKeyVaultMethod,
 } from '@modules/databases/data-hub-enums';
 import { activeSql, liveSql } from '../../common/data-hub-query.util';
 import { fillExampleRows } from './data-service-import-template-example.util';
@@ -164,12 +161,9 @@ export class DataServiceImportTemplateService {
       consumers,
       enumList('method', 'Method', DataHubApiMethod),
       enumList('base_url', 'Base URL', DataHubApiBaseUrl),
-      enumList('api_auth_type', 'Auth type (API)', DataHubApiAuthType),
-      enumList('token_auth_method', 'Token auth method', DataHubApiTokenAuthMethod),
+      enumList('api_auth_type', 'Auth type', DataHubApiAuthType),
       enumList('update_frequency', 'Tần suất cập nhật', DataHubApiUpdateFrequency),
       enumList('sync_mode', 'Chế độ đồng bộ', DataHubApiSyncMode),
-      enumList('sftp_auth_type', 'Auth type (SFTP)', DataHubSftpAuthType),
-      enumList('key_vault_method', 'Phương thức lưu khoá', DataHubSftpKeyVaultMethod),
       enumList('file_format', 'Định dạng file', DataHubSftpFileFormat),
       enumList('export_frequency', 'Tần suất xuất', DataHubSftpExportFrequency),
       enumList('encryption', 'Mã hoá', DataHubSftpEncryption),

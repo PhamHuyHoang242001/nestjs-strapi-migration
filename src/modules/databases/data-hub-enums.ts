@@ -69,12 +69,6 @@ export enum DataHubApiAuthType {
   BEARER_TOKEN = 'BEARER_TOKEN',
 }
 
-export enum DataHubApiTokenAuthMethod {
-  BASIC = 'BASIC',
-  X_SECRET_KEY = 'X_SECRET_KEY',
-  X_IBM_CLIENT_ID = 'X_IBM_CLIENT_ID',
-}
-
 export enum DataHubApiUpdateFrequency {
   REALTIME = 'REALTIME',
   NEAR_REALTIME = 'NEAR_REALTIME',
@@ -85,18 +79,6 @@ export enum DataHubApiUpdateFrequency {
 export enum DataHubApiSyncMode {
   SYNC = 'SYNC',
   ASYNC = 'ASYNC',
-  BATCH = 'BATCH',
-}
-
-export enum DataHubSftpAuthType {
-  SSH_KEY = 'SSH_KEY',
-  PASSWORD = 'PASSWORD',
-}
-
-export enum DataHubSftpKeyVaultMethod {
-  CYBERARK_PAM = 'CYBERARK_PAM',
-  LOCAL_KEYSTORE = 'LOCAL_KEYSTORE',
-  HSM_VAULT = 'HSM_VAULT',
 }
 
 export enum DataHubSftpFileFormat {

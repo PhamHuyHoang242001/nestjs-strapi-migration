@@ -30,18 +30,12 @@ const API_SPEC_KEYS = [
   'base_url',
   'endpoint_path',
   'auth_type',
-  'token_endpoint',
-  'token_auth_method',
   'peak_tps',
   'update_frequency',
   'sync_mode',
   'timeout',
 ];
 const SFTP_SPEC_KEYS = [
-  'host',
-  'auth_type',
-  'key_vault_method',
-  'vault_account',
   'folder_path',
   'file_name_pattern',
   'file_format',
@@ -55,10 +49,8 @@ const ENUM_KEYS = new Set([
   'method',
   'base_url',
   'auth_type',
-  'token_auth_method',
   'update_frequency',
   'sync_mode',
-  'key_vault_method',
   'file_format',
   'export_frequency',
   'encryption',
@@ -178,8 +170,7 @@ function buildDraft(
       sample_response: parseJson(sheet, r, 'sample_response', issues),
     };
   } else {
-    const port = v.port === '' ? undefined : /^\d+$/.test(v.port) ? Number(v.port) : v.port;
-    plain.sftp_spec = { ...specOf(SFTP_SPEC_KEYS, v), ...(port === undefined ? {} : { port }) };
+    plain.sftp_spec = specOf(SFTP_SPEC_KEYS, v);
   }
   return { sheet, row: r.row, ref: v.ref, plain, tableRows: [], termRows: [], sheetTermRows: [], newLogicalLinks: [] };
 }

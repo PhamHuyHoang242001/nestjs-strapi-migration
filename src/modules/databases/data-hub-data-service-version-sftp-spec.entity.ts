@@ -1,12 +1,10 @@
 import { Column, Entity, JoinColumn, OneToOne } from 'typeorm';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import {
-  DataHubSftpAuthType,
   DataHubSftpEncryption,
   DataHubSftpExportFrequency,
   DataHubSftpFileFormat,
   DataHubSftpFlowDirection,
-  DataHubSftpKeyVaultMethod,
 } from './data-hub-enums';
 import { DataHubDataServiceVersion } from './data-hub-data-service-version.entity';
 
@@ -15,21 +13,6 @@ import { DataHubDataServiceVersion } from './data-hub-data-service-version.entit
 export class DataHubDataServiceVersionSftpSpec extends BaseSoftDeleteEntity {
   @Column({ type: 'int' })
   public data_service_version_id: number;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  public host: string | null;
-
-  @Column({ type: 'int', default: 22 })
-  public port: number;
-
-  @Column({ type: 'varchar', length: 50 })
-  public auth_type: DataHubSftpAuthType;
-
-  @Column({ type: 'varchar', length: 50, nullable: true })
-  public key_vault_method: DataHubSftpKeyVaultMethod | null;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  public vault_account: string | null;
 
   @Column({ type: 'varchar', length: 1000, nullable: true })
   public folder_path: string | null;

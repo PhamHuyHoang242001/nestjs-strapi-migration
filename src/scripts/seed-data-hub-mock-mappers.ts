@@ -148,9 +148,6 @@ export const sftpExportFrequency = (v: string, w: MapWarnings) =>
     w,
   );
 
-export const sftpHost = (domain: string): string | null =>
-  domain ? domain.replace(/^sftp:\/\//, '').split(/[/:]/)[0] || null : null;
-
 // Mock status → package status. No review flow yet, so pending/draft/rejected become live services.
 export const serviceStatus = (v: string): 'active' | 'inactive' => (v === 'Inactive' ? 'inactive' : 'active');
 

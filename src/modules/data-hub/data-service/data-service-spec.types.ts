@@ -6,8 +6,6 @@ export const API_SPEC_FIELDS = [
   'base_url',
   'endpoint_path',
   'auth_type',
-  'token_endpoint',
-  'token_auth_method',
   'peak_tps',
   'update_frequency',
   'sync_mode',
@@ -17,11 +15,6 @@ export const API_SPEC_FIELDS = [
 ] as const;
 
 export const SFTP_SPEC_FIELDS = [
-  'host',
-  'port',
-  'auth_type',
-  'key_vault_method',
-  'vault_account',
   'folder_path',
   'file_name_pattern',
   'file_format',

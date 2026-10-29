@@ -120,7 +120,7 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
 ### B3. `GET /export` — XLSX
 - Same filters as B1 plus optional `ids[]`. No paging; cap 5000 rows.
 - Uses `exportExcelToResponse` with `@Res()`. Sheet `data-services`.
-- Columns: STT, Mã DV, Tên, Mô hình, Phương thức/Chiều, Endpoint/Host, Khối, Phòng ban, Đơn vị yêu cầu, Tần suất, Định dạng tệp, App thụ hưởng (codes, comma-separated), Trạng thái, Phiên bản, Ngày cập nhật.
+- Columns: STT, Mã DV, Tên, Mô hình, Phương thức/Chiều, Endpoint/Thư mục (API: host + endpoint; SFTP: folder_path), Khối, Phòng ban, Đơn vị yêu cầu, Tần suất, Định dạng tệp, App thụ hưởng (codes, comma-separated), Trạng thái, Phiên bản, Ngày cập nhật.
 
 ### B4. `GET /:id` — detail
 ```
@@ -156,9 +156,11 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
     - Table names unique system-wide (409 `SOURCE_TABLE_NAME_EXISTS`); codes unique per table (409 `PHYSICAL_CODE_EXISTS: table.code`); in-payload duplicates → 400 `DUPLICATE_SOURCE_TABLES` / `DUPLICATE_PHYSICAL_TERMS` / `DUPLICATE_TERM_CODES: <table>: <codes>`. Case-insensitive.
     - `logical_term_id` maps the term to a live logical term (null = unmapped, absent = keep the current mapping); unknown/deleted → 400 `INVALID_LOGICAL_TERMS: <ids>`. Mapped logical terms whose physicals change (renamed, moved, deleted, re-mapped — both old and new) get a logical history row. Picker: `GET /logical-terms/options`.
   - The spec object must match `service_type`: exactly one present, else 400 `SPEC_MISMATCH`.
-  - `api_spec`: `method, base_url, endpoint_path, auth_type, token_endpoint?, token_auth_method?, peak_tps?, update_frequency, sync_mode, timeout?, sample_request?, sample_response?`. The samples are any JSON.
-  - `timeout` is required (non-empty, ≤100) when `sync_mode = SYNC`; optional for `ASYNC` / `BATCH` (2026-10-26).
-  - `sftp_spec`: `host?, port?(1..65535, default 22), auth_type, key_vault_method?, vault_account?, folder_path?, file_name_pattern?, file_format, export_frequency, max_file_size?, encryption, flow_direction?`.
+  - `api_spec`: `method, base_url, endpoint_path, auth_type, peak_tps?, update_frequency, sync_mode (SYNC|ASYNC), timeout?, sample_request?, sample_response?`. The samples are any JSON.
+  - `timeout` is required (non-empty, ≤100) when `sync_mode = SYNC`; optional for `ASYNC` (2026-10-26).
+  - `sftp_spec`: `folder_path?, file_name_pattern?, file_format, export_frequency, max_file_size?, encryption, flow_direction?`.
+  - Removed 2026-10-29 (columns dropped; if still sent they are stripped by the global whitelist pipe and not stored): API `token_endpoint`, `token_auth_method`, sync mode `BATCH`
+    (existing BATCH rows became ASYNC); SFTP `host`, `port`, `auth_type`, `key_vault_method`, `vault_account`.
 - **Validation:** every referenced id exists and is live (`INVALID_REQUEST_UNIT`/`INVALID_DIVISION`/`INVALID_DEPARTMENT`/`INVALID_CONSUMERS`/`INVALID_USERS`). Consumers must be active.
 - **Physical term fields (2026-10-28):** every term in responses carries `data_type: string|null` (null on terms created before the field existed, until their service is edited) and `is_required: boolean`; the history label of a term shows `[data_type, bắt buộc]` when set. Migration 2610281200 adds them and the `data_hub_data_service_version_service_owners` link table.
 - **service_code:** `{API|SFTP}_{division.code}_{department.code}_{id}` (e.g. `API_EDA_DPD_1`, `SFTP_IT_DPIS_23`). Rebuilt on every update from the new version's division/department, so it changes when either changes (old `API-EDA-001` codes switch to the new format on their next edit) (2026-10-28).

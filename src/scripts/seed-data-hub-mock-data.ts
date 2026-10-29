@@ -218,12 +218,11 @@ async function importService(m: EntityManager, s: Row, marker: string, r: Refs, 
     );
   } else {
     await m.query(
-      `INSERT INTO data_hub_data_service_version_sftp_specs (data_service_version_id, host, port, auth_type, folder_path,
+      `INSERT INTO data_hub_data_service_version_sftp_specs (data_service_version_id, folder_path,
          file_name_pattern, file_format, export_frequency, encryption, flow_direction)
-       VALUES ($1, $2, 22, 'SSH_KEY', $3, $4, $5, $6, 'PGP_KEY', $7)`,
+       VALUES ($1, $2, $3, $4, $5, 'PGP_KEY', $6)`,
       [
         ver.id,
-        M.sftpHost(s.endpoint_domain),
         M.truncate(s.endpoint_path, 1000) || null,
         M.truncate(s.sftp_file_pattern, 500) || null,
         M.sftpFileFormat(s.fileFormat, w),

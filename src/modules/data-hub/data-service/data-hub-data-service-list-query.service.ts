@@ -38,7 +38,7 @@ export interface ListRow {
   flow_direction: string | null;
   export_frequency: string | null;
   file_format: string | null;
-  sftp_host: string | null;
+  sftp_folder_path: string | null;
 }
 
 // Only the columns the catalog card/row and the export need.
@@ -49,7 +49,7 @@ const LIST_COLUMNS = `
   v.department_id, dp.code AS department_code, dp.name AS department_name,
   v.request_unit_id, ru.code AS request_unit_code, ru.name AS request_unit_name,
   a.method, a.endpoint_path, a.base_url, a.update_frequency,
-  sf.flow_direction, sf.export_frequency, sf.file_format, sf.host AS sftp_host`;
+  sf.flow_direction, sf.export_frequency, sf.file_format, sf.folder_path AS sftp_folder_path`;
 
 const ref = (id: number, code: string, name: string): OrgRef => ({ id: Number(id), code, name });
 
