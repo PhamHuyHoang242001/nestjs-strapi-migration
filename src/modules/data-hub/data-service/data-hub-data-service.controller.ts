@@ -64,16 +64,17 @@ export class DataHubDataServiceController {
 
   @ApiOperation({ summary: 'List data services (catalog)' })
   @Get()
-  list(@Query() q: ListDataServiceQueryDto, @Req() req: RequestWithInfo) {
-    requireUserId(req);
-    return this.listQuery.list(q);
+  async list(@Query() q: ListDataServiceQueryDto, @Req() req: RequestWithInfo) {
+    // Dịch vụ ngừng hoạt động chỉ hiện cho thành viên đơn vị phát hành của nó (super_admin xem hết).
+    const inactiveDepartmentIds = await this.access.inactiveServiceDepartmentIds(dataHubCaller(req));
+    return this.listQuery.list(q, inactiveDepartmentIds);
   }
 
   @ApiOperation({ summary: 'Export filtered data services to XLSX (max 5000 rows)' })
   @Get('export')
   async export(@Query() q: ExportDataServiceQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
-    requireUserId(req);
-    await this.exportService.export(q, res);
+    const inactiveDepartmentIds = await this.access.inactiveServiceDepartmentIds(dataHubCaller(req));
+    await this.exportService.export(q, inactiveDepartmentIds, res);
   }
 
   @ApiOperation({ summary: 'Create a data service (version 1, auto-approved)' })

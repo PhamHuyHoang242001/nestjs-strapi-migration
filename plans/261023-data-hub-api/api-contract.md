@@ -98,8 +98,8 @@ Read model:
 - **Query:**
   - `keyword` — matches `service_code`, version `name`, `short_description`, `endpoint_path`
   - `service_type` — API | SFTP
-  - `status` — active | inactive | all; default active
-  - `methods[]`, `flow_directions[]`
+  - `status` — active | inactive | all; default active. Inactive services are visible only to members of their active version's department (super_admin: all); `all` = every active + the caller's departments' inactive ones. Same rule for `/export` (2026-10-30).
+  - `methods[]`, `flow_directions[]` — API-only filters (`methods`, `update_frequencies`) and SFTP-only filters (`flow_directions`, `export_frequencies`, `file_formats`) given together are OR-ed per type: `(API filters) OR (SFTP filters)` (2026-10-30); one kind alone restricts to that type.
   - `division_ids[]`, `department_ids[]`, `request_unit_ids[]`
   - `consumer_ids[]`, `logical_term_ids[]`, `physical_term_ids[]`
   - `update_frequencies[]` (API), `export_frequencies[]` (SFTP), `file_formats[]`
@@ -203,32 +203,20 @@ Update the package `status`, then write history `STATUS` (`version_no` = active 
 ### B11. `GET /:id/versions` — kept for future review
 `data:[{ id, version_no, old_version, state, changelog_note, submitted_by_user, reviewed_by_user, reviewed_at, created_at }]`.
 
-### B12. Bulk import — `/v1/data-hub/data-service-imports` (2026-10-29)
-Own base path (under `/data-services` the `:id` routes would capture "import"). Both routes need `dh_data_service_create`.
-- `GET /template?example=false|true` → `.xlsx`. Sheets (fixed names, matched exactly): `HUONG_DAN`, `DICH_VU_API`,
-  `DICH_VU_SFTP`, `BANG_NGUON_PHYSICAL_TERM`, `LOGICAL_TERM_MOI`, `DANH_MUC`. Data cells are Text-formatted; code /
-  enum columns have dropdowns pointing at `DANH_MUC` (filled from the DB at download: live request units, divisions,
-  departments, active consumers, every enum). `example=true` adds sample rows (real codes, caller's email, unique
-  table/logical names) that import as-is. Column layout = `import/data-service-import-sheet-columns.ts`.
-- `POST /?dry_run=true|false` (multipart `file`, ≤ 5 MB, default `dry_run=true` = check only) →
-  `{ dry_run, summary:{ services:{total,valid,created,failed}, term_rows:{total,failed}, logical_terms:{total,valid,created,failed} },
-  services:[{ sheet, row, ref, status: valid|created|failed, id?, service_code? }], issues:[{ sheet, row, column?, code, message, warning? }],
-  result_file:{ file_name, content_base64 } }` — the uploaded workbook with "Kết quả" / "Chi tiết" columns appended.
-- Rows: 1 service per row on `DICH_VU_API` / `DICH_VU_SFTP` (linked by a file-only "Mã tham chiếu"); 1 physical term
-  per row on `BANG_NGUON_PHYSICAL_TERM` (same ref + same table name = one source table); `LOGICAL_TERM_MOI` = new
-  logical terms only. Users by email, consumers/org by code, multi-values split on `;`.
-- Each service is checked with `CreateDataServiceDto` + the same lookups as `POST /data-services`, then created through
-  `DataHubDataServiceWriteService.create` (own transaction). A service is created only when its row and **all** its
-  term rows are valid. Source tables are always new (name taken in the system or by 2 services of the file → error).
-  Logical code on a term: existing → mapped; else must be on `LOGICAL_TERM_MOI`, created after the services via
-  `LogicalTermWriteService.create` with the physicals just created (skipped if none was created).
-- Whole-file 400: `INVALID_FILE`, `INVALID_TEMPLATE` (sheet/header mismatch), `EMPTY_FILE`, `TOO_MANY_ROWS`
-  (200 services, 5000 term rows, 1000 logical rows). Row codes: `REQUIRED`, `TOO_LONG`, `INVALID_VALUE`, `INVALID_NUMBER`,
-  `INVALID_COUNT`, `DUPLICATE_VALUE`, `CODE_NOT_FOUND`, `CONSUMER_INACTIVE`, `USER_NOT_FOUND`, `USER_AMBIGUOUS`,
-  `DEPARTMENT_FORBIDDEN`, `INVALID_JSON`, `DUPLICATE_REF`, `SERVICE_REF_NOT_FOUND`, `SOURCE_TABLE_NAME_EXISTS`,
-  `SOURCE_TABLE_NAME_DUPLICATE`, `PHYSICAL_CODE_DUPLICATE`, `LOGICAL_TERM_NOT_FOUND`, `LOGICAL_TERM_INVALID`,
-  `LOGICAL_TERM_CODE_EXISTS`, `LOGICAL_TERM_UNUSED`, `LOGICAL_TERM_FORBIDDEN`, `DUPLICATE_IN_FILE`, `CREATE_FAILED`;
-  warning `TABLE_DESCRIPTION_IGNORED`.
+### B12. Bulk imports (2026-10-30) — 5 independent files, one data sheet each
+Each import has its own base path (under `/data-services`, `/consumers`, `/logical-terms` the `:id` routes would capture the word). Every file has EXACTLY ONE data sheet (no guide / lookup sheets): enum columns have in-cell dropdowns (inline lists), codes (org, consumer, logical, service) and emails are typed by hand and validated on the dry run. Header cell notes are help text. All are create-only, each row/group in its own transaction, and share:
+- `GET <base>/template?example=false|true` → `.xlsx` (`example=true` adds sample rows built from real codes — newest apps / logical terms / service — and the caller's email; they import as-is and refer to what the previous import of the order created).
+- `POST <base>?dry_run=true|false` (multipart `file`, ≤ 5 MB, default `dry_run=true` = check only) → `{ dry_run, summary, <entities>:[{ sheet, row, ref, status, id?, code? | service_code?, version_no? }], issues:[{ sheet, row, column?, code, message, warning? }], result_file:{ file_name, content_base64 } }`; the file is the upload with "Kết quả" / "Chi tiết" columns appended. Issues are per cell.
+- Whole-file 400: `INVALID_FILE`, `INVALID_TEMPLATE` (sheet name / header mismatch), `EMPTY_FILE`, `TOO_MANY_ROWS`. A second real import by the same user while one runs → 409 `IMPORT_IN_PROGRESS`.
+- Common row codes: `REQUIRED`, `TOO_LONG`, `INVALID_VALUE`, `INVALID_NUMBER`, `INVALID_COUNT`, `DUPLICATE_VALUE`, `CODE_NOT_FOUND`, `USER_NOT_FOUND`, `USER_AMBIGUOUS`, `INVALID_JSON`, `PERMISSION_DENIED`, `DEPARTMENT_FORBIDDEN`, `CREATE_FAILED`/`UPDATE_FAILED` (the write API's own message).
+
+Order of use: 1 → 2 → 3/4 → 5 (later files refer to codes the earlier ones create). Example files: `docs/data-hub-import/1-…5-….xlsx`.
+
+1. **App thụ hưởng** — `GET|POST /v1/data-hub/consumer-imports`, `dh_consumer_create`. Sheet `APP_THU_HUONG` (≤ 500 rows): `Mã app*` (`^[A-Z0-9_]{2,100}$`, uppercased), `Tên app*`, `Phân loại*` (INTERNAL_APP|PARTNER_ECOSYSTEM), `Mã khối chủ quản*` (live division), `Mô tả ngắn*` (≤ 200), `SO APP*` (emails `;`, 1..20 live users). Rows validated with `CreateConsumerDto`, created via the consumer write service. Entities `consumers`, summary `{ consumers:{total,valid,created,failed} }`. Codes: `CONSUMER_CODE_EXISTS`, `DUPLICATE_IN_FILE`.
+2. **Thuật ngữ chuẩn hoá** — `/v1/data-hub/logical-term-imports`, `dh_logical_term_create`. Sheet `THUAT_NGU_CHUAN_HOA` (≤ 1000): `Mã thuật ngữ*` (≤ 255, unique case-insensitive vs DB and file), `Mô tả ngắn*` (≤ 400), `Ví dụ` (≤ 1000). Created with NO physical terms (import-only: `POST/PUT /logical-terms` still require ≥ 1; history `CREATE` snapshot `physical_terms: []`). Entities `logical_terms`. Codes: `LOGICAL_TERM_CODE_EXISTS`, `DUPLICATE_IN_FILE`.
+3. **Dịch vụ API** — `/v1/data-hub/data-service-imports/api` (`GET …/api/template`, `POST …/api`), `dh_data_service_create` + membership of the row's department. Sheet `DICH_VU_API` (≤ 200): `Tên dịch vụ*`, `Mô tả ngắn*`, `Mục đích sử dụng`, `Đơn vị yêu cầu*`, `Khối chủ quản*`, `Đơn vị quản lý*` (codes), `Mã app thụ hưởng` (optional, existing ACTIVE consumer codes `;`, 0..20), `Người yêu cầu*`, `IT hỗ trợ*`, `SO dịch vụ*` (emails `;`), `Method*`, `Base URL*`, `Endpoint path*`, `Auth type*`, `Peak TPS`, `Tần suất cập nhật*`, `Chế độ đồng bộ*`, `Timeout` (required when SYNC), `Sample request`, `Sample response` (JSON). No "Mã tham chiếu", no source tables. Rows validated with `ImportDataServiceDto` (= `CreateDataServiceDto` with consumers optional, max 20; `POST/PUT /data-services` still require 1..20) and created through `DataHubDataServiceWriteService.create` (version 1). Entities `services` (`ref` = service name, `service_code`), summary `{ services:{total,valid,created,failed} }`. Codes: `CONSUMER_INACTIVE`, `DEPARTMENT_FORBIDDEN`.
+4. **Dịch vụ SFTP** — `/v1/data-hub/data-service-imports/sftp`, same rules. Sheet `DICH_VU_SFTP`: the same first 10 columns, then `Thư mục`, `Mẫu tên file`, `Định dạng file*`, `Tần suất xuất*`, `Dung lượng tối đa`, `Mã hoá*`, `Chiều luồng`.
+5. **Bảng nguồn & thuật ngữ nghiệp vụ** — `/v1/data-hub/source-table-imports`, `dh_data_service_update` + membership of the service's department. Sheet `BANG_NGUON_THUAT_NGU` (≤ 5000 rows, one physical term per row): `Mã dịch vụ*` (live service_code), `Tên bảng nguồn*`, `Mô tả bảng`, `Mã thuật ngữ nghiệp vụ*` (physical code), `Mô tả kỹ thuật*`, `Kiểu dữ liệu*`, `Bắt buộc` (Có/Không), `Ví dụ`, `Mã thuật ngữ chuẩn hoá` (optional, existing live logical term). Per service the new tables/terms are ADDED to the active version's source tables (existing ones untouched) and ONE new version is written through `DataHubDataServiceWriteService.update` (same validation, permission, diff and history as `PUT /:id`; `changelog_note` "Import bảng nguồn & thuật ngữ nghiệp vụ"; consumers carried over as stored, so a service imported with none stays updatable — the UI PUT body keeps its rules). A table name the service already uses takes the terms; any other name must be free system-wide. A service is written only if ALL its rows are valid. Entities `source_tables`, summary `{ rows:{total,valid,updated,failed}, services:{total,valid,updated,failed} }`. Codes: `SERVICE_NOT_FOUND`, `SOURCE_TABLE_NAME_EXISTS`, `SOURCE_TABLE_NAME_DUPLICATE`, `PHYSICAL_CODE_EXISTS`, `PHYSICAL_CODE_DUPLICATE`, `LOGICAL_TERM_NOT_FOUND`, `TOO_MANY_TERMS` (500/table), `TOO_MANY_TABLES` (50/service); warning `TABLE_DESCRIPTION_IGNORED`.
 
 ## C. Dictionary — `/v1/data-hub/logical-terms` and `/v1/data-hub/physical-terms`
 **Physical model (2026-10-27):** a physical term belongs to one data service (`data_service_id`) and one source table (`source_table_id`); `code` (was `physical_column`) is unique inside its table; there is no `status`. Physicals are written only from the data-service form (B6/B7). Everywhere a physical is listed or counted it must be live (`liveSql`) and owned by a live service.
@@ -351,9 +339,9 @@ common/  data-hub-common.module.ts       exports the shared providers below
          data-hub-org.controller.ts / data-hub-org.service.ts
 data-service/  controller(s), *-query.service.ts, *-write.service.ts, *-history.service.ts, *-export.service.ts,
                data-service-code.util.ts, data-service-diff.util.ts, dto/, __tests__/
-               import/  bulk import: template, workbook reader, lookups, row builders, result workbook, controller
 dictionary/    logical-term.controller.ts, physical-term.controller.ts (read-only), source-table.controller.ts, *-query/-write/-export services, dto/, __tests__/
                (physical/source-table writes live in data-service/data-service-source-tables.util.ts)
 consumer/      controller, query/write/export services, dto/, __tests__/
+import/        ALL bulk imports in one folder: data-hub-import.module/controller, import.service (consumers, logical terms, services), import-source-tables.service, import-templates.service, import-lookups.service, import-layouts, import-workbook.util (reader, file guard, issue collector, result workbook, template builder), import-helpers.util, import-dto, __tests__/
 ```
 Register `DataHubModule` in `src/app.module.ts`.

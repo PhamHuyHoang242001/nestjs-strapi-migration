@@ -54,7 +54,7 @@ const noStar = (sql: string) => expect(sql).not.toMatch(/SELECT\s+\*|\.\*|,\s*\*
 
 describe('buildListWhere', () => {
   it('consumer filter only matches active, live consumers', () => {
-    const { where } = buildListWhere({ consumer_ids: [7] } as never);
+    const { where } = buildListWhere({ consumer_ids: [7] } as never, null);
     expect(where).toContain('JOIN data_hub_consumers fcc ON fcc.id = fc.consumer_id');
     expect(where).toContain("fcc.deleted_at IS NULL AND fcc.is_deleted IS NOT TRUE AND fcc.status = 'active'");
   });
@@ -69,7 +69,7 @@ describe('buildListWhere', () => {
       logical_term_ids: [4],
       physical_term_ids: [5],
       ids: [7],
-    } as never);
+    } as never, null);
     expect(where).toContain('s.deleted_at IS NULL');
     expect(where).toContain('s.status = $1');
     expect(params[0]).toBe('active');
@@ -80,9 +80,32 @@ describe('buildListWhere', () => {
   });
 
   it('status=all drops the status condition', () => {
-    const { where, params } = buildListWhere({ status: 'all' } as never);
+    const { where, params } = buildListWhere({ status: 'all' } as never, null);
     expect(where).not.toContain('s.status');
     expect(params).toEqual([]);
+  });
+  it('API-only and SFTP-only filters given together are OR-ed per service type', () => {
+    const both = buildListWhere({ methods: ['GET'], flow_directions: ['PUSH'] } as never, null).where;
+    expect(both).toContain('((a.method = ANY($2::text[])) OR (sf.flow_direction = ANY($3::text[])))');
+    // One kind alone keeps restricting to that type.
+    const apiOnly = buildListWhere({ methods: ['GET'], update_frequencies: ['REALTIME'] } as never, null).where;
+    expect(apiOnly).toContain('a.method = ANY($2::text[]) AND a.update_frequency = ANY($3::text[])');
+    expect(apiOnly).not.toContain(' OR ');
+  });
+
+  it('inactive services are limited to the caller departments; active ones stay visible to everyone', () => {
+    const inactive = buildListWhere({ status: 'inactive' } as never, [3, 4]);
+    expect(inactive.where).toContain('s.status = $1');
+    expect(inactive.where).toContain("(s.status = 'active' OR v.department_id = ANY($2::int[]))");
+    expect(inactive.params).toEqual(['inactive', [3, 4]]);
+
+    const all = buildListWhere({ status: 'all' } as never, []);
+    expect(all.where).toContain("(s.status = 'active' OR v.department_id = ANY($1::int[]))");
+    expect(all.params).toEqual([[]]);
+
+    // Active-only lists and super_admin (null) are not restricted.
+    expect(buildListWhere({} as never, [3]).where).not.toContain('v.department_id');
+    expect(buildListWhere({ status: 'inactive' } as never, null).where).not.toContain('v.department_id');
   });
 });
 
@@ -106,7 +129,7 @@ describe('DataHubDataServiceListQueryService', () => {
       [/SELECT id, email FROM users/, [{ id: 7, email: 'so@x.vn' }]],
     ]);
     const service = listService(dataSource);
-    const result = await service.list({ page: 2, limit: 10 } as never);
+    const result = await service.list({ page: 2, limit: 10 } as never, null);
 
     expect(result.meta).toEqual({ total: 1, page: 2, limit: 10 });
     expect(result.data[0]).toEqual({
@@ -150,7 +173,7 @@ describe('DataHubDataServiceListQueryService', () => {
 
   it('skips relation queries for an empty page', async () => {
     const { dataSource, calls } = makeDataSource([[/COUNT\(\*\)::int AS total/, [{ total: 0 }]]]);
-    const result = await listService(dataSource).list({} as never);
+    const result = await listService(dataSource).list({} as never, null);
     expect(result).toEqual({ data: [], meta: { total: 0, page: 1, limit: 10 } });
     expect(calls.some((c) => /version_consumers/.test(c.sql))).toBe(false);
   });
@@ -414,7 +437,7 @@ describe('DataHubDataServiceExportService', () => {
       ],
     ]);
     const exporter = new DataHubDataServiceExportService(listService(dataSource));
-    const rows = await exporter.buildRows({ status: 'all' } as never);
+    const rows = await exporter.buildRows({ status: 'all' } as never, null);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       stt: 1,
@@ -433,7 +456,7 @@ describe('DataHubDataServiceExportService', () => {
 
   it('caps the export at 5000 rows', async () => {
     const { dataSource, calls } = makeDataSource([]);
-    await new DataHubDataServiceExportService(listService(dataSource)).buildRows({} as never);
+    await new DataHubDataServiceExportService(listService(dataSource)).buildRows({} as never, null);
     expect(calls[0].params.slice(-2)).toEqual([5000, 0]);
   });
 
@@ -447,11 +470,11 @@ describe('DataHubDataServiceExportService', () => {
 
 describe('buildListWhere physical term filters', () => {
   it('physical_term_ids and logical_term_ids only match live physical terms', () => {
-    const byPhysical = buildListWhere({ physical_term_ids: [5] } as never).where;
+    const byPhysical = buildListWhere({ physical_term_ids: [5] } as never, null).where;
     expect(byPhysical).toContain('JOIN data_hub_physical_terms fpt');
     expect(byPhysical).toContain('fpt.deleted_at IS NULL');
     expect(byPhysical).not.toContain('fpt.status');
-    const byLogical = buildListWhere({ logical_term_ids: [5] } as never).where;
+    const byLogical = buildListWhere({ logical_term_ids: [5] } as never, null).where;
     expect(byLogical).toContain('flt.deleted_at IS NULL');
   });
 });

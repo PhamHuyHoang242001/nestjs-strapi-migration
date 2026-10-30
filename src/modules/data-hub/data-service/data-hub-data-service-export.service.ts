@@ -38,8 +38,11 @@ export const safeCell = (value: string | null): string => {
 export class DataHubDataServiceExportService {
   constructor(private readonly listQuery: DataHubDataServiceListQueryService) {}
 
-  async buildRows(q: ExportDataServiceQueryDto): Promise<Array<Record<string, string | number>>> {
-    const rows = await this.listQuery.fetchRows(q, EXPORT_ROW_CAP, 0);
+  async buildRows(
+    q: ExportDataServiceQueryDto,
+    inactiveDepartmentIds: number[] | null,
+  ): Promise<Array<Record<string, string | number>>> {
+    const rows = await this.listQuery.fetchRows(q, inactiveDepartmentIds, EXPORT_ROW_CAP, 0);
     const [consumers] = await this.listQuery.loadPageRelations(
       rows.map((r) => r.version_id),
       { withTermCounts: false },
@@ -69,8 +72,8 @@ export class DataHubDataServiceExportService {
 
   // Streams the workbook itself instead of using exportExcelToResponse: that helper default-imports dayjs, which
   // is undefined without esModuleInterop and throws before anything is written.
-  async export(q: ExportDataServiceQueryDto, res: Response): Promise<void> {
-    const rows = await this.buildRows(q);
+  async export(q: ExportDataServiceQueryDto, inactiveDepartmentIds: number[] | null, res: Response): Promise<void> {
+    const rows = await this.buildRows(q, inactiveDepartmentIds);
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(EXPORT_SHEET_NAME);
     sheet.columns = EXPORT_COLUMNS.map((c) => ({ header: c.header, key: c.key, width: c.width ?? 20 }));

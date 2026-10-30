@@ -10,7 +10,10 @@ function makeController() {
   const historyService = { listHistories: stub(), historyDetail: stub(), listVersions: stub() };
   const writeService = { create: stub(), update: stub(), setStatus: stub() };
   const exportService = { export: stub() };
-  const access = { canUpdateDataService: jest.fn().mockResolvedValue(true) };
+  const access = {
+    canUpdateDataService: jest.fn().mockResolvedValue(true),
+    inactiveServiceDepartmentIds: jest.fn().mockResolvedValue([4]),
+  };
   const controller = new DataHubDataServiceController(
     listQuery as never,
     detailQuery as never,
@@ -55,6 +58,15 @@ describe('DataHubDataServiceController auth', () => {
     expect(writeService.create).toHaveBeenCalledWith({ name: 'n' }, caller);
     expect(writeService.update).toHaveBeenCalledWith(3, { name: 'n' }, caller);
     expect(writeService.setStatus).toHaveBeenCalledWith(3, 'inactive', caller);
+  });
+
+  it('list and export limit inactive services to the caller departments', async () => {
+    const { controller, listQuery, exportService, access } = makeController();
+    await controller.list({ status: 'inactive' } as never, asUser(7));
+    await controller.export({ status: 'all' } as never, asUser(7), {} as never);
+    expect(access.inactiveServiceDepartmentIds).toHaveBeenCalledWith({ id: 7, type: 'user', client: 'user' });
+    expect(listQuery.list).toHaveBeenCalledWith({ status: 'inactive' }, [4]);
+    expect(exportService.export).toHaveBeenCalledWith({ status: 'all' }, [4], {});
   });
 
   it('detail adds is_update from the department-aware access check', async () => {

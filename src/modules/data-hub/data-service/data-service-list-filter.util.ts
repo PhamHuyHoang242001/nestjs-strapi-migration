@@ -26,7 +26,13 @@ const ORDER_BY: Record<string, string> = {
 export const listOrderBy = (sort?: string): string => ORDER_BY[sort ?? 'newest'] ?? ORDER_BY.newest;
 
 // WHERE clause + bound params. Every user-supplied value is a parameter; only fixed fragments are concatenated.
-export function buildListWhere(q: ListFilterInput): { where: string; params: unknown[] } {
+// `inactiveDepartmentIds`: departments whose inactive services the caller may see (null = no limit, super_admin).
+// An inactive service is internal to its publishing department, so others only ever see active ones; required
+// (no default) so no caller can drop the restriction by forgetting it.
+export function buildListWhere(
+  q: ListFilterInput,
+  inactiveDepartmentIds: number[] | null,
+): { where: string; params: unknown[] } {
   const params: unknown[] = [];
   const bind = (value: unknown, cast = ''): string => {
     params.push(value);
@@ -36,6 +42,9 @@ export function buildListWhere(q: ListFilterInput): { where: string; params: unk
 
   const status = q.status ?? 'active';
   if (status !== 'all') conditions.push(`s.status = ${bind(status)}`);
+  if (status !== 'active' && inactiveDepartmentIds) {
+    conditions.push(`(s.status = 'active' OR v.department_id = ANY(${bind(inactiveDepartmentIds, '::int[]')}))`);
+  }
   if (q.service_type) conditions.push(`s.service_type = ${bind(q.service_type)}`);
   if (q.ids?.length) conditions.push(`s.id = ANY(${bind(q.ids, '::int[]')})`);
 
@@ -47,14 +56,24 @@ export function buildListWhere(q: ListFilterInput): { where: string; params: unk
     );
   }
 
-  const inList = (column: string, values: unknown[] | undefined, cast: string) => {
-    if (values?.length) conditions.push(`${column} = ANY(${bind(values, cast)})`);
+  const inList = (column: string, values: unknown[] | undefined, cast: string, into = conditions) => {
+    if (values?.length) into.push(`${column} = ANY(${bind(values, cast)})`);
   };
-  inList('a.method', q.methods, '::text[]');
-  inList('sf.flow_direction', q.flow_directions, '::text[]');
-  inList('a.update_frequency', q.update_frequencies, '::text[]');
-  inList('sf.export_frequency', q.export_frequencies, '::text[]');
-  inList('sf.file_format', q.file_formats, '::text[]');
+  // Filters that only exist on one service type. A service is either API or SFTP, so when both kinds are given
+  // (catalog "Tất cả" with a method AND a SFTP flow) they mean "API matching the API filters OR SFTP matching the
+  // SFTP filters"; ANDing them would always return nothing. One kind alone still restricts to that type.
+  const apiOnly: string[] = [];
+  const sftpOnly: string[] = [];
+  inList('a.method', q.methods, '::text[]', apiOnly);
+  inList('a.update_frequency', q.update_frequencies, '::text[]', apiOnly);
+  inList('sf.flow_direction', q.flow_directions, '::text[]', sftpOnly);
+  inList('sf.export_frequency', q.export_frequencies, '::text[]', sftpOnly);
+  inList('sf.file_format', q.file_formats, '::text[]', sftpOnly);
+  if (apiOnly.length && sftpOnly.length) {
+    conditions.push(`((${apiOnly.join(' AND ')}) OR (${sftpOnly.join(' AND ')}))`);
+  } else {
+    conditions.push(...apiOnly, ...sftpOnly);
+  }
   inList('v.division_id', q.division_ids, '::int[]');
   inList('v.department_id', q.department_ids, '::int[]');
   inList('v.request_unit_id', q.request_unit_ids, '::int[]');

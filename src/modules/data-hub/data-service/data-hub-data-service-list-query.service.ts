@@ -60,16 +60,19 @@ export class DataHubDataServiceListQueryService {
     private readonly userRefs: DataHubUserRefService,
   ) {}
 
-  async list(q: ListDataServiceQueryDto): Promise<{ data: unknown[]; meta: DataHubPageMeta }> {
+  async list(
+    q: ListDataServiceQueryDto,
+    inactiveDepartmentIds: number[] | null,
+  ): Promise<{ data: unknown[]; meta: DataHubPageMeta }> {
     const { page, limit, offset } = toPaging(q);
-    const { where, params } = buildListWhere(q);
+    const { where, params } = buildListWhere(q, inactiveDepartmentIds);
     const [countRows, rows] = await Promise.all([
       queryRows<{ total: number }>(
         this.dataSource,
         `SELECT COUNT(*)::int AS total ${LIST_FROM_SQL} WHERE ${where}`,
         params,
       ),
-      this.fetchRows(q, limit, offset),
+      this.fetchRows(q, inactiveDepartmentIds, limit, offset),
     ]);
     const versionIds = rows.map((r) => r.version_id);
     const [[consumers, termCounts], owners] = await Promise.all([
@@ -101,8 +104,13 @@ export class DataHubDataServiceListQueryService {
   }
 
   // Shared with the export so both apply exactly the same filters and ordering.
-  async fetchRows(q: ListFilterInput, limit: number, offset: number): Promise<ListRow[]> {
-    const { where, params } = buildListWhere(q);
+  async fetchRows(
+    q: ListFilterInput,
+    inactiveDepartmentIds: number[] | null,
+    limit: number,
+    offset: number,
+  ): Promise<ListRow[]> {
+    const { where, params } = buildListWhere(q, inactiveDepartmentIds);
     const n = params.length;
     return queryRows<ListRow>(
       this.dataSource,

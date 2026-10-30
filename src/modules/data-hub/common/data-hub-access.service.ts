@@ -91,6 +91,11 @@ export class DataHubAccessService {
     };
   }
 
+  // Departments whose inactive data services the caller may list: their member departments; null = all (super_admin).
+  async inactiveServiceDepartmentIds(caller: DataHubCaller): Promise<number[] | null> {
+    return this.isSuperAdmin(caller) ? null : this.memberDepartmentIds(caller.id);
+  }
+
   // Live departments the user is a member of.
   async memberDepartmentIds(userId: number, runner: DataSource | EntityManager = this.dataSource): Promise<number[]> {
     const rows: Array<{ department_id: number }> = await runner.query(
