@@ -35,6 +35,19 @@
         "3000"
       ],
       "port": 3000
+    },
+    {
+      "name": "data-services-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "/Users/phamhoang/Documents/project-1/Data-services",
+        "run",
+        "dev",
+        "--",
+        "--no-open"
+      ],
+      "port": 3000
     }
   ]
 }

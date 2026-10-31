@@ -183,9 +183,9 @@ export const ImportUpload = () =>
     UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: IMPORT_FILE_BYTES } })),
   );
 
-// The uploaded bytes; .xlsx is a zip, so it starts with "PK".
+// The uploaded bytes; a file that is not a valid .xlsx is rejected when exceljs parses it.
 export function xlsxUpload(file: Express.Multer.File | undefined): Buffer {
-  if (!file?.buffer || file.buffer.length < 4 || file.buffer.toString('latin1', 0, 2) !== 'PK') {
+  if (!file?.buffer?.length) {
     throw new BadRequestException('INVALID_FILE: cần file .xlsx theo template');
   }
   return file.buffer;

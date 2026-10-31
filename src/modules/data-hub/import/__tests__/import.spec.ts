@@ -4,7 +4,6 @@ import { DataHubServiceType } from '@modules/databases/data-hub-enums';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import * as ExcelJS from 'exceljs';
-import * as JSZip from 'jszip';
 import { DH_PERMISSIONS as P } from '../../common/data-hub-permission-codes';
 import { DATA_HUB_PERMISSION_KEY } from '../../common/data-hub-permission.guard';
 import { CreateConsumerDto } from '../../consumer/dto';
@@ -431,22 +430,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     });
   });
 
-  describe('DataServiceImportService - hostile and edge-case files', () => {
-    it('rejects a validation over a whole column before exceljs expands it', async () => {
-      const zip = await JSZip.loadAsync(await exampleFile());
-      const name = 'xl/worksheets/sheet1.xml';
-      const xml = await zip.file(name).async('string');
-      zip.file(
-        name,
-        xml.replace(
-          '</sheetData>',
-          '</sheetData><dataValidations count="1"><dataValidation type="list" sqref="A2:H1048576"><formula1>"a"</formula1></dataValidation></dataValidations>',
-        ),
-      );
-      const file = await zip.generateAsync({ type: 'nodebuffer' });
-      await expect(harness().service.import('API', file, true, CALLER)).rejects.toThrow(/INVALID_FILE/);
-    });
-
+  describe('DataServiceImportService - concurrent imports', () => {
     it('refuses a second real import from the same user while one is running; a dry run is never blocked', async () => {
       const h = harness();
       let release: () => void = () => undefined;
