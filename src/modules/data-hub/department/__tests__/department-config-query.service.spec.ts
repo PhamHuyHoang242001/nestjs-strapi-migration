@@ -64,6 +64,35 @@ describe('DepartmentConfigQueryService', () => {
     await expect(make([], {}).service.detail(5)).rejects.toThrow('DEPARTMENT_NOT_FOUND');
   });
 
+  it('list returns author refs and timestamps with the live member count', async () => {
+    const { service, calls } = make(
+      [
+        [/SELECT COUNT\(\*\)::int AS total FROM data_hub_departments/, () => [{ total: 1 }]],
+        [
+          /FROM data_hub_departments d WHERE/,
+          () => [
+            { id: 5, code: 'DPD', name: 'n', created_by: 11, updated_by: null, created_at: 't1', updated_at: 't2', member_count: 3 },
+          ],
+        ],
+      ],
+      {},
+    );
+    const res = await service.list({ page: 1, limit: 20 } as never);
+    expect(res.data).toEqual([
+      {
+        id: 5,
+        code: 'DPD',
+        name: 'n',
+        created_at: 't1',
+        updated_at: 't2',
+        member_count: 3,
+        created_by_user: { id: 11, email: 'a@x.vn' },
+        updated_by_user: null,
+      },
+    ]);
+    expect(calls[1].sql).toContain('d.created_by, d.updated_by, d.created_at, d.updated_at');
+  });
+
   it('writable: [] short-circuits, null (super_admin) lists every live department, ids filter otherwise', async () => {
     const rows = [/FROM data_hub_departments d/, () => [{ id: 1, code: 'DPD', name: 'n' }]] as SqlHandler;
     const none = make([rows], { writableDepartmentIds: jest.fn().mockResolvedValue([]) });

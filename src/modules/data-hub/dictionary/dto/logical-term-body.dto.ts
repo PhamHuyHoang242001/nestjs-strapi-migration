@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayNotEmpty,
   ArrayUnique,
   IsArray,
   IsInt,
@@ -38,12 +37,14 @@ export class LogicalTermBodyDto {
   @MaxLength(1000)
   readonly example_value?: string | null;
 
-  @ApiProperty({ type: [Number] })
+  // May be empty or omitted (= []): a logical term can exist before any physical term is mapped to it. On update,
+  // [] detaches every physical term of active services.
+  @ApiProperty({ type: [Number], required: false, default: [] })
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @ArrayMaxSize(1000)
   @ArrayUnique()
   @IsInt({ each: true })
   @Min(1, { each: true })
-  readonly physical_term_ids: number[];
+  readonly physical_term_ids: number[] = [];
 }

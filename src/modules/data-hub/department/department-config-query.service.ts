@@ -49,15 +49,22 @@ export class DepartmentConfigQueryService {
       params,
     );
     const rows: DepartmentRow[] = await this.dataSource.query(
-      `SELECT d.id, d.code, d.name, d.updated_at,
+      `SELECT d.id, d.code, d.name, d.created_by, d.updated_by, d.created_at, d.updated_at,
               (SELECT COUNT(*)::int FROM data_hub_department_members m
                WHERE m.department_id = d.id AND ${liveSql('m')}) AS member_count
        FROM data_hub_departments d WHERE ${where}
        ORDER BY d.created_at DESC, d.id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
+    const users = await this.userRefs.resolve(rows.flatMap((r) => [r.created_by, r.updated_by]));
     return {
-      data: rows.map((r) => ({ ...r, id: Number(r.id), member_count: Number(r.member_count ?? 0) })),
+      data: rows.map(({ created_by, updated_by, ...r }) => ({
+        ...r,
+        id: Number(r.id),
+        member_count: Number(r.member_count ?? 0),
+        created_by_user: this.userRefs.toRef(users, created_by),
+        updated_by_user: this.userRefs.toRef(users, updated_by),
+      })),
       meta: { total: Number(count?.total ?? 0), page, limit },
     };
   }

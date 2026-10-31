@@ -257,11 +257,15 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     });
   });
 
-  describe('physical term requirement stays on the UI body', () => {
+  describe('a logical term needs no physical term', () => {
     const body = { code: 'X', short_description: 'd' };
-    it('LogicalTermBodyDto rejects an empty mapping, the import row DTO has no mapping', async () => {
-      const ui = await validate(plainToInstance(LogicalTermBodyDto, { ...body, physical_term_ids: [] }));
-      expect(ui.map((e) => e.property)).toEqual(['physical_term_ids']);
+    it('LogicalTermBodyDto accepts an empty or omitted mapping (omitted = []), still validates given ids', async () => {
+      expect(await validate(plainToInstance(LogicalTermBodyDto, { ...body, physical_term_ids: [] }))).toEqual([]);
+      const omitted = plainToInstance(LogicalTermBodyDto, body);
+      expect(await validate(omitted)).toEqual([]);
+      expect(omitted.physical_term_ids).toEqual([]);
+      const bad = await validate(plainToInstance(LogicalTermBodyDto, { ...body, physical_term_ids: [0, 0] }));
+      expect(bad.map((e) => e.property)).toEqual(['physical_term_ids']);
       expect(await validate(plainToInstance(LogicalTermImportRowDto, body))).toEqual([]);
     });
   });

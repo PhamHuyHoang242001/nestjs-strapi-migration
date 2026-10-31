@@ -49,6 +49,5 @@ export class ImportDataServiceDto extends OmitType(CreateDataServiceDto, ['consu
 }
 
 // What the bulk import validates a row against: the create body without the physical term mapping. A logical term
-// imported here starts with no physical terms (the relation import maps them); POST/PUT /logical-terms keep
-// requiring at least one (LogicalTermBodyDto is unchanged).
+// imported here starts with no physical terms (the source-table import maps them).
 export class LogicalTermImportRowDto extends OmitType(LogicalTermBodyDto, ['physical_term_ids'] as const) {}
