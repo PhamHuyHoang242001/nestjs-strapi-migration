@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Hub Partner Call Flow</title>
+<style>
+:root {
+  --bg: #f6f7fb; --surface: #ffffff; --surface-2: #eef1f7; --border: #dde2ec;
+  --text: #1b2333; --muted: #5d6779; --accent: #2f6bff;
+  --req: #2f6bff; --res: #16a36b; --evt: #e08a00; --auth: #8a4dff; --err: #e0453a;
+  --lane: #c5ccda; --shadow: 0 6px 24px rgba(20,30,60,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f131b; --surface: #171c27; --surface-2: #1f2633; --border: #2b3445;
+    --text: #e6eaf2; --muted: #98a2b5; --accent: #6b95ff;
+    --req: #6b95ff; --res: #3ccf8e; --evt: #ffb02e; --auth: #b48cff; --err: #ff6b5f;
+    --lane: #3a4458; --shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f131b; --surface: #171c27; --surface-2: #1f2633; --border: #2b3445;
+  --text: #e6eaf2; --muted: #98a2b5; --accent: #6b95ff;
+  --req: #6b95ff; --res: #3ccf8e; --evt: #ffb02e; --auth: #b48cff; --err: #ff6b5f;
+  --lane: #3a4458; --shadow: 0 6px 24px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+header h1 { margin: 0 0 4px; font-size: 22px; }
+header p { margin: 0; color: var(--muted); }
+.tabs { display: flex; gap: 6px; margin: 20px 0 16px; flex-wrap: wrap; }
+.tab { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 600; transition: .2s; }
+.tab:hover { border-color: var(--accent); }
+.tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.panel { display: none; animation: fade .35s ease; }
+.panel.on { display: block; }
+@keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 6px 11px; cursor: pointer; font-weight: 600; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.spacer { flex: 1; }
+.counter { color: var(--muted); font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.diagram { overflow: auto; max-height: 640px; padding: 8px 4px 16px; border-right: 1px solid var(--border); scroll-behavior: smooth; }
+.diagram svg { display: block; min-width: 760px; width: 100%; height: auto; }
+.side { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.legend i { display: inline-block; width: 22px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+.detail h3 { margin: 0 0 6px; font-size: 15px; }
+.detail .who { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.detail p { margin: 0 0 8px; }
+.detail ul { margin: 0 0 8px; padding-left: 18px; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+pre { background: var(--surface-2); padding: 10px; border-radius: 8px; overflow: auto; margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; }
+.pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: #fff; }
+/* FE mock */
+.phone { border: 1px solid var(--border); border-radius: 14px; padding: 12px; background: var(--surface-2); }
+.phone .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; color: #fff; transition: background .3s; }
+.quota { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.quota span.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); transition: .3s; }
+.quota span.dot.used { background: var(--lane); }
+.screen { min-height: 92px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 12px; }
+.spin { width: 16px; height: 16px; border: 2px solid var(--lane); border-top-color: var(--accent); border-radius: 50%; display: inline-block; vertical-align: middle; animation: rot .8s linear infinite; margin-right: 6px; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.fe-btns { display: flex; gap: 6px; margin-top: 8px; }
+.fe-btns span { flex: 1; text-align: center; font-size: 12px; font-weight: 700; padding: 6px; border-radius: 8px; background: var(--accent); color: #fff; transition: opacity .3s; }
+.fe-btns span.off { opacity: .35; }
+.fe-btns span.reset { background: var(--muted); }
+.timeline { margin-top: 10px; display: none; }
+.timeline.show { display: block; }
+.tl-bar { position: relative; height: 26px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.tl-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: color-mix(in srgb, var(--evt) 30%, transparent); }
+.tl-bar.run .tl-fill { animation: tlfill 3s linear forwards; }
+@keyframes tlfill { to { width: 50%; } }
+.tl-ticks { position: absolute; inset: 0; }
+.tl-ticks b { position: absolute; top: 5px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--req); opacity: 0; transform: scale(.3); }
+.tl-bar.run .tl-ticks b { animation: tick .3s ease forwards; }
+@keyframes tick { to { opacity: 1; transform: scale(1); } }
+.tl-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+/* svg */
+.lane-box { fill: var(--surface); stroke: var(--border); }
+.lane-title { fill: var(--text); font-weight: 700; font-size: 13px; }
+.lane-sub { fill: var(--muted); font-size: 10.5px; }
+.lifeline { stroke: var(--lane); stroke-dasharray: 4 5; }
+.row { transition: opacity .35s; }
+.row.pending { opacity: .13; }
+.row.done { opacity: .55; }
+.row.active { opacity: 1; }
+.row .lbl { font-size: 12px; fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 5px; stroke-linejoin: round; }
+.row.active .lbl { font-weight: 700; }
+.row .num { font-size: 11px; font-weight: 700; fill: #fff; }
+.row .hl { fill: var(--accent); opacity: 0; transition: opacity .3s; }
+.row.active .hl { opacity: .07; }
+.row path.ln { fill: none; stroke-width: 2; }
+.row.res path.ln { stroke-dasharray: 6 4; }
+.row.active path.ln { stroke-width: 2.6; }
+.k-req { stroke: var(--req); } .kf-req { fill: var(--req); }
+.k-res { stroke: var(--res); } .kf-res { fill: var(--res); }
+.k-evt { stroke: var(--evt); } .kf-evt { fill: var(--evt); }
+.k-auth { stroke: var(--auth); } .kf-auth { fill: var(--auth); }
+.k-err { stroke: var(--err); } .kf-err { fill: var(--err); }
+.packet { filter: drop-shadow(0 0 6px currentColor); }
+/* states + auth tabs */
+.two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+.pad { padding: 18px; }
+.pad h2 { margin: 0 0 10px; font-size: 16px; }
+.st-node rect { stroke-width: 2; transition: .3s; }
+.st-node text { font-weight: 700; font-size: 13px; fill: var(--text); }
+.st-node.cur rect { stroke-width: 4; filter: drop-shadow(0 0 10px currentColor); }
+.st-edge { fill: none; stroke: var(--lane); stroke-width: 2; }
+.st-edge.flow { stroke: var(--accent); stroke-dasharray: 6 6; animation: dash 1s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -12; } }
+.st-lbl { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
+.rules li { margin-bottom: 6px; }
+.qdots { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.qdots button { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--accent); background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; transition: .25s; }
+.qdots button.used { background: transparent; color: var(--muted); border-color: var(--lane); }
+.qdots button.refund { animation: refund .6s ease; }
+@keyframes refund { 50% { transform: scale(1.25); background: var(--res); border-color: var(--res); } }
+.auth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.auth-card { padding: 16px; border-left: 4px solid var(--auth); }
+.auth-card h3 { margin: 0 0 4px; font-size: 15px; }
+.auth-card .tag { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.auth-card ul { margin: 0; padding-left: 18px; }
+.flowline { display: flex; align-items: center; gap: 6px; margin: 8px 0; font-size: 12px; font-weight: 700; flex-wrap: wrap; }
+.flowline span { padding: 3px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+.flowline em { font-style: normal; color: var(--auth); animation: blink 1.4s ease infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+.note { font-size: 12px; color: var(--muted); }
+@media (max-width: 900px) {
+  .grid, .two, .auth-grid { grid-template-columns: 1fr; }
+  .diagram { border-right: 0; border-bottom: 1px solid var(--border); max-height: 520px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AI Hub — Quy trình gọi dịch vụ của đối tác</h1>
+    <p>Người dùng chọn một API trong danh mục, bấm "Gọi" và nhận kết quả từ hệ thống đối tác. Mỗi người luôn thấy lại kết quả gần nhất của từng API, mọi lần gọi đều được lưu lịch sử, và mỗi người được gọi tối đa 5 lần/ngày.</p>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-tab="sync">⚡ Gọi trực tiếp (đồng bộ)</button>
+    <button class="tab" data-tab="async">📨 Gọi qua hàng đợi (bất đồng bộ)</button>
+    <button class="tab" data-tab="state">🔁 Trạng thái &amp; lượt gọi</button>
+    <button class="tab" data-tab="auth">🔐 Bảo mật</button>
+  </nav>
+
+  <section class="panel on" id="p-sync"></section>
+  <section class="panel" id="p-async"></section>
+
+  <section class="panel" id="p-state">
+    <div class="two">
+      <div class="card pad">
+        <h2>Một API của một người dùng đi qua những trạng thái nào?</h2>
+        <svg id="stateSvg" viewBox="0 0 640 340" width="100%"></svg>
+        <div class="toolbar" style="border:0;padding:8px 0 0">
+          <span class="note">Bấm để thử:</span>
+          <button class="btn" data-ev="call">Gọi</button>
+          <button class="btn" data-ev="ok">Đối tác trả kết quả</button>
+          <button class="btn" data-ev="fail">Dữ liệu nhập sai</button>
+          <button class="btn" data-ev="timeout">Đối tác lỗi / quá lâu</button>
+          <button class="btn" data-ev="reset">Làm mới</button>
+        </div>
+        <p class="note" id="stMsg"></p>
+      </div>
+      <div class="card pad">
+        <h2>Lượt gọi trong ngày</h2>
+        <div class="qdots" id="qdots"></div>
+        <p class="note" id="qMsg"></p>
+        <ul class="rules">
+          <li>Mỗi người được <b>5 lượt/ngày</b>, tính chung cho tất cả API. Lượt được làm mới lúc 0 giờ mỗi ngày.</li>
+          <li>Mỗi lần bấm "Gọi" thành công tốn 1 lượt.</li>
+          <li><b>Được trả lại lượt</b> nếu lỗi do hệ thống hoặc đối tác (đối tác gặp sự cố, phản hồi quá lâu, mất kết nối).</li>
+          <li><b>Không trả lại lượt</b> nếu người dùng nhập dữ liệu sai.</li>
+          <li><b>Làm mới không tốn lượt</b>. Chỉ lần gọi mới sau đó mới tốn.</li>
+          <li>Khi một API đang xử lý, người dùng không thể gọi thêm hay làm mới API đó.</li>
+          <li>Hết 5 lượt thì hệ thống báo "Đã hết lượt hôm nay".</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card pad" style="margin-top:16px">
+      <h2>Mỗi lần gọi chỉ được ghi nhận kết quả một lần</h2>
+      <p>Có nhiều nơi có thể báo "đã xong" cho cùng một lần gọi: hệ thống tự nhận kết quả, đối tác gửi kết quả về (đôi khi gửi lặp lại), bộ phận tự kiểm tra định kỳ hoặc bộ dọn dẹp các lần gọi bị treo.</p>
+      <p class="note">Quy tắc: <b>ai báo trước thì được ghi nhận, các lần báo sau bị bỏ qua.</b> Vì vậy kết quả không bị ghi đè sai, người dùng không bị trừ hoặc trả lượt hai lần, và chỉ nhận đúng một thông báo.</p>
+    </div>
+  </section>
+
+  <section class="panel" id="p-auth">
+    <div class="auth-grid">
+      <div class="card auth-card" style="border-left-color:var(--req)">
+        <h3>① Người dùng → AI Hub</h3><div class="tag">Người dùng phải đăng nhập</div>
+        <div class="flowline"><span>Người dùng</span><em>── đăng nhập ──▶</em><span>AI Hub</span></div>
+        <ul>
+          <li>Mỗi người chỉ xem được kết quả và lịch sử gọi của chính mình.</li>
+          <li>Chỉ gọi được những API đang hoạt động trong danh mục.</li>
+          <li>Thông tin đăng nhập với đối tác không bao giờ hiện trên màn hình người dùng.</li>
+        </ul>
+      </div>
+      <div class="card auth-card">
+        <h3>② AI Hub → Đối tác</h3><div class="tag">AI Hub tự xác minh với đối tác bằng tài khoản hệ thống</div>
+        <div class="flowline"><span>AI Hub</span><em>── xin "vé vào cửa" ──▶</em><span>Đối tác</span></div>
+        <ul>
+          <li>Đối tác cấp cho AI Hub một tài khoản hệ thống. AI Hub dùng tài khoản này xin "vé vào cửa" có thời hạn.</li>
+          <li>Vé được dùng lại cho đến gần lúc hết hạn, không cần xin lại ở mỗi lần gọi.</li>
+          <li>Vé bị từ chối thì xin vé mới và thử lại đúng một lần.</li>
+          <li>Mỗi lần gọi có một mã riêng. Nhờ mã này đối tác không xử lý trùng nếu nhận yêu cầu hai lần.</li>
+          <li>Mật khẩu tài khoản hệ thống được giữ kín, không lưu trong dữ liệu nghiệp vụ.</li>
+        </ul>
+      </div>
+      <div class="card auth-card" style="border-left-color:var(--evt)">
+        <h3>③ Đối tác → AI Hub</h3><div class="tag">Chỉ áp dụng khi đối tác gửi kết quả về sau</div>
+        <div class="flowline"><span>Đối tác</span><em>── gửi kết quả kèm chữ ký ──▶</em><span>AI Hub</span></div>
+        <ul>
+          <li>Mỗi kết quả đối tác gửi về kèm một <b>chữ ký</b>, tạo bằng mã bí mật mà hai bên đã thống nhất.</li>
+          <li>AI Hub kiểm tra chữ ký. Sai chữ ký thì từ chối, để không ai giả mạo được kết quả.</li>
+          <li>Kết quả gửi quá cũ (hơn 5 phút) bị từ chối, để chống phát lại.</li>
+          <li>Đối tác gửi lặp lại cùng một kết quả thì vẫn được xác nhận, nhưng hệ thống không xử lý lần nữa.</li>
+        </ul>
+      </div>
+      <div class="card auth-card" style="border-left-color:var(--res)">
+        <h3>④ Bên trong AI Hub</h3><div class="tag">Hàng đợi và dịch vụ thông báo nằm trong mạng nội bộ</div>
+        <div class="flowline"><span>AI Hub</span><em>── giao việc ──▶</em><span>Bộ xử lý nền</span></div>
+        <ul>
+          <li>Hàng đợi chỉ dùng nội bộ, không mở ra bên ngoài.</li>
+          <li>Một lần gọi chỉ tạo đúng một việc trong hàng đợi, kể cả khi giao trùng.</li>
+          <li>Thông báo chỉ nói "API X đã có kết quả" chứ không chứa dữ liệu. Màn hình tự tải kết quả về sau khi người dùng đã đăng nhập.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ---------- Flow data ----------
+const LANES = {
+  fe: ['Người dùng', 'màn hình AI Hub'],
+  be: ['AI Hub', 'hệ thống xử lý'],
+  db: ['Kho dữ liệu', 'kết quả · lịch sử'],
+  mq: ['Bộ xử lý nền', 'hàng đợi công việc'],
+  partner: ['Đối tác', 'hệ thống tích hợp'],
+  noti: ['Thông báo', 'dịch vụ có sẵn'],
+};
+
+// fe: trạng thái màn hình sau bước này; used: số lượt đã dùng + 1; timer: hiện thanh thời gian chờ
+const S = (from, to, kind, label, title, body, extra = {}) => ({ from, to, kind, label, title, body, ...extra });
+
+const COMMON_START = [
+  S('fe', 'be', 'req', 'Bấm "Gọi" với dữ liệu đã nhập', 'Người dùng bấm "Gọi"',
+    '<p>Người dùng nhập dữ liệu (đã có sẵn dữ liệu mẫu để thử) rồi bấm <b>Gọi</b>.</p>',
+    { fe: 'calling', used: 1 }),
+  S('be', 'db', 'req', 'Kiểm tra điều kiện & ghi nhận lần gọi', 'Kiểm tra trước khi gọi',
+    '<ul><li>API có đang hoạt động không?</li><li>API này có đang xử lý dở lần trước không? Nếu có thì báo <b>"Đang xử lý, vui lòng chờ"</b>.</li><li>Hôm nay còn lượt không? Hết thì báo <b>"Đã hết 5 lượt hôm nay"</b>.</li><li>Đủ điều kiện thì trừ 1 lượt, lưu lần gọi vào lịch sử và chuyển sang <b>Đang xử lý</b>.</li></ul>',
+    { fe: 'calling', used: 2 }),
+];
+
+const FLOWS = {
+  sync: {
+    lanes: ['fe', 'be', 'db', 'partner', 'noti'],
+    intro: 'AI Hub gọi đối tác và chờ trả lời trong một khoảng thời gian ngắn. Đối tác trả kịp thì người dùng thấy kết quả ngay; trả chậm thì người dùng có thể rời đi, khi xong sẽ được báo.',
+    scenarios: {
+      fast: { name: 'Đối tác trả lời nhanh', steps: [
+        ...COMMON_START,
+        S('be', 'partner', 'auth', 'Xác minh danh tính với đối tác', 'AI Hub xác minh với đối tác',
+          '<p>AI Hub dùng "vé vào cửa" đã có, hoặc xin vé mới nếu vé cũ sắp hết hạn.</p>', { fe: 'calling', used: 2 }),
+        S('be', 'partner', 'req', 'Gửi yêu cầu sang đối tác', 'Gửi yêu cầu',
+          '<p>AI Hub chuyển dữ liệu của người dùng sang đối tác và chờ trả lời trong thời gian cho phép (ví dụ 10 giây).</p>', { fe: 'calling', used: 2 }),
+        S('partner', 'be', 'res', 'Trả kết quả (kịp thời gian)', 'Đối tác trả lời kịp', '', { fe: 'calling', used: 2 }),
+        S('be', 'db', 'req', 'Lưu kết quả mới nhất + lịch sử', 'Lưu kết quả',
+          '<p>Lưu lại dữ liệu đã gửi và kết quả nhận được. Lần sau người dùng vào lại sẽ thấy ngay.</p>', { fe: 'calling', used: 2 }),
+        S('be', 'fe', 'res', 'Hiển thị kết quả ngay', 'Người dùng thấy kết quả',
+          '<p>Nút <b>Làm mới</b> được mở để gọi lần mới nếu muốn.</p>', { fe: 'success', used: 2 }),
+        S('be', 'noti', 'evt', 'Gửi thông báo "đã có kết quả"', 'Vẫn gửi thông báo',
+          '<p>Nếu người dùng đang mở API này ở tab hay thiết bị khác, màn hình đó cũng tự cập nhật.</p>', { fe: 'success', used: 2 }),
+      ]},
+      slow: { name: 'Đối tác trả lời chậm', steps: [
+        ...COMMON_START,
+        S('be', 'partner', 'auth', 'Xác minh danh tính với đối tác', 'AI Hub xác minh với đối tác', '', { fe: 'calling', used: 2 }),
+        S('be', 'partner', 'req', 'Gửi yêu cầu sang đối tác', 'Gửi yêu cầu', '<p>Đối tác xử lý lâu…</p>', { fe: 'calling', used: 2 }),
+        S('be', 'fe', 'res', 'Báo "Đang xử lý"', 'Quá thời gian chờ: báo đang xử lý',
+          '<p>Người dùng không phải đứng chờ. AI Hub <b>vẫn tiếp tục chờ</b> đối tác ở phía sau.</p>', { fe: 'processing', used: 2 }),
+        S('fe', 'fe', 'evt', 'Chờ thông báo · sau 30 giây tự kiểm tra 5 giây/lần', 'Màn hình chờ kết quả',
+          '<p>Người dùng có thể rời đi rồi quay lại bất kỳ lúc nào; vào lại vẫn thấy <b>Đang xử lý</b>.</p><p>Nếu 30 giây chưa có thông báo, màn hình tự hỏi lại kết quả mỗi 5 giây (phòng khi thông báo bị lỡ).</p>', { fe: 'processing', used: 2, timer: true }),
+        S('fe', 'be', 'req', 'Tự hỏi lại: đã xong chưa?', 'Kiểm tra dự phòng', '', { fe: 'processing', used: 2, timer: true }),
+        S('be', 'fe', 'res', 'Chưa xong', 'Vẫn đang xử lý', '', { fe: 'processing', used: 2, timer: true }),
+        S('partner', 'be', 'res', 'Trả kết quả (muộn)', 'Đối tác trả lời', '', { fe: 'processing', used: 2 }),
+        S('be', 'db', 'req', 'Lưu kết quả mới nhất + lịch sử', 'Lưu kết quả', '', { fe: 'processing', used: 2 }),
+        S('be', 'noti', 'evt', 'Gửi thông báo "đã có kết quả"', 'Gửi thông báo', '', { fe: 'processing', used: 2 }),
+        S('noti', 'fe', 'evt', 'Người dùng nhận thông báo', 'Màn hình nhận thông báo', '<p>Dừng việc tự hỏi lại.</p>', { fe: 'processing', used: 2 }),
+        S('fe', 'be', 'req', 'Tải kết quả mới nhất', 'Tải kết quả', '', { fe: 'processing', used: 2 }),
+        S('be', 'fe', 'res', 'Hiển thị kết quả', 'Người dùng thấy kết quả', '', { fe: 'success', used: 2 }),
+      ]},
+      crash: { name: 'Hệ thống khởi động lại', steps: [
+        ...COMMON_START,
+        S('be', 'partner', 'req', 'Gửi yêu cầu sang đối tác', 'Gửi yêu cầu', '', { fe: 'calling', used: 2 }),
+        S('be', 'fe', 'res', 'Báo "Đang xử lý"', 'Báo đang xử lý', '', { fe: 'processing', used: 2 }),
+        S('be', 'be', 'err', '💥 Hệ thống khởi động lại giữa chừng', 'Sự cố: mất lần gọi đang chờ',
+          '<p>Khi cập nhật phiên bản hoặc hệ thống gặp sự cố, việc chờ đối tác bị gián đoạn. Nếu không xử lý, API này sẽ kẹt ở "Đang xử lý" mãi.</p>', { fe: 'processing', used: 2, timer: true }),
+        S('be', 'db', 'req', 'Bộ dọn dẹp: đánh dấu "Quá thời gian" + trả lượt', 'Tự động dọn lần gọi bị treo',
+          '<p>Mỗi phút hệ thống rà soát. Lần gọi nào quá hạn thì đánh dấu <b>Quá thời gian</b> và trả lại lượt cho người dùng.</p>', { fe: 'processing', used: 1, timer: true }),
+        S('be', 'noti', 'evt', 'Gửi thông báo "quá thời gian"', 'Gửi thông báo', '', { fe: 'processing', used: 1 }),
+        S('noti', 'fe', 'evt', 'Người dùng nhận thông báo', 'Màn hình nhận thông báo', '', { fe: 'processing', used: 1 }),
+        S('fe', 'be', 'req', 'Tải kết quả mới nhất', 'Tải kết quả', '', { fe: 'processing', used: 1 }),
+        S('be', 'fe', 'res', 'Báo "Quá thời gian, đã trả lượt"', 'Báo quá thời gian', '<p>Người dùng bấm <b>Làm mới</b> để gọi lại.</p>', { fe: 'timeout', used: 1 }),
+      ]},
+    },
+  },
+  async: {
+    lanes: ['fe', 'be', 'db', 'mq', 'partner', 'noti'],
+    intro: 'Dùng cho API đối tác cần nhiều thời gian. AI Hub chỉ nhận yêu cầu rồi giao cho bộ xử lý nền. Đối tác làm xong sẽ gửi kết quả về; nếu đối tác quên gửi, bộ xử lý nền tự đi hỏi.',
+    scenarios: {
+      callback: { name: 'Đối tác tự gửi kết quả về', steps: [
+        ...COMMON_START,
+        S('be', 'mq', 'req', 'Giao việc cho bộ xử lý nền', 'Đưa vào hàng đợi',
+          '<p>Việc được xếp hàng và xử lý lần lượt; lỗi tạm thời sẽ tự thử lại. Nếu không giao được việc, lần gọi bị huỷ và trả lại lượt.</p>', { fe: 'calling', used: 2 }),
+        S('be', 'fe', 'res', 'Báo "Đang xử lý" ngay', 'Người dùng không phải chờ', '', { fe: 'processing', used: 2 }),
+        S('fe', 'fe', 'evt', 'Chờ thông báo · sau 30 giây tự kiểm tra 5 giây/lần', 'Màn hình chờ kết quả', '<p>Người dùng có thể rời đi và quay lại bình thường.</p>', { fe: 'processing', used: 2, timer: true }),
+        S('mq', 'partner', 'auth', 'Xác minh danh tính với đối tác', 'Bộ xử lý nền xác minh với đối tác', '', { fe: 'processing', used: 2, timer: true }),
+        S('mq', 'partner', 'req', 'Gửi yêu cầu + địa chỉ nhận kết quả', 'Gửi yêu cầu sang đối tác', '<p>Kèm mã lần gọi để đối tác gửi kết quả về đúng chỗ.</p>', { fe: 'processing', used: 2, timer: true }),
+        S('partner', 'mq', 'res', 'Xác nhận đã nhận việc', 'Đối tác nhận việc', '', { fe: 'processing', used: 2, timer: true }),
+        S('mq', 'db', 'req', 'Ghi nhận + hẹn giờ tự kiểm tra', 'Hẹn giờ dự phòng', '<p>Nếu sau một khoảng thời gian chưa thấy đối tác gửi kết quả, bộ xử lý nền sẽ tự đi hỏi.</p>', { fe: 'processing', used: 2, timer: true }),
+        S('partner', 'be', 'evt', 'Gửi kết quả về (kèm chữ ký)', 'Đối tác gửi kết quả về', '', { fe: 'processing', used: 2 }),
+        S('be', 'be', 'auth', 'Kiểm tra chữ ký của đối tác', 'Xác minh kết quả là thật', '<p>Chữ ký sai thì từ chối (xem tab Bảo mật).</p>', { fe: 'processing', used: 2 }),
+        S('be', 'db', 'req', 'Lưu kết quả mới nhất + lịch sử', 'Lưu kết quả', '<p>Đối tác gửi lặp lại thì bỏ qua, không lưu hai lần.</p>', { fe: 'processing', used: 2 }),
+        S('be', 'partner', 'res', 'Xác nhận đã nhận kết quả', 'Báo đối tác đã nhận', '<p>Để đối tác không gửi lại nữa.</p>', { fe: 'processing', used: 2 }),
+        S('be', 'noti', 'evt', 'Gửi thông báo "đã có kết quả"', 'Gửi thông báo', '', { fe: 'processing', used: 2 }),
+        S('noti', 'fe', 'evt', 'Người dùng nhận thông báo', 'Màn hình nhận thông báo', '', { fe: 'processing', used: 2 }),
+        S('fe', 'be', 'req', 'Tải kết quả mới nhất', 'Tải kết quả', '', { fe: 'processing', used: 2 }),
+        S('be', 'fe', 'res', 'Hiển thị kết quả', 'Người dùng thấy kết quả', '', { fe: 'success', used: 2 }),
+      ]},
+      poll: { name: 'Đối tác không gửi về', steps: [
+        ...COMMON_START,
+        S('be', 'mq', 'req', 'Giao việc cho bộ xử lý nền', 'Đưa vào hàng đợi', '', { fe: 'calling', used: 2 }),
+        S('be', 'fe', 'res', 'Báo "Đang xử lý" ngay', 'Người dùng không phải chờ', '', { fe: 'processing', used: 2 }),
+        S('fe', 'fe', 'evt', 'Chờ thông báo · sau 30 giây tự kiểm tra 5 giây/lần', 'Màn hình chờ kết quả', '', { fe: 'processing', used: 2, timer: true }),
+        S('mq', 'partner', 'req', 'Gửi yêu cầu + địa chỉ nhận kết quả', 'Gửi yêu cầu sang đối tác', '', { fe: 'processing', used: 2, timer: true }),
+        S('partner', 'mq', 'res', 'Xác nhận đã nhận việc', 'Đối tác nhận việc', '', { fe: 'processing', used: 2, timer: true }),
+        S('mq', 'mq', 'evt', 'Đến giờ hẹn mà chưa có kết quả', 'Đối tác chưa gửi kết quả về', '', { fe: 'processing', used: 2, timer: true }),
+        S('mq', 'partner', 'req', 'Hỏi đối tác: việc đã xong chưa?', 'Bộ xử lý nền tự đi hỏi', '<p>Chưa xong thì hẹn hỏi lại, cho đến hạn chót. Quá hạn chót thì báo <b>Quá thời gian</b> và trả lại lượt.</p>', { fe: 'processing', used: 2, timer: true }),
+        S('partner', 'mq', 'res', 'Đã xong, gửi kèm kết quả', 'Có kết quả', '', { fe: 'processing', used: 2 }),
+        S('mq', 'db', 'req', 'Lưu kết quả mới nhất + lịch sử', 'Lưu kết quả', '<p>Nếu sau đó đối tác mới gửi kết quả về thì bỏ qua.</p>', { fe: 'processing', used: 2 }),
+        S('mq', 'noti', 'evt', 'Gửi thông báo "đã có kết quả"', 'Gửi thông báo', '', { fe: 'processing', used: 2 }),
+        S('noti', 'fe', 'evt', 'Người dùng nhận thông báo', 'Màn hình nhận thông báo', '', { fe: 'processing', used: 2 }),
+        S('fe', 'be', 'req', 'Tải kết quả mới nhất', 'Tải kết quả', '', { fe: 'processing', used: 2 }),
+        S('be', 'fe', 'res', 'Hiển thị kết quả', 'Người dùng thấy kết quả', '', { fe: 'success', used: 2 }),
+      ]},
+    },
+  },
+};
+
+const KIND_NAME = { req: 'Gửi yêu cầu', res: 'Trả kết quả', evt: 'Thông báo / sự kiện', auth: 'Xác minh / bảo mật', err: 'Sự cố' };
+const FE_VIEW = {
+  idle: ['Chưa gọi', 'var(--muted)', 'Ô nhập dữ liệu (có sẵn dữ liệu mẫu)', [true, false]],
+  calling: ['Đang gửi', 'var(--req)', '<span class="spin"></span>Đang gửi yêu cầu…', [false, false]],
+  processing: ['Đang xử lý', 'var(--evt)', '<span class="spin"></span>Đang xử lý. Bạn có thể rời trang, quay lại vẫn thấy trạng thái này.', [false, false]],
+  success: ['Thành công', 'var(--res)', '✅ Hiển thị <b>dữ liệu đã gửi</b> và <b>kết quả nhận được</b>. Muốn gọi lại thì bấm Làm mới.', [false, true]],
+  timeout: ['Quá thời gian', 'var(--err)', '⏱ Quá thời gian, lượt đã được trả lại. Bấm Làm mới để gọi lại.', [false, true]],
+};
+// ---------- Flow panel ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, parent) => {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+};
+
+function buildPanel(key) {
+  const flow = FLOWS[key];
+  const root = document.getElementById('p-' + key);
+  const scenKeys = Object.keys(flow.scenarios);
+  root.innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="seg">${scenKeys.map((s, i) => `<button data-s="${s}" class="${i ? '' : 'on'}">${flow.scenarios[s].name}</button>`).join('')}</div>
+        <span class="spacer"></span>
+        <button class="btn" data-a="prev">◀</button>
+        <button class="btn primary" data-a="play">▶ Chạy</button>
+        <button class="btn" data-a="next">▶|</button>
+        <button class="btn" data-a="reset">↺</button>
+        <span class="counter"></span>
+      </div>
+      <div class="grid">
+        <div class="diagram"></div>
+        <aside class="side">
+          <div class="detail"></div>
+          <div class="phone">
+            <div class="top"><span>Màn hình API "Tra cứu khách hàng"</span><span class="badge"></span></div>
+            <div class="quota"></div>
+            <div class="screen"></div>
+            <div class="fe-btns"><span class="b-call">Gọi</span><span class="reset b-reset">Làm mới</span></div>
+            <div class="timeline">
+              <div class="tl-bar"><div class="tl-fill"></div><div class="tl-ticks"></div></div>
+              <div class="tl-legend"><span>Chờ thông báo</span><span>30 giây</span><span>tự hỏi lại mỗi 5 giây →</span></div>
+            </div>
+          </div>
+          <p class="note">${flow.intro}</p>
+        </aside>
+      </div>
+      <div class="legend">
+        <span><i style="border-color:var(--req)"></i>Gửi yêu cầu</span>
+        <span><i style="border-color:var(--res);border-top-style:dashed"></i>Trả kết quả</span>
+        <span><i style="border-color:var(--evt)"></i>Thông báo / đối tác gửi kết quả về</span>
+        <span><i style="border-color:var(--auth)"></i>Xác minh / bảo mật</span>
+        <span><i style="border-color:var(--err)"></i>Sự cố</span>
+      </div>
+    </div>`;
+
+  const ui = {
+    diagram: root.querySelector('.diagram'), detail: root.querySelector('.detail'), counter: root.querySelector('.counter'),
+    play: root.querySelector('[data-a="play"]'), badge: root.querySelector('.badge'), quota: root.querySelector('.quota'),
+    screen: root.querySelector('.screen'), bCall: root.querySelector('.b-call'), bReset: root.querySelector('.b-reset'),
+    timeline: root.querySelector('.timeline'), tlBar: root.querySelector('.tl-bar'), ticks: root.querySelector('.tl-ticks'),
+  };
+  for (let i = 0; i < 5; i++) {
+    const b = document.createElement('b');
+    b.style.left = (55 + i * 9) + '%';
+    b.style.animationDelay = (3 + i * 0.45) + 's';
+    ui.ticks.appendChild(b);
+  }
+
+  const st = { scen: scenKeys[0], i: -1, timer: null, rows: [], steps: [] };
+
+  function draw() {
+    const steps = flow.scenarios[st.scen].steps;
+    st.steps = steps;
+    const lanes = flow.lanes;
+    const W = 1000, pad = 90, top = 22, rowH = 50, y0 = 112;
+    const H = y0 + steps.length * rowH + 20;
+    const x = (id) => pad + lanes.indexOf(id) * ((W - 2 * pad) / (lanes.length - 1));
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}` });
+    const defs = el('defs', {}, svg);
+    ['req', 'res', 'evt', 'auth', 'err'].forEach((k) => {
+      const m = el('marker', { id: `m-${key}-${k}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, defs);
+      el('path', { d: 'M0 0 L10 5 L0 10 z', class: 'kf-' + k }, m);
+    });
+    lanes.forEach((id) => {
+      const cx = x(id);
+      el('line', { x1: cx, x2: cx, y1: top + 54, y2: H - 6, class: 'lifeline' }, svg);
+      el('rect', { x: cx - 74, y: top, width: 148, height: 50, rx: 10, class: 'lane-box' }, svg);
+      const t = el('text', { x: cx, y: top + 22, 'text-anchor': 'middle', class: 'lane-title' }, svg); t.textContent = LANES[id][0];
+      const s = el('text', { x: cx, y: top + 39, 'text-anchor': 'middle', class: 'lane-sub' }, svg); s.textContent = LANES[id][1];
+    });
+    st.rows = steps.map((s, i) => {
+      const y = y0 + i * rowH;
+      const g = el('g', { class: `row pending ${s.kind}` }, svg);
+      el('rect', { x: 0, y: y - 30, width: W, height: rowH, class: 'hl' }, g);
+      el('circle', { cx: 18, cy: y - 4, r: 11, class: 'kf-' + s.kind }, g);
+      const n = el('text', { x: 18, y: y, 'text-anchor': 'middle', class: 'num' }, g); n.textContent = i + 1;
+      const x1 = x(s.from), x2 = x(s.to);
+      let d, lx, anchor, ly = y - 9;
+      if (s.from === s.to) {
+        d = `M${x1} ${y - 6} h46 v18 h-42`;
+        lx = x1 + 54; anchor = 'start'; ly = y + 2;
+      } else {
+        const dir = Math.sign(x2 - x1);
+        d = `M${x1 + dir * 3} ${y} L${x2 - dir * 4} ${y}`;
+        lx = (x1 + x2) / 2; anchor = 'middle';
+      }
+      const p = el('path', { d, class: `ln k-${s.kind}`, 'marker-end': `url(#m-${key}-${s.kind})` }, g);
+      const t = el('text', { x: lx, y: ly, 'text-anchor': anchor, class: 'lbl' }, g); t.textContent = s.label;
+      const dot = el('circle', { r: 6, class: `packet kf-${s.kind}`, opacity: 0 }, g);
+      dot.style.color = `var(--${s.kind})`;
+      return { g, p, dot, y };
+    });
+    ui.diagram.innerHTML = '';
+    ui.diagram.appendChild(svg);
+    go(-1);
+  }
+
+  function animateDot(row) {
+    const len = row.p.getTotalLength();
+    const t0 = performance.now(), dur = 750;
+    row.dot.setAttribute('opacity', 1);
+    const tick = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      const pt = row.p.getPointAtLength(e * len);
+      row.dot.setAttribute('cx', pt.x); row.dot.setAttribute('cy', pt.y);
+      if (k < 1 && row.g.classList.contains('active')) requestAnimationFrame(tick);
+      else row.dot.setAttribute('opacity', 0);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function renderFe(s) {
+    const view = FE_VIEW[s ? s.fe : 'idle'];
+    ui.badge.textContent = view[0];
+    ui.badge.style.background = view[1];
+    ui.screen.innerHTML = view[2];
+    ui.bCall.classList.toggle('off', !view[3][0]);
+    ui.bReset.classList.toggle('off', !view[3][1]);
+    const used = s ? s.used - 1 : 0;
+    ui.quota.innerHTML = 'Lượt hôm nay: ' + Array.from({ length: 5 }, (_, i) => `<span class="dot ${i < used ? 'used' : ''}"></span>`).join('') + ` còn ${5 - used}/5`;
+    const showTl = !!(s && s.timer);
+    const wasShown = ui.timeline.classList.contains('show');
+    ui.timeline.classList.toggle('show', showTl);
+    if (showTl && !wasShown) { ui.tlBar.classList.remove('run'); void ui.tlBar.offsetWidth; ui.tlBar.classList.add('run'); }
+  }
+
+  function go(i) {
+    st.i = Math.max(-1, Math.min(i, st.steps.length - 1));
+    st.rows.forEach((r, j) => { r.g.classList.remove('pending', 'done', 'active'); r.g.classList.add(j < st.i ? 'done' : j === st.i ? 'active' : 'pending'); });
+    ui.counter.textContent = `${st.i + 1} / ${st.steps.length}`;
+    const s = st.steps[st.i];
+    if (s) {
+      const r = st.rows[st.i];
+      animateDot(r);
+      ui.detail.innerHTML = `<h3>${st.i + 1}. ${s.title}</h3><div class="who"><span class="pill" style="background:var(--${s.kind})">${KIND_NAME[s.kind]}</span> &nbsp;${LANES[s.from][0]} → ${LANES[s.to][0]}</div>${s.body || ''}`;
+      const box = ui.diagram, svg = box.querySelector('svg');
+      const scale = svg.getBoundingClientRect().height / svg.viewBox.baseVal.height;
+      box.scrollTop = Math.max(0, r.y * scale - box.clientHeight / 2);
+    } else {
+      ui.detail.innerHTML = '<h3>Sẵn sàng</h3><p>Bấm <b>▶ Chạy</b> để xem tự động từng bước, hoặc <b>▶|</b> để xem từng bước một. Chọn tình huống ở thanh phía trên.</p>';
+    }
+    renderFe(s);
+  }
+
+  function stop() { clearInterval(st.timer); st.timer = null; ui.play.textContent = '▶ Chạy'; }
+  function play() {
+    if (st.timer) return stop();
+    if (st.i >= st.steps.length - 1) go(-1);
+    ui.play.textContent = '⏸ Dừng';
+    go(st.i + 1);
+    st.timer = setInterval(() => { if (st.i >= st.steps.length - 1) return stop(); go(st.i + 1); }, 2100);
+  }
+
+  root.querySelector('.seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    root.querySelectorAll('.seg button').forEach((x) => x.classList.toggle('on', x === b));
+    stop(); st.scen = b.dataset.s; draw();
+  });
+  root.querySelector('[data-a="prev"]').onclick = () => { stop(); go(st.i - 1); };
+  root.querySelector('[data-a="next"]').onclick = () => { stop(); go(st.i + 1); };
+  root.querySelector('[data-a="reset"]').onclick = () => { stop(); go(-1); };
+  ui.play.onclick = play;
+  draw();
+  return { stop };
+}
+
+const panels = { sync: buildPanel('sync'), async: buildPanel('async') };
+
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('.tab'); if (!b) return;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t === b));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('on', p.id === 'p-' + b.dataset.tab));
+  Object.values(panels).forEach((p) => p.stop());
+});
+
+// ---------- State machine + quota ----------
+(function () {
+  const svg = document.getElementById('stateSvg');
+  const N = {
+    idle: [60, 140, 'var(--muted)'], processing: [270, 140, 'var(--evt)'],
+    success: [500, 40, 'var(--res)'], failed: [500, 140, 'var(--err)'], timeout: [500, 240, 'var(--err)'],
+  };
+  const E = [
+    ['idle', 'processing', 'call', 'Gọi (trừ 1 lượt)'],
+    ['processing', 'success', 'ok', 'Có kết quả'],
+    ['processing', 'failed', 'fail', 'Nhập sai'],
+    ['processing', 'timeout', 'timeout', 'Lỗi / quá lâu'],
+    ['success', 'idle', 'reset', 'Làm mới'], ['failed', 'idle', 'reset', ''], ['timeout', 'idle', 'reset', ''],
+  ];
+  const VI = { idle: "Chưa gọi", processing: "Đang xử lý", success: "Thành công", failed: "Thất bại", timeout: "Quá thời gian" };
+  const w = 120, h = 44, edges = {};
+  E.forEach(([a, b, ev, lbl], i) => {
+    const [ax, ay] = N[a], [bx, by] = N[b];
+    let d;
+    if (ev === 'reset') {
+      // Reset edges loop around the outside so they never cross a state box.
+      const ix = bx + w / 2;
+      d = {
+        success: `M${ax + w / 2} ${ay} C ${ax + w / 2} 0, ${ix} 0, ${ix} ${by}`,
+        failed: `M${ax} ${ay + h / 2 + 4} C 430 ${ay + h / 2 + 4}, 170 312, ${ix - 10} ${by + h}`,
+        timeout: `M${ax + w / 2} ${ay + h} C ${ax + w / 2} 336, ${ix + 10} 336, ${ix + 10} ${by + h}`,
+      }[a];
+    } else {
+      d = `M${ax + w} ${ay + h / 2} C ${ax + w + 60} ${ay + h / 2}, ${bx - 60} ${by + h / 2}, ${bx} ${by + h / 2}`;
+    }
+    const p = el('path', { d, class: 'st-edge', 'marker-end': 'url(#st-arr)' }, svg);
+    edges[a + '>' + b] = p;
+    if (lbl) {
+      const t = el('text', { class: 'st-lbl', 'text-anchor': 'middle' }, svg);
+      t.textContent = lbl;
+      requestAnimationFrame(() => { const m = p.getPointAtLength(p.getTotalLength() / 2); t.setAttribute('x', m.x); t.setAttribute('y', m.y - 6); });
+    }
+  });
+  const defs = el('defs', {}, svg);
+  const mk = el('marker', { id: 'st-arr', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto' }, defs);
+  el('path', { d: 'M0 0 L10 5 L0 10 z', fill: 'var(--lane)' }, mk);
+  const nodes = {};
+  Object.entries(N).forEach(([k, [x, y, c]]) => {
+    const g = el('g', { class: 'st-node' }, svg); g.style.color = c;
+    el('rect', { x, y, width: w, height: h, rx: 22, fill: 'var(--surface)', stroke: c }, g);
+    const t = el('text', { x: x + w / 2, y: y + h / 2 + 5, 'text-anchor': 'middle' }, g); t.textContent = VI[k];
+    nodes[k] = g;
+  });
+  const qd = document.getElementById('qdots');
+  for (let i = 0; i < 5; i++) { const b = document.createElement('button'); b.textContent = i + 1; b.disabled = true; qd.appendChild(b); }
+  let cur = 'idle', used = 0;
+  const msg = document.getElementById('stMsg'), qMsg = document.getElementById('qMsg');
+  function paint(text, flowEdge) {
+    Object.entries(nodes).forEach(([k, g]) => g.classList.toggle('cur', k === cur));
+    Object.values(edges).forEach((p) => p.classList.remove('flow'));
+    if (flowEdge && edges[flowEdge]) edges[flowEdge].classList.add('flow');
+    [...qd.children].forEach((b, i) => b.classList.toggle('used', i < used));
+    qMsg.textContent = `Đã dùng ${used}/5 — còn ${5 - used} lượt`;
+    msg.innerHTML = text;
+  }
+  const NEXT = {
+    call: () => {
+      if (cur === 'processing') return ['⛔ Đang xử lý, chưa gọi thêm được.'];
+      if (cur !== 'idle') return ['ℹ️ Đang hiển thị kết quả gần nhất, bấm <b>Làm mới</b> trước khi gọi lần mới.'];
+      if (used >= 5) return ['⛔ Đã hết 5 lượt hôm nay.'];
+      used++; return ['processing', 'idle>processing'];
+    },
+    ok: () => cur === 'processing' ? ['success', 'processing>success'] : ['ℹ️ Chỉ áp dụng khi đang xử lý.'],
+    fail: () => cur === 'processing' ? ['failed', 'processing>failed'] : ['ℹ️ Chỉ áp dụng khi đang xử lý.'],
+    timeout: () => {
+      if (cur !== 'processing') return ['ℹ️ Chỉ áp dụng khi đang xử lý.'];
+      used--; const b = qd.children[used]; b.classList.remove('refund'); void b.offsetWidth; b.classList.add('refund');
+      return ['timeout', 'processing>timeout'];
+    },
+    reset: () => {
+      if (cur === 'processing') return ['⛔ Đang xử lý, chưa làm mới được.'];
+      if (cur === 'idle') return ['ℹ️ Chưa có gì để làm mới.'];
+      const from = cur; return ['idle', from + '>idle'];
+    },
+  };
+  document.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => {
+    const r = NEXT[b.dataset.ev]();
+    if (r.length === 2) { cur = r[0]; paint(`Trạng thái hiện tại: <b>${VI[cur]}</b>`, r[1]); }
+    else paint(`Trạng thái hiện tại: <b>${VI[cur]}</b> · ${r[0]}`);
+  }));
+  paint('Trạng thái hiện tại: <b>Chưa gọi</b>');
+})();
+</script>
+</body>
+</html>
