@@ -93,8 +93,12 @@ export class DepartmentConfigController {
   @ApiOperation({ summary: 'Remove members' })
   @Delete(':id/members')
   @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
-  removeMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: RemoveDepartmentMembersDto) {
-    return this.write.removeMembers(id, dto.user_ids);
+  removeMembers(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RemoveDepartmentMembersDto,
+    @Req() req: RequestWithInfo,
+  ) {
+    return this.write.removeMembers(id, dto.user_ids, dataHubCaller(req).id);
   }
 }
 

@@ -24,14 +24,38 @@ describe('DepartmentConfigQueryService', () => {
     const { service } = make(
       [
         [/FROM data_hub_departments d WHERE d.id = \$1/, () => [{ id: 5, code: 'DPD', name: 'n', created_by: null }]],
-        [/FROM data_hub_department_members m WHERE m.department_id/, () => [{ user_id: 11 }, { user_id: 12 }]],
+        [
+          /FROM data_hub_department_members m WHERE m.department_id = \$1 AND m.deleted_at IS NULL/,
+          () => [
+            { user_id: 11, created_by: 11, updated_by: 11, created_at: 't1', updated_at: 't1' },
+            { user_id: 12, created_by: 11, updated_by: null, created_at: 't2', updated_at: 't2' },
+          ],
+        ],
       ],
       { dataServiceRights },
     );
     const res = await service.detail(5);
     expect(res.members).toEqual([
-      { id: 11, email: 'a@x.vn', can_create: true, can_update: false },
-      { id: 12, email: null, can_create: false, can_update: false },
+      {
+        id: 11,
+        email: 'a@x.vn',
+        can_create: true,
+        can_update: false,
+        created_by_user: { id: 11, email: 'a@x.vn' },
+        updated_by_user: { id: 11, email: 'a@x.vn' },
+        created_at: 't1',
+        updated_at: 't1',
+      },
+      {
+        id: 12,
+        email: null,
+        can_create: false,
+        can_update: false,
+        created_by_user: { id: 11, email: 'a@x.vn' },
+        updated_by_user: null,
+        created_at: 't2',
+        updated_at: 't2',
+      },
     ]);
     expect(dataServiceRights).toHaveBeenCalledWith(11);
   });
@@ -73,6 +97,7 @@ describe('DepartmentConfigQueryService', () => {
     });
     const sql = calls[2].sql;
     expect(sql).toContain('NOT EXISTS (SELECT 1 FROM data_hub_department_members m WHERE m.department_id = $2');
+    expect(sql).toContain('m.user_id = u.id\n      AND m.deleted_at IS NULL AND m.is_deleted IS NOT TRUE');
     expect(sql).toContain("da.scope_type = 'allow'");
     expect(calls[2].params.slice(1)).toEqual([5, '%a\\_%', 'dh_data_service_create', 'dh_data_service_update', 10, 0]);
     // Postgres rejects a bound parameter the statement never references, so each query binds only what it uses

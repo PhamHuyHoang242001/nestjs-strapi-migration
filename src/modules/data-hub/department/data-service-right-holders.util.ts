@@ -59,7 +59,8 @@ export async function searchRightHolders(
     search = `AND u.email ILIKE $${params.length} ESCAPE '\\'`;
   }
   const from = `FROM holders h JOIN users u ON u.id = h.user_id AND ${LIVE_USER}
-    WHERE NOT EXISTS (SELECT 1 FROM data_hub_department_members m WHERE m.department_id = $2 AND m.user_id = u.id)
+    WHERE NOT EXISTS (SELECT 1 FROM data_hub_department_members m WHERE m.department_id = $2 AND m.user_id = u.id
+      AND m.deleted_at IS NULL AND m.is_deleted IS NOT TRUE)
     ${search}`;
   const [count]: Array<{ total: number }> = await runner.query(
     `${HOLDERS_CTE} SELECT COUNT(DISTINCT u.id)::int AS total ${from}`,

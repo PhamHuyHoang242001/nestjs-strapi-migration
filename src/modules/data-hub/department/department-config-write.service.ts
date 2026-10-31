@@ -8,6 +8,9 @@ import { DepartmentConfigBodyDto } from './dto';
 
 const CODE_UNIQUE = 'uq_data_hub_departments_code_live';
 
+// SET clause of a member soft delete; $2 = the user deleting.
+const MEMBER_SOFT_DELETE = `deleted_at = NOW(), is_deleted = true, deleted_by = $2, updated_by = $2, updated_at = NOW()`;
+
 interface LockedDepartment {
   id: number;
   code: string;
@@ -71,12 +74,17 @@ export class DepartmentConfigWriteService {
          WHERE id = $1`,
         [id, userId],
       );
-      await manager.query('DELETE FROM data_hub_department_members WHERE department_id = $1', [id]);
+      await manager.query(
+        `UPDATE data_hub_department_members m SET ${MEMBER_SOFT_DELETE}
+         WHERE m.department_id = $1 AND ${liveSql('m')}`,
+        [id, userId],
+      );
       return { id, deleted: true as const };
     });
   }
 
-  // Only users holding a data-service right can be members; existing pairs are ignored.
+  // Only users holding a data-service right can be members. A live pair is left as is; a soft-deleted pair is
+  // revived as a new membership (author and timestamps reset). `added` counts inserted + revived rows.
   async addMembers(id: number, userIds: number[], userId: number): Promise<{ id: number; added: number }> {
     return this.dataSource.transaction(async (manager) => {
       await this.lock(manager, id, 'SHARE');
@@ -86,9 +94,12 @@ export class DepartmentConfigWriteService {
       if (invalid.length > 0) throw new BadRequestException(`INVALID_MEMBERS: ${invalid.join(', ')}`);
       const inserted = returningRows<{ user_id: number }>(
         await manager.query(
-          `INSERT INTO data_hub_department_members (department_id, user_id, created_by)
-           SELECT $1, u, $3 FROM UNNEST($2::int[]) AS t(u)
-           ON CONFLICT (department_id, user_id) DO NOTHING
+          `INSERT INTO data_hub_department_members AS m (department_id, user_id, created_by, updated_by)
+           SELECT $1, u, $3, $3 FROM UNNEST($2::int[]) AS t(u)
+           ON CONFLICT (department_id, user_id) DO UPDATE
+             SET deleted_at = NULL, is_deleted = false, deleted_by = NULL,
+                 created_by = $3, updated_by = $3, created_at = NOW(), updated_at = NOW()
+             WHERE NOT (${liveSql('m')})
            RETURNING user_id`,
           [id, userIds, userId],
         ),
@@ -97,12 +108,18 @@ export class DepartmentConfigWriteService {
     });
   }
 
-  // Ids that are not members are ignored; 404 only when none of them was a member.
-  async removeMembers(id: number, userIds: number[]): Promise<{ id: number; removed: number; user_ids: number[] }> {
+  // Soft delete. Ids that are not live members are ignored; 404 only when none of them was a member.
+  async removeMembers(
+    id: number,
+    userIds: number[],
+    userId: number,
+  ): Promise<{ id: number; removed: number; user_ids: number[] }> {
     const deleted = returningRows<{ user_id: number }>(
       await this.dataSource.query(
-        'DELETE FROM data_hub_department_members WHERE department_id = $1 AND user_id = ANY($2::int[]) RETURNING user_id',
-        [id, userIds],
+        `UPDATE data_hub_department_members m SET ${MEMBER_SOFT_DELETE}
+         WHERE m.department_id = $1 AND m.user_id = ANY($3::int[]) AND ${liveSql('m')}
+         RETURNING m.user_id`,
+        [id, userId, userIds],
       ),
     );
     if (deleted.length === 0) throw new NotFoundException('MEMBER_NOT_FOUND');

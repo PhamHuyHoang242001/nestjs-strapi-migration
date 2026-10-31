@@ -59,12 +59,12 @@ Plan: `plans/261026-data-hub-permissions/`. Codes are seeded by migration `26102
 
 ### Department config (`/v1/data-hub/department-configs`)
 - `GET /` (keyword/page/limit, newest first) → `{ data:[{id,code,name,updated_at,member_count}], meta }`.
-- `GET /:id` → `{ id, code, name, members:[{id,email,can_create,can_update}], created_by_user, updated_by_user, created_at, updated_at }`. Member rights are the user's current codes ("Không có quyền" when both false).
+- `GET /:id` → `{ id, code, name, members:[{id,email,can_create,can_update,created_by_user,updated_by_user,created_at,updated_at}], created_by_user, updated_by_user, created_at, updated_at }`. Member rights are the user's current codes ("Không có quyền" when both false).
 - `POST /` / `PUT /:id` body `{ code (^[A-Za-z0-9_-]{1,100}$), name(≤255) }`; code unique case-insensitively among live rows → 409 `DEPARTMENT_CODE_EXISTS`; `PUT` with no change → 400 `NO_CHANGES`.
-- `DELETE /:id` → soft delete + removes members; 409 `DEPARTMENT_IN_USE` while a live data service (active version) uses it (consumers have no department since 2026-10-28). Locks the row FOR UPDATE; data-service writes take FOR SHARE on the department they use.
+- `DELETE /:id` → soft delete + soft-deletes its members (deleted_by); 409 `DEPARTMENT_IN_USE` while a live data service (active version) uses it (consumers have no department since 2026-10-28). Locks the row FOR UPDATE; data-service writes take FOR SHARE on the department they use.
 - `GET /:id/member-candidates?keyword=` → users holding `dh_data_service_create` or `_update` that are not members yet: `{ data:[{id,email,can_create,can_update}], meta }`.
-- `POST /:id/members {user_ids:[1..100 distinct]}` → `{ id, added }` (existing pairs ignored); every id must be a live user holding a data-service right, else 400 `INVALID_MEMBERS: <ids>`.
-- `DELETE /:id/members` body `{ user_ids: int[1..100] }` → `{ id, removed, user_ids }` (user_ids = những người thực sự đã bị xoá; id không phải thành viên được bỏ qua) or 404 `MEMBER_NOT_FOUND` khi không ai trong danh sách là thành viên.
+- `POST /:id/members {user_ids:[1..100 distinct]}` → `{ id, added }` (live pairs ignored; a soft-deleted pair is revived with new created_by/created_at, counted in added); every id must be a live user holding a data-service right, else 400 `INVALID_MEMBERS: <ids>`.
+- `DELETE /:id/members` body `{ user_ids: int[1..100] }` → `{ id, removed, user_ids }` (xoá mềm: deleted_at, is_deleted, deleted_by; user_ids = những người thực sự đã bị xoá; id không phải thành viên được bỏ qua) or 404 `MEMBER_NOT_FOUND` khi không ai trong danh sách là thành viên.
 
 ---
 

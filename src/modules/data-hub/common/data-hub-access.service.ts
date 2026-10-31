@@ -101,7 +101,7 @@ export class DataHubAccessService {
     const rows: Array<{ department_id: number }> = await runner.query(
       `SELECT m.department_id FROM data_hub_department_members m
        JOIN data_hub_departments d ON d.id = m.department_id AND ${liveSql('d')}
-       WHERE m.user_id = $1 ORDER BY m.department_id`,
+       WHERE m.user_id = $1 AND ${liveSql('m')} ORDER BY m.department_id`,
       [userId],
     );
     return rows.map((r) => Number(r.department_id));
