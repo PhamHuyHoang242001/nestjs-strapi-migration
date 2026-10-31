@@ -22,7 +22,12 @@ import { DataHubPermissionGuard, RequireDataHubPermission } from '../common/data
 import { DataHubPageQueryDto } from '../common/data-hub-query.util';
 import { DepartmentConfigQueryService } from './department-config-query.service';
 import { DepartmentConfigWriteService } from './department-config-write.service';
-import { AddDepartmentMembersDto, DepartmentConfigBodyDto, WritableDepartmentsQueryDto } from './dto';
+import {
+  AddDepartmentMembersDto,
+  DepartmentConfigBodyDto,
+  RemoveDepartmentMembersDto,
+  WritableDepartmentsQueryDto,
+} from './dto';
 
 // Department config (Đơn vị phát hành) and its members; every route needs a dh_department_* code.
 @Controller('v1/data-hub/department-configs')
@@ -85,11 +90,11 @@ export class DepartmentConfigController {
     return this.write.addMembers(id, dto.user_ids, dataHubCaller(req).id);
   }
 
-  @ApiOperation({ summary: 'Remove a member' })
-  @Delete(':id/members/:userId')
+  @ApiOperation({ summary: 'Remove members' })
+  @Delete(':id/members')
   @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
-  removeMember(@Param('id', ParseIntPipe) id: number, @Param('userId', ParseIntPipe) userId: number) {
-    return this.write.removeMember(id, userId);
+  removeMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: RemoveDepartmentMembersDto) {
+    return this.write.removeMembers(id, dto.user_ids);
   }
 }
 

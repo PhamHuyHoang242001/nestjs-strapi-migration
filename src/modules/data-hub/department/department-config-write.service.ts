@@ -97,15 +97,17 @@ export class DepartmentConfigWriteService {
     });
   }
 
-  async removeMember(id: number, memberUserId: number): Promise<{ id: number; user_id: number; removed: true }> {
-    const deleted = returningRows<{ id: number }>(
+  // Ids that are not members are ignored; 404 only when none of them was a member.
+  async removeMembers(id: number, userIds: number[]): Promise<{ id: number; removed: number; user_ids: number[] }> {
+    const deleted = returningRows<{ user_id: number }>(
       await this.dataSource.query(
-        'DELETE FROM data_hub_department_members WHERE department_id = $1 AND user_id = $2 RETURNING id',
-        [id, memberUserId],
+        'DELETE FROM data_hub_department_members WHERE department_id = $1 AND user_id = ANY($2::int[]) RETURNING user_id',
+        [id, userIds],
       ),
     );
     if (deleted.length === 0) throw new NotFoundException('MEMBER_NOT_FOUND');
-    return { id, user_id: memberUserId, removed: true };
+    const removedIds = deleted.map((r) => Number(r.user_id));
+    return { id, removed: removedIds.length, user_ids: removedIds };
   }
 
   private async lock(manager: EntityManager, id: number, mode: 'UPDATE' | 'SHARE'): Promise<LockedDepartment> {

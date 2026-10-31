@@ -47,7 +47,7 @@ Plan: `plans/261026-data-hub-permissions/`. Codes are seeded by migration `26102
 | | `PUT /data-services/:id`, `PATCH /data-services/:id/status` | `dh_data_service_update` + member of the active version's department (and of the new one when it changes) |
 | Department config | `GET /department-configs`, `GET /department-configs/:id` | `dh_department_view` |
 | | `POST /department-configs` | `dh_department_create` |
-| | `PUT /department-configs/:id`, `GET /:id/member-candidates`, `POST /:id/members`, `DELETE /:id/members/:userId` | `dh_department_update` |
+| | `PUT /department-configs/:id`, `GET /:id/member-candidates`, `POST /:id/members`, `DELETE /:id/members` | `dh_department_update` |
 | | `DELETE /department-configs/:id` | `dh_department_delete` |
 
 - Missing code → 403 `PERMISSION_DENIED: <code>`. Department rule → 403 `DEPARTMENT_FORBIDDEN` (checked right after the row lock, before validation/NO_CHANGES). A service whose version has no department can only be written by super_admin.
@@ -64,7 +64,7 @@ Plan: `plans/261026-data-hub-permissions/`. Codes are seeded by migration `26102
 - `DELETE /:id` → soft delete + removes members; 409 `DEPARTMENT_IN_USE` while a live data service (active version) uses it (consumers have no department since 2026-10-28). Locks the row FOR UPDATE; data-service writes take FOR SHARE on the department they use.
 - `GET /:id/member-candidates?keyword=` → users holding `dh_data_service_create` or `_update` that are not members yet: `{ data:[{id,email,can_create,can_update}], meta }`.
 - `POST /:id/members {user_ids:[1..100 distinct]}` → `{ id, added }` (existing pairs ignored); every id must be a live user holding a data-service right, else 400 `INVALID_MEMBERS: <ids>`.
-- `DELETE /:id/members/:userId` → `{ id, user_id, removed:true }` or 404 `MEMBER_NOT_FOUND`.
+- `DELETE /:id/members` body `{ user_ids: int[1..100] }` → `{ id, removed, user_ids }` (user_ids = những người thực sự đã bị xoá; id không phải thành viên được bỏ qua) or 404 `MEMBER_NOT_FOUND` khi không ai trong danh sách là thành viên.
 
 ---
 

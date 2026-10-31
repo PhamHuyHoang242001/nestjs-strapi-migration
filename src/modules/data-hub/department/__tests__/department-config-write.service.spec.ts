@@ -99,10 +99,16 @@ describe('DepartmentConfigWriteService', () => {
     await expect(make([], [11]).service.addMembers(5, [11], 3)).rejects.toThrow('DEPARTMENT_NOT_FOUND');
   });
 
-  it('removeMember deletes the link or 404s', async () => {
-    const ok = make([[/DELETE FROM data_hub_department_members/, () => [[{ id: 1 }], 1]]]);
-    await expect(ok.service.removeMember(5, 11)).resolves.toEqual({ id: 5, user_id: 11, removed: true });
+  it('removeMembers deletes the given links in one query, ignoring non-members', async () => {
+    const ok = make([[/DELETE FROM data_hub_department_members/, () => [[{ user_id: 11 }, { user_id: 12 }], 2]]]);
+    await expect(ok.service.removeMembers(5, [11, 12, 99])).resolves.toEqual({ id: 5, removed: 2, user_ids: [11, 12] });
+    const del = ok.calls.find((c) => /DELETE FROM data_hub_department_members/.test(c.sql));
+    expect(del?.sql).toContain('user_id = ANY($2::int[])');
+    expect(del?.params).toEqual([5, [11, 12, 99]]);
+  });
+
+  it('removeMembers 404s when none of the ids is a member', async () => {
     const missing = make([[/DELETE FROM data_hub_department_members/, () => [[], 0]]]);
-    await expect(missing.service.removeMember(5, 11)).rejects.toThrow('MEMBER_NOT_FOUND');
+    await expect(missing.service.removeMembers(5, [11])).rejects.toThrow('MEMBER_NOT_FOUND');
   });
 });

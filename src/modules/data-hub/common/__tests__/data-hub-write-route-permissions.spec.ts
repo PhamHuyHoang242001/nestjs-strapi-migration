@@ -40,7 +40,7 @@ const EXPECTED: Record<string, Record<string, string[] | 'super_admin'>> = {
     remove: [P.DEPARTMENT_DELETE],
     candidates: [P.DEPARTMENT_UPDATE],
     addMembers: [P.DEPARTMENT_UPDATE],
-    removeMember: [P.DEPARTMENT_UPDATE],
+    removeMembers: [P.DEPARTMENT_UPDATE],
   },
 };
 
