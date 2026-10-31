@@ -37,6 +37,7 @@ import {
   RowResult,
   splitList,
   validateDto,
+  withSheetNames,
 } from './import-workbook.util';
 
 const CONSUMER_SHEET = 'CONSUMERS';
@@ -137,8 +138,8 @@ export class ConsumerImportService {
           failed,
         },
       },
-      consumers: entries,
-      issues: issues.issues,
+      consumers: withSheetNames(CONSUMER_IMPORT_LAYOUT, entries),
+      issues: withSheetNames(CONSUMER_IMPORT_LAYOUT, issues.issues),
       result_file: await buildResultFile(CONSUMER_IMPORT_LAYOUT, workbook, results, issues.issues),
     };
   }
@@ -238,8 +239,8 @@ export class LogicalTermImportService {
           failed,
         },
       },
-      logical_terms: entries,
-      issues: issues.issues,
+      logical_terms: withSheetNames(LOGICAL_TERM_IMPORT_LAYOUT, entries),
+      issues: withSheetNames(LOGICAL_TERM_IMPORT_LAYOUT, issues.issues),
       result_file: await buildResultFile(LOGICAL_TERM_IMPORT_LAYOUT, workbook, results, issues.issues),
     };
   }
@@ -458,8 +459,8 @@ export class DataServiceImportService {
           failed,
         },
       },
-      services,
-      issues: issues.issues,
+      services: withSheetNames(layout, services),
+      issues: withSheetNames(layout, issues.issues),
       result_file: await buildResultFile(layout, workbook, results, issues.issues),
     };
   }

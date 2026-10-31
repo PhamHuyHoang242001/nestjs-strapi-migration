@@ -427,6 +427,12 @@ export async function buildResultWorkbook(
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+// Responses name the sheet the user sees in Excel (APP_THU_HUONG...), not the internal layout key.
+export function withSheetNames<T extends { sheet: string }>(layout: ImportLayout, items: T[]): T[] {
+  const names = new Map(layout.sheets.map((s) => [s.key, s.name]));
+  return items.map((item) => ({ ...item, sheet: names.get(item.sheet) ?? item.sheet }));
+}
+
 // Result file of a run: the annotated workbook as a named base64 attachment.
 export async function buildResultFile(
   layout: ImportLayout,

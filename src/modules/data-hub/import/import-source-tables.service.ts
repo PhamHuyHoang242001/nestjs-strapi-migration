@@ -24,6 +24,7 @@ import {
   loadImportWorkbook,
   RowResult,
   validateDto,
+  withSheetNames,
 } from './import-workbook.util';
 
 // Terms to add to one table: a table the service already uses (`own`) or a new one.
@@ -396,8 +397,8 @@ export class SourceTableImportService {
           failed: count(serviceStatus, 'failed', 'skipped'),
         },
       },
-      source_tables: entries,
-      issues: issues.issues,
+      source_tables: withSheetNames(SOURCE_TABLE_IMPORT_LAYOUT, entries),
+      issues: withSheetNames(SOURCE_TABLE_IMPORT_LAYOUT, issues.issues),
       result_file: await buildResultFile(SOURCE_TABLE_IMPORT_LAYOUT, workbook, results, issues.issues),
     };
   }
