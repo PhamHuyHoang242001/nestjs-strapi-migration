@@ -36,9 +36,9 @@ const HOLDS_UPLOAD_CODE_SQL = `(
   )
 )`;
 
-// Live and active: not deleted, status active (what login requires) and not switched off in user management.
+// Live and active: not deleted and status active (what login requires).
 const LIVE_USER_SQL = `u.deleted_at IS NULL AND COALESCE(u.is_deleted, false) = false AND u.email IS NOT NULL
-  AND u.status = 'active' AND u.is_active IS NOT FALSE`;
+  AND u.status = 'active'`;
 
 // Supporter management, decoupled from package create/bump/edit: one full-replace write gated on
 // creator ∨ current supporter, plus the picker of users who may be added.

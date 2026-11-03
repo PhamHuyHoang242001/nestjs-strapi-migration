@@ -183,12 +183,12 @@ describe('AssetHubSupporterService.listCandidates', () => {
     expect(rowArgs).toEqual(['%ab%', 20, 0]);
   });
 
-  it('lists only active users (status active, not switched off)', async () => {
+  it('lists only active users (status active)', async () => {
     const { service, dataSource } = makeService({});
     await stubList(service, dataSource).listCandidates('prompt', {}, CREATOR);
 
     const [countSql] = dataSource.query.mock.calls[0] as [string, unknown[]];
-    expect(countSql).toContain("u.status = 'active' AND u.is_active IS NOT FALSE");
+    expect(countSql).toContain("u.status = 'active'");
   });
 
   it('prompt: lists every live user (no upload-code filter)', async () => {
