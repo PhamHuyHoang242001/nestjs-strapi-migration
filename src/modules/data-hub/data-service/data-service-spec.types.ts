@@ -3,7 +3,7 @@
 
 export const API_SPEC_FIELDS = [
   'method',
-  'base_url',
+  'domain_id',
   'endpoint_path',
   'auth_type',
   'peak_tps',

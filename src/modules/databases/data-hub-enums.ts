@@ -44,23 +44,6 @@ export enum DataHubApiMethod {
   DELETE = 'DELETE',
 }
 
-export enum DataHubApiBaseUrl {
-  API_INT = 'API_INT',
-  API_EXT = 'API_EXT',
-  API_OPEN = 'API_OPEN',
-  API_UAT = 'API_UAT',
-  API = 'API',
-}
-
-// Host behind each base URL code (FE shows the host; DB stores the code)
-export const DATA_HUB_API_BASE_URL_HOSTS: Record<DataHubApiBaseUrl, string> = {
-  [DataHubApiBaseUrl.API_INT]: 'api-int.vpbank.com.vn',
-  [DataHubApiBaseUrl.API_EXT]: 'api-ext.vpbank.com.vn',
-  [DataHubApiBaseUrl.API_OPEN]: 'api-open.vpbank.com.vn',
-  [DataHubApiBaseUrl.API_UAT]: 'api-uat.vpbank.com.vn',
-  [DataHubApiBaseUrl.API]: 'api.vpbank.com.vn',
-};
-
 export enum DataHubApiAuthType {
   X_SECRET_KEY = 'X_SECRET_KEY',
   X_IBM_CLIENT_ID = 'X_IBM_CLIENT_ID',

@@ -44,7 +44,6 @@ function assertSpecMatchesType(type: DataHubServiceType, dto: { api_spec?: unkno
 // Physical term ids are filled in once the service's source tables and terms have been written.
 const toSource = (dto: CreateDataServiceDto | UpdateDataServiceDto): VersionSource => ({
   ...dto,
-  usage_guide_html: dto.usage_guide_html ?? '',
   physical_term_ids: [],
 });
 

@@ -33,7 +33,7 @@ export interface ListRow {
   request_unit_name: string;
   method: string | null;
   endpoint_path: string | null;
-  base_url: string | null;
+  domain_url: string | null;
   update_frequency: string | null;
   flow_direction: string | null;
   export_frequency: string | null;
@@ -48,7 +48,7 @@ const LIST_COLUMNS = `
   v.division_id, d.code AS division_code, d.name AS division_name,
   v.department_id, dp.code AS department_code, dp.name AS department_name,
   v.request_unit_id, ru.code AS request_unit_code, ru.name AS request_unit_name,
-  a.method, a.endpoint_path, a.base_url, a.update_frequency,
+  a.method, a.endpoint_path, dm.url AS domain_url, a.update_frequency,
   sf.flow_direction, sf.export_frequency, sf.file_format, sf.folder_path AS sftp_folder_path`;
 
 const ref = (id: number, code: string, name: string): OrgRef => ({ id: Number(id), code, name });

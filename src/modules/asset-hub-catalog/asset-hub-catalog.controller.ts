@@ -70,8 +70,9 @@ export class AssetHubCatalogController {
   // workspace: holders of its upload code (prompt: every live user). Paged id + email, like /users.
   @ApiOperation({ summary: 'List users eligible as supporters of a workspace (upload holders; prompt: all)' })
   @Get(':type/supporter-candidates')
-  listSupporterCandidates(@Param() p: AiHubWorkspaceParamDto, @Query() q: ListUsersQueryDto) {
-    return this.supporterService.listCandidates(p.type, { page: q.page, limit: q.limit, search: q.search });
+  listSupporterCandidates(@Param() p: AiHubWorkspaceParamDto, @Query() q: ListUsersQueryDto, @Req() req: RequestWithInfo) {
+    const userId = req.info?.user?.id as number;
+    return this.supporterService.listCandidates(p.type, { page: q.page, limit: q.limit, search: q.search }, userId);
   }
 
   // PUT /v1/asset-hub/:type/items/:id/supporters — full-replace the package's supporters ([] clears).

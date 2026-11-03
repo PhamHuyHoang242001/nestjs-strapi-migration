@@ -34,7 +34,7 @@ export const FIELD_META: FieldMeta[] = [
   f('service_owners', 'business', 'refList', 'SO dịch vụ', 'Service owners'),
 
   f('api_method', 'technical', 'scalar', 'Phương thức', 'HTTP method'),
-  f('api_base_url', 'technical', 'scalar', 'Base URL', 'Base URL'),
+  f('api_domain', 'technical', 'ref', 'Domain', 'Domain'),
   f('api_endpoint_path', 'technical', 'scalar', 'Endpoint', 'Endpoint path'),
   f('api_auth_type', 'technical', 'scalar', 'Kiểu xác thực', 'Auth type'),
   f('api_peak_tps', 'technical', 'scalar', 'TPS cao điểm', 'Peak TPS'),

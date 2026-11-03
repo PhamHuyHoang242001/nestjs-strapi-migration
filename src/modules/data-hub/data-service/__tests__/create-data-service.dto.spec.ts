@@ -23,11 +23,12 @@ describe('usage_guide_html of the data-service form', () => {
       (e) => e.property === 'usage_guide_html',
     );
 
-  it.each([CreateDataServiceDto, UpdateDataServiceDto])('%p accepts a missing or empty guide', (cls) => {
-    expect(guideErrors(cls, undefined)).toEqual([]);
-    expect(guideErrors(cls, '')).toEqual([]);
+  it.each([CreateDataServiceDto, UpdateDataServiceDto])('%p requires a guide with visible text', (cls) => {
     expect(guideErrors(cls, '<p>x</p>')).toEqual([]);
-    expect(guideErrors(cls, 123)).toHaveLength(1);
+    expect(guideErrors(cls, 'Bổ sung hướng dẫn sử dụng sau')).toEqual([]);
+    for (const empty of [undefined, '', '   ', '<p><br></p>', '<p>&nbsp;</p>', 123]) {
+      expect(guideErrors(cls, empty)).toHaveLength(1);
+    }
   });
 });
 

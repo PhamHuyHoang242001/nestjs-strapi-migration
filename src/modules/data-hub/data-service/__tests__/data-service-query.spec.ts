@@ -40,7 +40,7 @@ const listRow = {
   request_unit_name: 'Req',
   method: 'GET',
   endpoint_path: '/v1/x',
-  base_url: 'API_INT',
+  domain_url: 'https://api-int.vpbank.com.vn',
   update_frequency: 'REALTIME',
   flow_direction: null,
   export_frequency: null,
@@ -216,7 +216,10 @@ describe('DataHubDataServiceDetailQueryService', () => {
   it('maps every user reference to {id, email} using one users query', async () => {
     const { dataSource, calls } = makeDataSource([
       [/FROM data_hub_data_services s\s+JOIN/, [detailRow]],
-      [/FROM data_hub_data_service_version_api_specs/, [{ method: 'GET', base_url: 'API_INT' }]],
+      [
+        /FROM data_hub_data_service_version_api_specs/,
+        [{ method: 'GET', domain_id: 4, domain_url: 'https://api-int.vpbank.com.vn', domain_type: 'internal' }],
+      ],
       [/version_requesters/, [{ user_id: 3 }]],
       [/version_it_supporters/, [{ user_id: 4 }]],
       [/version_service_owners/, [{ user_id: 6 }]],
@@ -249,7 +252,11 @@ describe('DataHubDataServiceDetailQueryService', () => {
       { id: 6, email: 'u6@x.vn' },
       { id: 1, email: 'u1@x.vn' },
     ]);
-    expect(detail.version_active.api_spec).toMatchObject({ method: 'GET', base_url_host: 'api-int.vpbank.com.vn' });
+    expect(detail.version_active.api_spec).toEqual({
+      method: 'GET',
+      domain_id: 4,
+      domain: { id: 4, url: 'https://api-int.vpbank.com.vn', type: 'internal' },
+    });
     expect(detail.version_active.sftp_spec).toBeNull();
     expect(detail.version_active.term_count).toBe(2);
     expect(detail.pending_version_id).toBeNull();
@@ -417,7 +424,7 @@ describe('DataHubDataServiceExportService', () => {
             service_type: 'SFTP',
             status: 'inactive',
             method: null,
-            base_url: null,
+            domain_url: null,
             endpoint_path: null,
             update_frequency: null,
             flow_direction: 'PUSH',
@@ -441,7 +448,7 @@ describe('DataHubDataServiceExportService', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       stt: 1,
-      endpoint_or_folder: 'api-int.vpbank.com.vn/v1/x',
+      endpoint_or_folder: 'https://api-int.vpbank.com.vn/v1/x',
       consumers: 'A, B',
       status: 'Hoạt động',
     });

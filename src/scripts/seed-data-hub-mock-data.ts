@@ -202,13 +202,13 @@ async function importService(m: EntityManager, s: Row, marker: string, r: Refs, 
   );
   if (isApi) {
     await m.query(
-      `INSERT INTO data_hub_data_service_version_api_specs (data_service_version_id, method, base_url, endpoint_path,
+      `INSERT INTO data_hub_data_service_version_api_specs (data_service_version_id, method, domain_id, endpoint_path,
          auth_type, update_frequency, sync_mode, timeout, sample_request, sample_response)
-       VALUES ($1, $2, $3, $4, $5, $6, 'SYNC', '30s', $7, $8)`,
+       VALUES ($1, $2, (SELECT d.id FROM integration_domain_configs d WHERE d.url = $3), $4, $5, $6, 'SYNC', '30s', $7, $8)`,
       [
         ver.id,
         ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(s.method) ? s.method : (w.add(`method:${s.method}`), 'GET'),
-        M.apiBaseUrl(s.endpoint_domain, w),
+        M.apiDomainUrl(s.endpoint_domain, w),
         M.truncate(s.endpoint_path, 1000),
         M.apiAuthType(s.auth_type, w),
         M.apiUpdateFrequency(s.frequency, w),

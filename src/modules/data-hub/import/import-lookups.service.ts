@@ -3,7 +3,8 @@ import { DataSource } from 'typeorm';
 import { DataHubAccessService, DataHubCaller } from '../common/data-hub-access.service';
 import { liveSql } from '../common/data-hub-query.util';
 import { DetailSourceTable, loadVersionSourceTables } from '../data-service/data-service-source-tables-detail.util';
-import { codeMap, ConsumerRef, consumerMap, lower, uniqueLower, userMap } from './import-helpers.util';
+import { normalizeDomainUrl } from '@modules/domain/domain-url.util';
+import { codeMap, ConsumerRef, consumerMap, domainMap, lower, uniqueLower, userMap } from './import-helpers.util';
 import { ImportRow, splitList } from './import-workbook.util';
 
 // Everything a service upload refers to by code or email, looked up once per upload. Keys are lower case.
@@ -13,6 +14,8 @@ export interface ImportReferences {
   departments: Map<string, number>;
   // Live consumers; `active` = may be picked on a service.
   consumers: Map<string, ConsumerRef>;
+  // Active domains by normalized url.
+  domains: Map<string, number>;
   // Live users; an email shared by several live users maps to null (cannot tell which one is meant).
   users: Map<string, number | null>;
   // Departments the caller may create services in; null = every department (super_admin).
@@ -29,11 +32,13 @@ export class DataServiceImportReferenceLookupService {
   async load(rows: ImportRow[], caller: DataHubCaller): Promise<ImportReferences> {
     const pick = (key: string) => uniqueLower(rows.map((r) => r.values[key]));
     const many = (keys: string[]) => uniqueLower(rows.flatMap((r) => keys.flatMap((k) => splitList(r.values[k]))));
-    const [requestUnits, divisions, departments, consumers, users, writable] = await Promise.all([
+    const urls = [...new Set(rows.map((r) => normalizeDomainUrl(r.values.domain ?? '')).filter(Boolean))];
+    const [requestUnits, divisions, departments, consumers, domains, users, writable] = await Promise.all([
       codeMap(this.dataSource, 'data_hub_request_units', pick('request_unit')),
       codeMap(this.dataSource, 'data_hub_divisions', pick('division')),
       codeMap(this.dataSource, 'data_hub_departments', pick('department')),
       consumerMap(this.dataSource, many(['consumers'])),
+      domainMap(this.dataSource, urls),
       userMap(this.dataSource, many(['requesters', 'it_supporters', 'service_owners'])),
       this.access.writableDepartmentIds(caller, 'create'),
     ]);
@@ -42,6 +47,7 @@ export class DataServiceImportReferenceLookupService {
       divisions,
       departments,
       consumers,
+      domains,
       users,
       writableDepartmentIds: writable === null ? null : new Set(writable),
     };

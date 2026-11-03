@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DataHubCaller } from '../common/data-hub-access.service';
+import { normalizeDomainUrl } from '@modules/domain/domain-url.util';
 import { liveSql } from '../common/data-hub-query.util';
 import { DataHubConsumerWriteService } from '../consumer/data-hub-consumer-write.service';
 import { CreateConsumerDto } from '../consumer/dto';
@@ -265,16 +266,7 @@ export interface ServiceDraft {
   valid?: boolean;
 }
 
-const API_SPEC_KEYS = [
-  'method',
-  'base_url',
-  'endpoint_path',
-  'auth_type',
-  'peak_tps',
-  'update_frequency',
-  'sync_mode',
-  'timeout',
-];
+const API_SPEC_KEYS = ['method', 'endpoint_path', 'auth_type', 'peak_tps', 'update_frequency', 'sync_mode', 'timeout'];
 const SFTP_SPEC_KEYS = [
   'folder_path',
   'file_name_pattern',
@@ -287,7 +279,6 @@ const SFTP_SPEC_KEYS = [
 // Columns whose value is an enum code: upper-cased so "get" or "sync" still match.
 const ENUM_KEYS = new Set([
   'method',
-  'base_url',
   'auth_type',
   'update_frequency',
   'sync_mode',
@@ -344,6 +335,7 @@ export function buildServiceDraft(
     name: v.name,
     short_description: v.short_description,
     purpose: optional(v.purpose),
+    usage_guide_html: v.usage_guide_html,
     request_unit_id: lookupCode(SERVICES_SHEET, r, 'request_unit', refs.requestUnits, issues),
     division_id: lookupCode(SERVICES_SHEET, r, 'division', refs.divisions, issues),
     department_id: departmentId,
@@ -355,6 +347,7 @@ export function buildServiceDraft(
   if (kind === 'API') {
     plain.api_spec = {
       ...specOf(API_SPEC_KEYS, v),
+      domain_id: lookupDomain(r, refs.domains, issues),
       sample_request: parseJson(r, 'sample_request', issues),
       sample_response: parseJson(r, 'sample_response', issues),
     };
@@ -362,6 +355,23 @@ export function buildServiceDraft(
     plain.sftp_spec = specOf(SFTP_SPEC_KEYS, v);
   }
   return { row: r.row, plain };
+}
+
+// Domain cell is a url: folded like stored urls, then it must be an active domain.
+function lookupDomain(r: ImportRow, domains: Map<string, number>, issues: ImportIssueCollector): number | undefined {
+  const url = normalizeDomainUrl(r.values.domain);
+  if (url === '') return undefined;
+  const id = domains.get(url);
+  if (id === undefined) {
+    issues.add(
+      SERVICES_SHEET,
+      r.row,
+      'domain',
+      'DOMAIN_NOT_FOUND',
+      `Domain "${r.values.domain}" không tồn tại hoặc ngừng hoạt động`,
+    );
+  }
+  return id;
 }
 
 // Property of CreateDataServiceDto -> column of the sheet.
@@ -373,11 +383,15 @@ const COLUMN_OF: Record<string, string> = {
   requester_user_ids: 'requesters',
   it_supporter_user_ids: 'it_supporters',
   service_owner_user_ids: 'service_owners',
+  domain_id: 'domain',
 };
 
 export function locateServiceDtoPath(row: number, path: string) {
   const parts = path.split('.');
-  const key = parts[0] === 'api_spec' || parts[0] === 'sftp_spec' ? parts[1] : (COLUMN_OF[parts[0]] ?? parts[0]);
+  const key =
+    parts[0] === 'api_spec' || parts[0] === 'sftp_spec'
+      ? (COLUMN_OF[parts[1]] ?? parts[1])
+      : (COLUMN_OF[parts[0]] ?? parts[0]);
   return { sheet: SERVICES_SHEET, row, key };
 }
 

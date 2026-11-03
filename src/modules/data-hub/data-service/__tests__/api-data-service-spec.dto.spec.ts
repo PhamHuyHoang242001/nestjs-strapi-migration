@@ -5,7 +5,7 @@ import { SftpDataServiceSpecDto } from '../dto/sftp-data-service-spec.dto';
 
 const base = {
   method: 'GET',
-  base_url: 'API_INT',
+  domain_id: 1,
   endpoint_path: '/v1/x',
   auth_type: 'CLIENT_ID',
   update_frequency: 'REALTIME',
@@ -61,5 +61,15 @@ describe('removed spec fields', () => {
     expect(rejected(SftpDataServiceSpecDto, plain).sort()).toEqual(
       ['auth_type', 'host', 'key_vault_method', 'port', 'vault_account'].sort(),
     );
+  });
+});
+
+describe('ApiDataServiceSpecDto domain_id', () => {
+  it('requires a positive integer id (the old base_url code is rejected)', () => {
+    expect(invalidFields({ sync_mode: 'ASYNC', domain_id: 3 })).toEqual([]);
+    for (const v of [undefined, 0, -1, 1.5, 'API_INT', 'https://api-int.vpbank.com.vn']) {
+      expect(invalidFields({ sync_mode: 'ASYNC', domain_id: v })).toEqual(['domain_id']);
+    }
+    expect(invalidFields({ sync_mode: 'ASYNC', base_url: 'API_INT' })).toEqual([]);
   });
 });

@@ -129,7 +129,7 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
   version_active: { id, version_no, state, name, short_description, purpose, usage_guide_html,
     changelog_note, submitted_by_user, reviewed_by_user, reviewed_at, created_at,
     request_unit:{id,code,name}, division:{...}, department:{...},
-    api_spec: {...all api spec fields, base_url_host}|null, sftp_spec: {...}|null,
+    api_spec: {...all api spec fields, domain_id, domain: {id, url, type}}|null, sftp_spec: {...}|null,
     requesters:[{id,email}], it_supporters:[{id,email}], service_owners:[{id,email}] (SO dịch vụ),
     consumers:[{id,code,name,category,short_description,so_apps:[{id,email}]}], term_count,
     source_tables:[{id,name,description,terms:[{id,code,technical_description,example_value,logical_term:{id,code}|null}]}] } }
@@ -146,7 +146,7 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
 - **Body:**
   ```
   { service_type, name(≤90), short_description(≤400), purpose?(≤1000), request_unit_id, division_id, department_id,
-    usage_guide_html? (optional since 2026-10-28; empty/missing stored as ''), consumer_ids (1..20), requester_user_ids (≥1),
+    usage_guide_html (required since 2026-11-03 on POST and PUT; must contain visible text, so '' or an empty editor like <p><br></p> → 400. Versions saved earlier with '' keep it until the next edit; the source table import copies the stored guide and is not blocked), consumer_ids (1..20), requester_user_ids (≥1),
     it_supporter_user_ids (≥1), service_owner_user_ids (SO dịch vụ, 1..50 distinct users, required since 2026-10-28), source_tables?, changelog_note?, api_spec? | sftp_spec? }
   ```
   - `source_tables` (2026-10-27, replaces `source_table` text and `physical_term_ids`): `[{ id?, name(≤255), description?(≤2000), terms:[{ id?, code(≤255), technical_description(≤2000), data_type(required, ≤100, free text), is_required?: boolean (default false), example_value?(≤1000), logical_term_id?: number|null }] (1..500) }] (≤50)` — the full desired set.
@@ -156,7 +156,8 @@ Replaced by the shared `GET /v1/data-hub/stats` (section A).
     - Table names unique system-wide (409 `SOURCE_TABLE_NAME_EXISTS`); codes unique per table (409 `PHYSICAL_CODE_EXISTS: table.code`); in-payload duplicates → 400 `DUPLICATE_SOURCE_TABLES` / `DUPLICATE_PHYSICAL_TERMS` / `DUPLICATE_TERM_CODES: <table>: <codes>`. Case-insensitive.
     - `logical_term_id` maps the term to a live logical term (null = unmapped, absent = keep the current mapping); unknown/deleted → 400 `INVALID_LOGICAL_TERMS: <ids>`. Mapped logical terms whose physicals change (renamed, moved, deleted, re-mapped — both old and new) get a logical history row. Picker: `GET /logical-terms/options`.
   - The spec object must match `service_type`: exactly one present, else 400 `SPEC_MISMATCH`.
-  - `api_spec`: `method, base_url, endpoint_path, auth_type, peak_tps?, update_frequency, sync_mode (SYNC|ASYNC), timeout?, sample_request?, sample_response?`. The samples are any JSON.
+  - `api_spec`: `method, domain_id (id of an active domain from GET /v1/domains; else 400 INVALID_DOMAIN. Replaced base_url since 2026-11-03), endpoint_path, auth_type, peak_tps?, update_frequency, sync_mode (SYNC|ASYNC), timeout?, sample_request?, sample_response?`. The samples are any JSON.
+  - Change log: the domain shows as field `api_domain` (old/new = url).
   - `timeout` is required (non-empty, ≤100) when `sync_mode = SYNC`; optional for `ASYNC` (2026-10-26).
   - `sftp_spec`: `folder_path?, file_name_pattern?, file_format, export_frequency, max_file_size?, encryption, flow_direction?`.
   - Removed 2026-10-29 (columns dropped; if still sent they are stripped by the global whitelist pipe and not stored): API `token_endpoint`, `token_auth_method`, sync mode `BATCH`
@@ -345,3 +346,11 @@ consumer/      controller, query/write/export services, dto/, __tests__/
 import/        ALL bulk imports in one folder: data-hub-import.module/controller, import.service (consumers, logical terms, services), import-source-tables.service, import-templates.service, import-lookups.service, import-layouts, import-workbook.util (reader, file guard, issue collector, result workbook, template builder), import-helpers.util, import-dto, __tests__/
 ```
 Register `DataHubModule` in `src/app.module.ts`.
+
+
+## Domains (shared, system-wide; table `integration_domain_configs`)
+
+- `GET /v1/domains?type=internal|partner&status=active|inactive` (default status=active) → `{ data: [{ id, url, status, type }] }`, ordered by url. Read-only; rows are managed by migration/SQL.
+- Seeded: api-int / api-uat / api (internal), api-ext / api-open (partner), all `https://….vpbank.com.vn`.
+- Data service import (API and SFTP sheets): column `Hướng dẫn sử dụng` (key usage_guide_html, after SO dịch vụ) is required; the template sample says "Bổ sung hướng dẫn sử dụng sau".
+- Data service import (API sheet): column `Domain` takes the url (case, spaces, trailing `/`, missing `https://` are tolerated); unknown or inactive → `DOMAIN_NOT_FOUND` on the cell.

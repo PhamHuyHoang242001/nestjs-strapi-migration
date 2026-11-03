@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { DATA_HUB_API_BASE_URL_HOSTS, DataHubApiBaseUrl } from '@modules/databases/data-hub-enums';
 import { DataHubUserRefService } from '../common/data-hub-user-ref.service';
 import { activeSql, liveSql } from '../common/data-hub-query.util';
 import { loadSoAppUserIds } from '../consumer/consumer-so-apps.util';
@@ -88,9 +87,10 @@ export class DataHubDataServiceDetailQueryService {
         [versionId],
       );
     const [apiRows, sftpRows, requesters, supporters, consumers, termCount, pending, sourceTables] = await Promise.all([
-      queryRows<ApiSpecInput>(
+      queryRows<ApiSpecInput & { domain_url: string | null; domain_type: string | null }>(
         this.dataSource,
-        `SELECT ${specColumns('a', API_SPEC_FIELDS)} FROM data_hub_data_service_version_api_specs a
+        `SELECT ${specColumns('a', API_SPEC_FIELDS)}, dm.url AS domain_url, dm.type AS domain_type
+         FROM data_hub_data_service_version_api_specs a LEFT JOIN integration_domain_configs dm ON dm.id = a.domain_id
          WHERE a.data_service_version_id = $1 AND ${liveSql('a')}`,
         [versionId],
       ),
@@ -144,9 +144,13 @@ export class DataHubDataServiceDetailQueryService {
       ...[...soAppIds.values()].flat(),
     ]);
 
-    const api = apiRows[0]
-      ? { ...apiRows[0], base_url_host: DATA_HUB_API_BASE_URL_HOSTS[apiRows[0].base_url as DataHubApiBaseUrl] ?? null }
-      : null;
+    // The spec keeps domain_id (what the edit form sends back) plus the domain itself for display.
+    let api: Record<string, unknown> | null = null;
+    if (apiRows[0]) {
+      const { domain_url, domain_type, ...spec } = apiRows[0];
+      const domainId = Number(spec.domain_id);
+      api = { ...spec, domain_id: domainId, domain: { id: domainId, url: domain_url, type: domain_type } };
+    }
     return {
       id: Number(row.id),
       service_code: row.service_code,

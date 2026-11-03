@@ -1,9 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 import {
   DataHubApiAuthType,
-  DataHubApiBaseUrl,
   DataHubApiMethod,
   DataHubApiSyncMode,
   DataHubApiUpdateFrequency,
@@ -17,9 +16,11 @@ export class ApiDataServiceSpecDto {
   @IsEnum(DataHubApiMethod)
   readonly method: DataHubApiMethod;
 
-  @ApiProperty({ enum: DataHubApiBaseUrl })
-  @IsEnum(DataHubApiBaseUrl)
-  readonly base_url: DataHubApiBaseUrl;
+  // Active domain from GET /v1/domains.
+  @ApiProperty({ description: 'id of an active domain (GET /v1/domains)' })
+  @IsInt()
+  @Min(1)
+  readonly domain_id: number;
 
   @ApiProperty({ maxLength: 1000 })
   @Transform(trimString)

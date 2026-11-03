@@ -22,6 +22,7 @@ export interface RefIds {
   requester_user_ids: number[];
   it_supporter_user_ids: number[];
   service_owner_user_ids: number[];
+  api_spec?: ApiSpecInput | null;
 }
 
 export interface LoadedVersion {
@@ -119,6 +120,7 @@ export class DataServiceSnapshotService {
       'INVALID_DEPARTMENT',
       strict,
     );
+    const domain = ids.api_spec ? await this.domainRef(manager, Number(ids.api_spec.domain_id), strict) : null;
 
     const consumerRows = consumerIds.length
       ? await queryRows<{ id: number; code: string }>(
@@ -149,6 +151,7 @@ export class DataServiceSnapshotService {
       requestUnit,
       division,
       department,
+      domain,
       consumers: consumerRows.map((r) => ({ key: Number(r.id), label: r.code })),
       ...resolvedTerms(termRows),
       requesters: toUserItems(requesterIds),
@@ -225,6 +228,20 @@ export class DataServiceSnapshotService {
        ORDER BY st.name, t.code, t.id`,
       [ids],
     );
+  }
+
+  // Writes need a live, active domain; reading a stored version labels whatever row it points to.
+  private async domainRef(manager: EntityManager, id: number, strict: boolean): Promise<RefItem | null> {
+    const rows = await queryRows<{ id: number; url: string }>(
+      manager,
+      `SELECT d.id, d.url FROM integration_domain_configs d WHERE d.id = $1${strict ? ` AND ${liveSql('d')} AND d.status = 'active'` : ''}`,
+      [id],
+    );
+    if (!rows[0]) {
+      if (strict) throw new BadRequestException(`INVALID_DOMAIN: ${id} not found or inactive`);
+      return null;
+    }
+    return { key: Number(rows[0].id), label: rows[0].url };
   }
 
   private async orgRef(

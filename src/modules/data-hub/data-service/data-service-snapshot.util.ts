@@ -6,6 +6,8 @@ export interface ResolvedRefs {
   requestUnit: RefItem | null;
   division: RefItem | null;
   department: RefItem | null;
+  // Domain of the API spec (labelled by its url); null for SFTP.
+  domain: RefItem | null;
   consumers: RefItem[];
   physicalTerms: RefItem[];
   sourceTables: RefItem[];
@@ -32,7 +34,10 @@ export function buildSnapshot(source: VersionSource, refs: ResolvedRefs): DiffSn
     physical_terms: refs.physicalTerms,
   };
   if (source.api_spec) {
-    for (const field of API_SPEC_FIELDS) snapshot[`api_${field}`] = source.api_spec[field] ?? null;
+    for (const field of API_SPEC_FIELDS) {
+      if (field === 'domain_id') snapshot.api_domain = refs.domain;
+      else snapshot[`api_${field}`] = source.api_spec[field] ?? null;
+    }
   }
   if (source.sftp_spec) {
     for (const field of SFTP_SPEC_FIELDS) snapshot[`sftp_${field}`] = source.sftp_spec[field] ?? null;

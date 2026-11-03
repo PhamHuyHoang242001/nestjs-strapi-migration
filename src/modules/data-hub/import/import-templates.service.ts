@@ -73,13 +73,17 @@ export class LogicalTermImportTemplateService {
   }
 }
 
+// Sample value of the required usage guide column: the guide is usually written later on the edit screen.
+const USAGE_GUIDE_LATER = 'Bổ sung hướng dẫn sử dụng sau';
+
 const API_ROWS = (tag: string): Array<Record<string, string>> => [
   {
     name: `Tra cứu hồ sơ khách hàng 360 ${tag}`,
     short_description: 'Trả thông tin định danh và liên hệ của khách hàng theo CIF',
+    usage_guide_html: USAGE_GUIDE_LATER,
     purpose: 'Phục vụ app CRM hiển thị hồ sơ khách hàng',
     method: 'GET',
-    base_url: 'API_INT',
+    domain: 'https://api-int.vpbank.com.vn',
     endpoint_path: '/v1/customers/{cif}/profile',
     auth_type: 'BEARER_TOKEN',
     peak_tps: '200',
@@ -92,8 +96,9 @@ const API_ROWS = (tag: string): Array<Record<string, string>> => [
   {
     name: `Lịch sử khoản vay ${tag}`,
     short_description: 'Danh sách khoản vay đã giải ngân của khách hàng',
+    usage_guide_html: USAGE_GUIDE_LATER,
     method: 'POST',
-    base_url: 'API_INT',
+    domain: 'https://api-int.vpbank.com.vn',
     endpoint_path: '/v1/loans/history',
     auth_type: 'X_IBM_CLIENT_ID',
     peak_tps: '50',
@@ -106,6 +111,7 @@ const SFTP_ROWS = (tag: string): Array<Record<string, string>> => [
   {
     name: `Xuất giao dịch thẻ hằng ngày ${tag}`,
     short_description: 'File giao dịch thẻ tín dụng phát sinh trong ngày D-1',
+    usage_guide_html: USAGE_GUIDE_LATER,
     purpose: 'Đối soát với đối tác',
     folder_path: '/outbound/card/',
     file_name_pattern: 'CARD_TXN_{yyyyMMdd}.csv',

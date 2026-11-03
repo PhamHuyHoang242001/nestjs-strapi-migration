@@ -14,6 +14,7 @@ export const LIST_FROM_SQL = `
   JOIN data_hub_departments dp ON dp.id = v.department_id
   JOIN data_hub_request_units ru ON ru.id = v.request_unit_id
   LEFT JOIN data_hub_data_service_version_api_specs a ON a.data_service_version_id = v.id AND ${liveSql('a')}
+  LEFT JOIN integration_domain_configs dm ON dm.id = a.domain_id
   LEFT JOIN data_hub_data_service_version_sftp_specs sf ON sf.data_service_version_id = v.id AND ${liveSql('sf')}`;
 
 // Default list order everywhere in Data Hub: newest records first (id breaks created_at ties).

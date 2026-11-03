@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as dayjs from 'dayjs';
 import { Response } from 'express';
-import { DATA_HUB_API_BASE_URL_HOSTS, DataHubApiBaseUrl } from '@modules/databases/data-hub-enums';
 import * as ExcelJS from 'exceljs';
 import { ExcelColumn } from '@common/utils/export-excel.helper';
 import { DataHubDataServiceListQueryService } from './data-hub-data-service-list-query.service';
@@ -49,14 +48,13 @@ export class DataHubDataServiceExportService {
     );
     return rows.map((r, i) => {
       const isApi = r.service_type === 'API';
-      const host = r.base_url ? (DATA_HUB_API_BASE_URL_HOSTS[r.base_url as DataHubApiBaseUrl] ?? r.base_url) : '';
       return {
         stt: i + 1,
         service_code: safeCell(r.service_code),
         name: safeCell(r.name),
         service_type: r.service_type,
         method_or_direction: r.method ?? r.flow_direction ?? '',
-        endpoint_or_folder: safeCell(isApi ? `${host}${r.endpoint_path ?? ''}` : r.sftp_folder_path),
+        endpoint_or_folder: safeCell(isApi ? `${r.domain_url ?? ''}${r.endpoint_path ?? ''}` : r.sftp_folder_path),
         division: safeCell(r.division_name),
         department: safeCell(r.department_name),
         request_unit: safeCell(r.request_unit_name),

@@ -52,6 +52,7 @@ import { DataHubModule } from '@modules/data-hub/data-hub.module';
 import { LatestArtifactsModule } from '@modules/latest-artifacts/latest-artifacts.module';
 import { AssetHubCatalogModule } from '@modules/asset-hub-catalog/asset-hub-catalog.module';
 import { CategoryModule } from '@modules/category/category.module';
+import { DomainModule } from '@modules/domain/domain.module';
 import { ConfigsModule } from '@modules/configs/configs.module';
 @Module({
   imports: [
@@ -128,6 +129,7 @@ import { ConfigsModule } from '@modules/configs/configs.module';
     LatestArtifactsModule,
     AssetHubCatalogModule,
     CategoryModule,
+    DomainModule,
     ConfigsModule,
   ],
   controllers: [AppController],

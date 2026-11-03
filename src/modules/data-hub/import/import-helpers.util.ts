@@ -90,6 +90,16 @@ export async function codeMap(dataSource: DataSource, table: string, codes: stri
   return out;
 }
 
+// Active domains by normalized url (the key a cell is folded to with normalizeDomainUrl).
+export async function domainMap(dataSource: DataSource, urls: string[]): Promise<Map<string, number>> {
+  if (urls.length === 0) return new Map();
+  const rows: Array<{ id: number; url: string }> = await dataSource.query(
+    `SELECT d.id, d.url FROM integration_domain_configs d WHERE d.url = ANY($1) AND ${liveSql('d')} AND d.status = 'active'`,
+    [urls],
+  );
+  return new Map(rows.map((r) => [r.url, Number(r.id)]));
+}
+
 export async function consumerMap(dataSource: DataSource, codes: string[]): Promise<Map<string, ConsumerRef>> {
   if (codes.length === 0) return new Map();
   const rows: Array<{ id: number; code: string; status: string }> = await dataSource.query(

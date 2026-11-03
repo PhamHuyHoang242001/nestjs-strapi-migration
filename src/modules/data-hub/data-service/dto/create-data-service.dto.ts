@@ -12,12 +12,26 @@ import {
   IsString,
   MaxLength,
   Min,
+  Validate,
   ValidateNested,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
 import { DataHubServiceType } from '@modules/databases/data-hub-enums';
 import { ApiDataServiceSpecDto } from './api-data-service-spec.dto';
-import { trimString } from './data-service-dto-transforms';
+import { trimString, visibleHtmlText } from './data-service-dto-transforms';
 import { DataServiceSourceTableInputDto } from './data-service-source-table.dto';
+
+@ValidatorConstraint({ name: 'hasVisibleText' })
+class HasVisibleText implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return typeof value === 'string' && visibleHtmlText(value) !== '';
+  }
+
+  defaultMessage(): string {
+    return 'usage_guide_html should not be empty';
+  }
+}
 import { SftpDataServiceSpecDto } from './sftp-data-service-spec.dto';
 
 export class CreateDataServiceDto {
@@ -61,12 +75,12 @@ export class CreateDataServiceDto {
   @Min(1)
   readonly department_id: number;
 
-  // Optional: an empty guide is stored as ''.
-  @ApiProperty({ required: false })
-  @IsOptional()
+  // Required on create and edit; markup with no visible text (an empty editor) counts as missing.
+  @ApiProperty({ description: 'Usage guide (HTML), must contain visible text' })
   @IsString()
   @MaxLength(500000)
-  readonly usage_guide_html?: string;
+  @Validate(HasVisibleText)
+  readonly usage_guide_html: string;
 
   @ApiProperty({ type: [Number], description: '1..20 active consumers' })
   @IsArray()

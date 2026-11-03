@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
+import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
 import {
   AI_HUB_PACKAGE_TABLE_BY_TYPE,
   AI_HUB_SUPPORTER_UPLOAD_CODE,
@@ -35,7 +36,9 @@ const HOLDS_UPLOAD_CODE_SQL = `(
   )
 )`;
 
-const LIVE_USER_SQL = `u.deleted_at IS NULL AND COALESCE(u.is_deleted, false) = false AND u.email IS NOT NULL`;
+// Live and active: not deleted, status active (what login requires) and not switched off in user management.
+const LIVE_USER_SQL = `u.deleted_at IS NULL AND COALESCE(u.is_deleted, false) = false AND u.email IS NOT NULL
+  AND u.status = 'active' AND u.is_active IS NOT FALSE`;
 
 // Supporter management, decoupled from package create/bump/edit: one full-replace write gated on
 // creator ∨ current supporter, plus the picker of users who may be added.
@@ -44,13 +47,24 @@ export class AssetHubSupporterService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly itemMeta: AssetHubItemMetaService,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
+
+  // skill / api-catalog / coworker: the caller must hold that workspace's upload code; prompt: anyone.
+  private async assertCanUpload(type: AiHubArtifactType, userId: number): Promise<void> {
+    const code = AI_HUB_SUPPORTER_UPLOAD_CODE[type];
+    if (!code) return;
+    const codes = await this.permissionCache.getPermissions(userId);
+    if (!codes.has(code)) throw new ForbiddenException(`Missing required permission: ${code}`);
+  }
 
   // Paged id + email of users eligible as supporters. Prompt: every live user.
   async listCandidates(
     type: AiHubArtifactType,
     params: { page?: number; limit?: number; search?: string },
+    userId: number,
   ): Promise<DirectoryPage> {
+    await this.assertCanUpload(type, userId);
     const page = params.page ?? 1;
     const limit = params.limit ?? 20;
     const code = AI_HUB_SUPPORTER_UPLOAD_CODE[type];
@@ -88,6 +102,7 @@ export class AssetHubSupporterService {
   // Replace the package's supporter set. Caller must be the creator or a current supporter; every
   // new id must be an eligible user. Row lock serializes concurrent replaces on the same package.
   async replaceSupporters(type: AiHubArtifactType, packageId: number, supporterIds: number[], userId: number) {
+    await this.assertCanUpload(type, userId);
     const table = AI_HUB_PACKAGE_TABLE_BY_TYPE[type];
 
     return this.dataSource.transaction(async (manager) => {

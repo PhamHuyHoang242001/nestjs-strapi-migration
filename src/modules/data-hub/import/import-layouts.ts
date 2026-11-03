@@ -2,7 +2,6 @@
 // and is read back from the upload in the same position.
 import {
   DataHubApiAuthType,
-  DataHubApiBaseUrl,
   DataHubApiMethod,
   DataHubApiSyncMode,
   DataHubApiUpdateFrequency,
@@ -76,7 +75,7 @@ export const SERVICES_SHEET = 'SERVICES';
 
 const values = (e: Record<string, string>): string[] => Object.values(e);
 
-// Columns A..J, shared by the API and SFTP sheets. Source tables and physical terms are added afterwards by the
+// Columns A..K, shared by the API and SFTP sheets. Source tables and physical terms are added afterwards by the
 // source table import.
 const SERVICE_COMMON: ImportColumn[] = [
   col('name', 'Tên dịch vụ', 'r', 36, 'Tối đa 90 ký tự.'),
@@ -101,12 +100,25 @@ const SERVICE_COMMON: ImportColumn[] = [
   col('requesters', 'Người yêu cầu', 'r', 34, '1-50 email người dùng, ngăn cách bằng dấu ;'),
   col('it_supporters', 'IT hỗ trợ', 'r', 34, '1-50 email người dùng, ngăn cách bằng dấu ;'),
   col('service_owners', 'SO dịch vụ', 'r', 34, '1-50 email người dùng, ngăn cách bằng dấu ;'),
+  col(
+    'usage_guide_html',
+    'Hướng dẫn sử dụng',
+    'r',
+    40,
+    'Bắt buộc, tối đa 500000 ký tự (chữ thường hoặc HTML). Chưa có thì ghi "Bổ sung hướng dẫn sử dụng sau" và cập nhật sau trên màn sửa dịch vụ.',
+  ),
 ];
 
 export const API_COLUMNS: ImportColumn[] = [
   ...SERVICE_COMMON,
   col('method', 'Method', 'r', 12, 'HTTP method.', values(DataHubApiMethod)),
-  col('base_url', 'Base URL', 'r', 14, 'Mã base URL (không nhập host).', values(DataHubApiBaseUrl)),
+  col(
+    'domain',
+    'Domain',
+    'r',
+    32,
+    'URL domain đang hoạt động trong danh mục domain của hệ thống, vd https://api-int.vpbank.com.vn.',
+  ),
   col('endpoint_path', 'Endpoint path', 'r', 36, 'Đường dẫn sau base URL, tối đa 1000 ký tự. Vd /v1/customers/{cif}.'),
   col('auth_type', 'Auth type', 'r', 22, 'Cách xác thực khi gọi API.', values(DataHubApiAuthType)),
   col('peak_tps', 'Peak TPS', 'o', 12, 'Số hoặc chữ, tối đa 255 ký tự.'),

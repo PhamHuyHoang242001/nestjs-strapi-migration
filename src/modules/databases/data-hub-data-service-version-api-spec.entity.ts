@@ -1,13 +1,8 @@
-import { Column, Entity, JoinColumn, OneToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToOne } from 'typeorm';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import {
-  DataHubApiAuthType,
-  DataHubApiBaseUrl,
-  DataHubApiMethod,
-  DataHubApiSyncMode,
-  DataHubApiUpdateFrequency,
-} from './data-hub-enums';
+import { DataHubApiAuthType, DataHubApiMethod, DataHubApiSyncMode, DataHubApiUpdateFrequency } from './data-hub-enums';
 import { DataHubDataServiceVersion } from './data-hub-data-service-version.entity';
+import { IntegrationDomainConfig } from './integration-domain-config.entity';
 
 // API-only fields of a data service version (1-1 with data_hub_data_service_versions)
 @Entity('data_hub_data_service_version_api_specs')
@@ -18,8 +13,13 @@ export class DataHubDataServiceVersionApiSpec extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 50 })
   public method: DataHubApiMethod;
 
-  @Column({ type: 'varchar', length: 50 })
-  public base_url: DataHubApiBaseUrl;
+  // Gateway the API is published on (shared integration_domain_configs table, many specs -> one domain).
+  @Column({ type: 'int' })
+  public domain_id: number;
+
+  @ManyToOne(() => IntegrationDomainConfig)
+  @JoinColumn({ name: 'domain_id' })
+  public domain: IntegrationDomainConfig;
 
   @Column({ type: 'varchar', length: 1000 })
   public endpoint_path: string;

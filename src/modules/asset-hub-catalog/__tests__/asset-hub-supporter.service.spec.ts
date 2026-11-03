@@ -30,7 +30,12 @@ function makeManager(opts: { pkg?: { id: number; created_by: number } | null; el
   return { manager, calls };
 }
 
-function makeService(manager: unknown, currentSupporters: number[] = [SUPPORTER]) {
+// `codes` = the caller's permission codes (default: every upload code).
+function makeService(
+  manager: unknown,
+  currentSupporters: number[] = [SUPPORTER],
+  codes: string[] = ['skill_upload', 'api_upload', 'coworker_upload'],
+) {
   const dataSource = {
     transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
     query: jest.fn(),
@@ -40,7 +45,8 @@ function makeService(manager: unknown, currentSupporters: number[] = [SUPPORTER]
     assertSupporterUsers: jest.fn((_m: unknown, ids: number[]) => Promise.resolve([...new Set(ids)])),
     replaceSupporters: jest.fn().mockResolvedValue(undefined),
   };
-  const service = new AssetHubSupporterService(dataSource as never, itemMeta as never);
+  const permissionCache = { getPermissions: jest.fn().mockResolvedValue(new Set(codes)) };
+  const service = new AssetHubSupporterService(dataSource as never, itemMeta as never, permissionCache as never);
   return { service, dataSource, itemMeta };
 }
 
@@ -154,7 +160,7 @@ describe('AssetHubSupporterService.listCandidates', () => {
 
   it('skill: filters to skill_upload holders, binds keyword and paging', async () => {
     const { service, dataSource } = makeService({});
-    const res = await stubList(service, dataSource).listCandidates('skill', { page: 2, limit: 10, search: ' ab ' });
+    const res = await stubList(service, dataSource).listCandidates('skill', { page: 2, limit: 10, search: ' ab ' }, CREATOR);
 
     const [countSql, countArgs] = dataSource.query.mock.calls[0] as [string, unknown[]];
     const [rowSql, rowArgs] = dataSource.query.mock.calls[1] as [string, unknown[]];
@@ -167,7 +173,7 @@ describe('AssetHubSupporterService.listCandidates', () => {
 
   it('prompt + search: keyword binds as $1 when there is no upload code', async () => {
     const { service, dataSource } = makeService({});
-    await stubList(service, dataSource).listCandidates('prompt', { search: 'ab' });
+    await stubList(service, dataSource).listCandidates('prompt', { search: 'ab' }, CREATOR);
 
     const [countSql, countArgs] = dataSource.query.mock.calls[0] as [string, unknown[]];
     const [rowSql, rowArgs] = dataSource.query.mock.calls[1] as [string, unknown[]];
@@ -177,9 +183,17 @@ describe('AssetHubSupporterService.listCandidates', () => {
     expect(rowArgs).toEqual(['%ab%', 20, 0]);
   });
 
+  it('lists only active users (status active, not switched off)', async () => {
+    const { service, dataSource } = makeService({});
+    await stubList(service, dataSource).listCandidates('prompt', {}, CREATOR);
+
+    const [countSql] = dataSource.query.mock.calls[0] as [string, unknown[]];
+    expect(countSql).toContain("u.status = 'active' AND u.is_active IS NOT FALSE");
+  });
+
   it('prompt: lists every live user (no upload-code filter)', async () => {
     const { service, dataSource } = makeService({});
-    await stubList(service, dataSource).listCandidates('prompt', {});
+    await stubList(service, dataSource).listCandidates('prompt', {}, CREATOR);
 
     const [countSql, countArgs] = dataSource.query.mock.calls[0] as [string, unknown[]];
     const [, rowArgs] = dataSource.query.mock.calls[1] as [string, unknown[]];
@@ -207,5 +221,29 @@ describe('supporter DTOs', () => {
       forbidNonWhitelisted: true,
     });
     expect(errors.map((e) => e.property)).toContain('supporter_ids');
+  });
+});
+
+describe('AssetHubSupporterService upload permission by type', () => {
+  it.each([
+    ['skill', 'skill_upload'],
+    ['api-catalog', 'api_upload'],
+    ['coworker', 'coworker_upload'],
+  ] as const)('%s: both endpoints need %s', async (type, code) => {
+    const { manager } = makeManager({ eligibleIds: [40] });
+    const denied = makeService(manager, [SUPPORTER], ['other_upload']);
+    await expect(denied.service.listCandidates(type, {}, CREATOR)).rejects.toThrow(`Missing required permission: ${code}`);
+    await expect(denied.service.replaceSupporters(type, PACKAGE_ID, [40], CREATOR)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(denied.dataSource.query).not.toHaveBeenCalled();
+    expect(denied.dataSource.transaction).not.toHaveBeenCalled();
+
+    const allowed = makeService(manager, [SUPPORTER], [code]);
+    await expect(allowed.service.replaceSupporters(type, PACKAGE_ID, [40], CREATOR)).resolves.toBeDefined();
+  });
+
+  it('prompt: no permission needed', async () => {
+    const { manager } = makeManager({ eligibleIds: [40] });
+    const { service } = makeService(manager, [SUPPORTER], []);
+    await expect(service.replaceSupporters('prompt', PACKAGE_ID, [40], CREATOR)).resolves.toBeDefined();
   });
 });

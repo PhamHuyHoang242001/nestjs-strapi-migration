@@ -67,6 +67,7 @@ function makeHarness(overrides: Handler[] = []) {
     [/FROM data_hub_request_units/, [{ id: 1, code: 'RU1' }]],
     [/FROM data_hub_divisions/, [{ id: 1, code: 'FIN' }]],
     [/FROM data_hub_departments/, [{ id: 1, code: 'D1' }]],
+    [/FROM integration_domain_configs d/, [{ id: 1, url: 'https://api-int.vpbank.com.vn' }]],
     [/FROM data_hub_consumers c/, [{ id: 5, code: 'APP1' }]],
     [/SELECT id FROM users/, [{ id: 1 }, { id: 2 }]],
     [
@@ -108,7 +109,7 @@ function makeHarness(overrides: Handler[] = []) {
 
 const storedApiSpec = {
   method: 'GET',
-  base_url: 'API_INT',
+  domain_id: 1,
   endpoint_path: '/v1/x',
   auth_type: 'BEARER_TOKEN',
   peak_tps: null,
@@ -196,8 +197,11 @@ describe('DataHubDataServiceWriteService.create', () => {
 
     const history = find(/INSERT INTO data_hub_data_service_histories/)[0];
     expect(history.params[3]).toBe('CREATE');
-    const changes = JSON.parse(history.params[5] as string) as Array<{ old: unknown }>;
+    const changes = JSON.parse(history.params[5] as string) as Array<{ field: string; old: unknown; new: unknown }>;
     expect(changes.length).toBeGreaterThan(10);
+    // the domain is logged by its url, not its id
+    expect(changes.find((c) => c.field === 'api_domain')?.new).toBe('https://api-int.vpbank.com.vn');
+    expect(changes.some((c) => c.field === 'api_domain_id')).toBe(false);
     expect(changes.every((c) => c.old === null || (Array.isArray(c.old) && c.old.length === 0))).toBe(true);
     // history is the last write so a failure earlier leaves nothing behind
     expect(calls[calls.length - 1].sql).toContain('data_hub_data_service_histories');
@@ -208,6 +212,7 @@ describe('DataHubDataServiceWriteService.create', () => {
     ['INVALID_REQUEST_UNIT', /FROM data_hub_request_units/, [], {}],
     ['INVALID_DIVISION', /FROM data_hub_divisions/, [], {}],
     ['INVALID_DEPARTMENT', /FROM data_hub_departments/, [], {}],
+    ['INVALID_DOMAIN', /FROM integration_domain_configs d/, [], {}],
     ['INVALID_USERS', /SELECT id FROM users/, [{ id: 1 }], {}],
   ])('%s when a referenced id is missing or not live', async (code, re, rows, patch) => {
     const { service, find } = makeHarness([[re, rows]]);

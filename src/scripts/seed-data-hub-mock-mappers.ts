@@ -118,16 +118,17 @@ export const apiAuthType = (v: string, w: MapWarnings) =>
     w,
   );
 
-export const apiBaseUrl = (domain: string, w: MapWarnings) => {
+// Url of a seeded row in `integration_domain_configs` (see the integration domain config migration).
+export const apiDomainUrl = (domain: string, w: MapWarnings) => {
   const host = domain.replace(/^https?:\/\//, '').split(/[/:]/)[0];
   const map: Record<string, string> = {
-    'api-int.vpbank.com.vn': 'API_INT',
-    'api-ext.vpbank.com.vn': 'API_EXT',
-    'api-open.vpbank.com.vn': 'API_OPEN',
-    'api-uat.vpbank.com.vn': 'API_UAT',
-    'api.vpbank.com.vn': 'API',
+    'api-int.vpbank.com.vn': 'https://api-int.vpbank.com.vn',
+    'api-ext.vpbank.com.vn': 'https://api-ext.vpbank.com.vn',
+    'api-open.vpbank.com.vn': 'https://api-open.vpbank.com.vn',
+    'api-uat.vpbank.com.vn': 'https://api-uat.vpbank.com.vn',
+    'api.vpbank.com.vn': 'https://api.vpbank.com.vn',
   };
-  return pick(host, map, 'API_INT', 'base_url', w);
+  return pick(host, map, 'https://api-int.vpbank.com.vn', 'domain', w);
 };
 
 export const sftpFileFormat = (v: string, w: MapWarnings) =>

@@ -79,6 +79,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     service_type: 'API',
     name: 'n',
     short_description: 'd',
+    usage_guide_html: 'Bổ sung hướng dẫn sử dụng sau',
     request_unit_id: 1,
     division_id: 1,
     department_id: 1,
@@ -87,7 +88,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     service_owner_user_ids: [1],
     api_spec: {
       method: 'GET',
-      base_url: 'API_INT',
+      domain_id: 1,
       endpoint_path: '/x',
       auth_type: 'BEARER_TOKEN',
       update_frequency: 'REALTIME',
@@ -295,6 +296,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     requestUnits: new Map([['af', 3]]),
     divisions: new Map([['eda', 1]]),
     departments: new Map([['c360', 2]]),
+    domains: new Map([['https://api-int.vpbank.com.vn', 7]]),
     consumers: new Map([
       ['app_crm', { id: 40, active: true }],
       ['app_los', { id: 41, active: true }],
@@ -400,6 +402,39 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       expect(at('G2')).toEqual(['CONSUMER_INACTIVE']);
       expect(at('G3')).toEqual(['CODE_NOT_FOUND']);
       expect(h.writeService.create).not.toHaveBeenCalled();
+    });
+
+    it('requires the usage guide cell; the sample says it will be added later', async () => {
+      const col = sheetOf('API').columns.findIndex((c) => c.key === 'usage_guide_html') + 1;
+      expect(sheetOf('SFTP').columns.find((c) => c.key === 'usage_guide_html')?.level).toBe('r');
+      const sample = await exampleFile();
+      const book = new ExcelJS.Workbook();
+      await book.xlsx.load(sample as unknown as ArrayBuffer);
+      expect(cellText(book.getWorksheet('DICH_VU_API').getCell(2, col).value)).toBe('Bổ sung hướng dẫn sử dụng sau');
+
+      const h = harness();
+      const ok = await h.service.import('API', sample, false, CALLER);
+      expect(h.created[0]).toMatchObject({ usage_guide_html: 'Bổ sung hướng dẫn sử dụng sau' });
+      expect(ok.issues).toEqual([]);
+
+      const file = await edit(sample, 'API', (s) => (s.getCell(3, col).value = null));
+      const h2 = harness();
+      const res = await h2.service.import('API', file, false, CALLER);
+      expect(res.issues.map((i) => [i.row, i.code])).toEqual([[3, 'REQUIRED']]);
+      expect(h2.created).toHaveLength(1);
+    });
+
+    it('resolves the domain cell by url (spelling folded) and rejects an unknown one by cell', async () => {
+      const col = sheetOf('API').columns.findIndex((c) => c.key === 'domain') + 1;
+      const file = await edit(await exampleFile(), 'API', (s) => {
+        s.getCell(2, col).value = ' API-INT.vpbank.com.vn/ ';
+        s.getCell(3, col).value = 'https://api-xyz.vpbank.com.vn';
+      });
+      const h = harness();
+      const res = await h.service.import('API', file, false, CALLER);
+      expect(res.issues.map((i) => [i.row, i.code])).toEqual([[3, 'DOMAIN_NOT_FOUND']]);
+      expect(h.created).toHaveLength(1);
+      expect(h.created[0]).toMatchObject({ api_spec: { domain_id: 7 } });
     });
 
     it('reports problems by cell, annotates the result file and keeps going past a failed create', async () => {
