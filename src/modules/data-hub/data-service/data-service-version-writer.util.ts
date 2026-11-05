@@ -52,8 +52,8 @@ export async function insertApprovedVersion(manager: EntityManager, input: Inser
     `INSERT INTO data_hub_data_service_versions
        (data_service_id, version_no, old_version, state, name, short_description, purpose, request_unit_id,
         division_id, department_id, usage_guide_html, changelog_note,
-        submitted_by, reviewed_by, reviewed_at)
-     VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NOW())
+        submitted_by, reviewed_by, reviewed_at, service_ops)
+     VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NOW(), $13)
      RETURNING id`,
     [
       input.dataServiceId,
@@ -68,6 +68,7 @@ export async function insertApprovedVersion(manager: EntityManager, input: Inser
       source.usage_guide_html,
       input.changelogNote,
       userId,
+      source.service_ops ?? null,
     ],
   );
   const versionId = Number(rows[0].id);

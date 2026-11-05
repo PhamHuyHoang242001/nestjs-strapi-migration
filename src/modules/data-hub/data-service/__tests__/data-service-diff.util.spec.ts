@@ -26,6 +26,13 @@ describe('diffSnapshots', () => {
     ]);
   });
 
+  it('reports a changed service ops as a general field', () => {
+    const changes = diffSnapshots({ ...base(), service_ops: null }, { ...base(), service_ops: 'Trực 24/7' });
+    expect(changes).toEqual([
+      expect.objectContaining({ field: 'service_ops', section: 'general', label_vi: 'Ops dịch vụ' }),
+    ]);
+  });
+
   it('treats null, undefined and empty string as the same empty value', () => {
     expect(diffSnapshots({ ...base(), purpose: null }, { ...base(), purpose: '' })).toEqual([]);
     const withoutPurpose: Record<string, unknown> = { ...base() };

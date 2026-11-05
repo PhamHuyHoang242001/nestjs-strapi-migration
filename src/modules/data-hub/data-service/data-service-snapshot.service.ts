@@ -164,7 +164,7 @@ export class DataServiceSnapshotService {
   async loadVersion(manager: EntityManager, versionId: number): Promise<LoadedVersion> {
     const [row] = await queryRows<VersionRow>(
       manager,
-      `SELECT v.version_no, v.name, v.short_description, v.purpose, v.usage_guide_html,
+      `SELECT v.version_no, v.name, v.short_description, v.purpose, v.service_ops, v.usage_guide_html,
               v.request_unit_id, v.division_id, v.department_id
        FROM data_hub_data_service_versions v WHERE v.id = $1`,
       [versionId],

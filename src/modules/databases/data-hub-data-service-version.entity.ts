@@ -27,6 +27,10 @@ export class DataHubDataServiceVersion extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 2000, nullable: true })
   public purpose: string | null;
 
+  // Free-text "Ops dịch vụ".
+  @Column({ type: 'varchar', length: 2000, nullable: true })
+  public service_ops: string | null;
+
   @Column({ type: 'int' })
   public request_unit_id: number;
 

@@ -335,6 +335,7 @@ export function buildServiceDraft(
     name: v.name,
     short_description: v.short_description,
     purpose: optional(v.purpose),
+    service_ops: optional(v.service_ops),
     usage_guide_html: v.usage_guide_html,
     request_unit_id: lookupCode(SERVICES_SHEET, r, 'request_unit', refs.requestUnits, issues),
     division_id: lookupCode(SERVICES_SHEET, r, 'division', refs.divisions, issues),

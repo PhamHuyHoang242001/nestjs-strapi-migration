@@ -75,7 +75,7 @@ export const SERVICES_SHEET = 'SERVICES';
 
 const values = (e: Record<string, string>): string[] => Object.values(e);
 
-// Columns A..K, shared by the API and SFTP sheets. Source tables and physical terms are added afterwards by the
+// Columns A..L, shared by the API and SFTP sheets. Source tables and physical terms are added afterwards by the
 // source table import.
 const SERVICE_COMMON: ImportColumn[] = [
   col('name', 'Tên dịch vụ', 'r', 36, 'Tối đa 90 ký tự.'),
@@ -107,6 +107,7 @@ const SERVICE_COMMON: ImportColumn[] = [
     40,
     'Bắt buộc, tối đa 500000 ký tự (chữ thường hoặc HTML). Chưa có thì ghi "Bổ sung hướng dẫn sử dụng sau" và cập nhật sau trên màn sửa dịch vụ.',
   ),
+  col('service_ops', 'Ops dịch vụ', 'o', 36, 'Tối đa 1000 ký tự.'),
 ];
 
 export const API_COLUMNS: ImportColumn[] = [

@@ -157,6 +157,12 @@ const toUpdate = (dto: CreateDataServiceDto): UpdateDataServiceDto => {
 };
 
 describe('DataHubDataServiceWriteService.create', () => {
+  it('stores the free-text service ops on the version', async () => {
+    const { service, find } = makeHarness();
+    await service.create({ ...baseDto(), service_ops: 'Trực ops 24/7, liên hệ team DPD' }, as(9));
+    expect(find(/INSERT INTO data_hub_data_service_versions/)[0].params[12]).toBe('Trực ops 24/7, liên hệ team DPD');
+  });
+
   it('rejects a spec that does not match the type before writing anything', async () => {
     const { service, find } = makeHarness();
     const dto = { ...baseDto(), sftp_spec: {} } as unknown as CreateDataServiceDto;
@@ -185,7 +191,8 @@ describe('DataHubDataServiceWriteService.create', () => {
     expect(versionInsert.params[1]).toBe(1);
     expect(versionInsert.params[2]).toBeNull();
     expect(versionInsert.params[11]).toBe(9);
-    expect(versionInsert.params).toHaveLength(12);
+    expect(versionInsert.params).toHaveLength(13);
+    expect(versionInsert.sql).toContain('service_ops');
     expect(versionInsert.sql).not.toContain('source_table');
     expect(versionInsert.sql).not.toContain('usage_guide_markdown');
 

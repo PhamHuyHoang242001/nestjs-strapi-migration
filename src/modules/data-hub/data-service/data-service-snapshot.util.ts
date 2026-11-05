@@ -22,6 +22,7 @@ export function buildSnapshot(source: VersionSource, refs: ResolvedRefs): DiffSn
     name: source.name,
     short_description: source.short_description,
     purpose: source.purpose ?? null,
+    service_ops: source.service_ops ?? null,
     request_unit: refs.requestUnit,
     division: refs.division,
     department: refs.department,

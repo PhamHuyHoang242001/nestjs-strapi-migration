@@ -24,6 +24,7 @@ export const FIELD_META: FieldMeta[] = [
   f('name', 'general', 'scalar', 'Tên dịch vụ', 'Service name'),
   f('short_description', 'general', 'scalar', 'Mô tả ngắn', 'Short description'),
   f('purpose', 'general', 'scalar', 'Mục đích sử dụng', 'Purpose'),
+  f('service_ops', 'general', 'scalar', 'Ops dịch vụ', 'Service ops'),
   f('status', 'general', 'scalar', 'Trạng thái', 'Status'),
 
   f('request_unit', 'business', 'ref', 'Đơn vị yêu cầu', 'Request unit'),

@@ -60,6 +60,14 @@ export class CreateDataServiceDto {
   @MaxLength(1000)
   readonly purpose?: string;
 
+  // Ops dịch vụ (free text).
+  @ApiProperty({ required: false, maxLength: 1000 })
+  @IsOptional()
+  @Transform(trimString)
+  @IsString()
+  @MaxLength(1000)
+  readonly service_ops?: string;
+
   @ApiProperty()
   @IsInt()
   @Min(1)

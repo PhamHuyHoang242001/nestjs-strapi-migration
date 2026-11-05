@@ -22,6 +22,7 @@ interface DetailRow {
   name: string;
   short_description: string;
   purpose: string | null;
+  service_ops: string | null;
   usage_guide_html: string;
   changelog_note: string | null;
   submitted_by: number;
@@ -63,7 +64,7 @@ export class DataHubDataServiceDetailQueryService {
       this.dataSource,
       `SELECT s.id, s.service_code, s.service_type, s.status, s.active_version_id, s.created_by, s.updated_by,
               s.created_at, s.updated_at,
-              v.version_no, v.state, v.name, v.short_description, v.purpose, v.usage_guide_html,
+              v.version_no, v.state, v.name, v.short_description, v.purpose, v.service_ops, v.usage_guide_html,
               v.changelog_note, v.submitted_by, v.reviewed_by, v.reviewed_at,
               v.created_at AS version_created_at,
               v.request_unit_id, ru.code AS request_unit_code, ru.name AS request_unit_name,
@@ -170,6 +171,7 @@ export class DataHubDataServiceDetailQueryService {
         name: row.name,
         short_description: row.short_description,
         purpose: row.purpose,
+        service_ops: row.service_ops,
         usage_guide_html: row.usage_guide_html,
         changelog_note: row.changelog_note,
         submitted_by_user: this.userRefs.toRef(users, row.submitted_by),

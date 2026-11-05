@@ -253,6 +253,7 @@ export async function buildUpdateBody(
     name: source.name,
     short_description: source.short_description,
     purpose: source.purpose ?? undefined,
+    service_ops: source.service_ops ?? undefined,
     usage_guide_html: source.usage_guide_html,
     request_unit_id: source.request_unit_id,
     division_id: source.division_id,

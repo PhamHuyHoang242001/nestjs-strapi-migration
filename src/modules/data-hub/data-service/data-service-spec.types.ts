@@ -35,6 +35,7 @@ export interface VersionSource {
   name: string;
   short_description: string;
   purpose?: string | null;
+  service_ops?: string | null;
   usage_guide_html: string;
   request_unit_id: number;
   division_id: number;
