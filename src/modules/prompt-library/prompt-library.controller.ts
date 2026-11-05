@@ -140,9 +140,11 @@ export class PromptLibraryController {
     return this.queryService.versionDetail(vid, userId);
   }
 
-  // GET /v1/prompt/versions/:vid/diff — Bearer only (prompt upload is open to every user).
-  // Service restricts to submitter / package creator; approvers see any version.
-  @ApiOperation({ summary: 'Get prompt diff (row-ownership in service)' })
+  // GET /v1/prompt/versions/:vid/diff — capability: upload OR approve. Service then restricts
+  // upload-only callers to submitter / package creator; approvers see any version.
+  @ApiOperation({ summary: 'Get prompt diff (upload or approve; row-ownership in service)' })
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload', 'prompt_approve')
   @Get('versions/:vid/diff')
   getDiff(@Param('vid', ParseIntPipe) vid: number, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
@@ -159,9 +161,11 @@ export class PromptLibraryController {
     return this.uploadService.getMyPermissions(userId);
   }
 
-  // POST /v1/prompt/items — create new package from inline prompt text; open to every logged-in user.
+  // POST /v1/prompt/items — create new package from inline prompt text; requires prompt_upload.
   @ApiOperation({ summary: 'Create new prompt package (inline prompt_content)' })
   @Post('items')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload')
   async createItem(@Body() dto: CreatePromptPackageDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');
@@ -169,10 +173,12 @@ export class PromptLibraryController {
   }
 
   // PUT /v1/prompt/items/:id/versions — submit a new version (full-body replace);
-  // creator or supporter only (checked in service). Creates a pending version; the current active
-  // version keeps serving until this one is approved (see uploadService.createVersion / approve).
+  // requires prompt_upload. Creates a pending version; the current active version keeps serving
+  // until this one is approved (see uploadService.createVersion / approve).
   @ApiOperation({ summary: 'Submit new version of an existing prompt package (inline prompt_content)' })
   @Put('items/:id/versions')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload')
   async createVersion(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreatePromptVersionDto,
@@ -189,6 +195,8 @@ export class PromptLibraryController {
     summary: 'Edit a prompt version (submitter: latest rejected; approver: pending, no locked fields)',
   })
   @Put('versions/:vid')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload', 'prompt_approve')
   async editVersion(
     @Param('vid', ParseIntPipe) vid: number,
     @Body() dto: CreatePromptVersionDto,
@@ -225,9 +233,12 @@ export class PromptLibraryController {
     return this.uploadService.reject(vid, dto, userId);
   }
 
-  // PATCH /v1/prompt/items/:id/status — toggle active/inactive; creator, supporter or SO (service).
+  // PATCH /v1/prompt/items/:id/status — toggle active/inactive; prompt_upload or prompt_approve, then
+  // creator, supporter or SO (service).
   @ApiOperation({ summary: 'Toggle prompt package active/inactive status' })
   @Patch('items/:id/status')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('prompt_upload', 'prompt_approve')
   async toggleStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: ToggleStatusDto, @Req() req: RequestWithInfo) {
     const userId = req.info?.user?.id as number;
     if (!userId) throw new ForbiddenException('User not authenticated');

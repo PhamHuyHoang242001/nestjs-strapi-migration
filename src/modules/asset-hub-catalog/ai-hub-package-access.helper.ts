@@ -19,11 +19,11 @@ export const AI_HUB_PACKAGE_TABLE_BY_TYPE: Readonly<Record<AiHubArtifactType, (t
 
 /**
  * Upload code a user must hold to be added as a supporter of that workspace's packages.
- * `null` = every live user is eligible (prompt upload is open to every logged-in user).
+ * `null` = every live user is eligible (no workspace uses it today).
  */
 export const AI_HUB_SUPPORTER_UPLOAD_CODE: Readonly<Record<AiHubArtifactType, string | null>> = {
   skill: 'skill_upload',
-  prompt: null,
+  prompt: 'prompt_upload',
   'api-catalog': 'api_upload',
   coworker: 'coworker_upload',
 };

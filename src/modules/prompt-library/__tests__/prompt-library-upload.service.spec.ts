@@ -578,9 +578,7 @@ describe('PromptLibraryUploadService', () => {
         is_deleted: false,
         created_by: opts?.createdBy ?? USER_ID,
       });
-      // Default: no prompt code at all — prompt upload is open to every user, so the creator
-      // must still be able to resubmit without prompt_upload.
-      permissionQuery.getUserPermissions.mockResolvedValue(opts?.codes ?? []);
+      permissionQuery.getUserPermissions.mockResolvedValue(opts?.codes ?? ['prompt_upload']);
     }
 
     it('resubmits latest rejected in place and returns to pending', async () => {
@@ -655,8 +653,8 @@ describe('PromptLibraryUploadService', () => {
       expect(result.version).toEqual({ id: VERSION_ID, version_no: 1 });
     });
 
-    it('non-creator non-supporter → ForbiddenException even when holding prompt_upload', async () => {
-      stubLookups({ submittedBy: OTHER_USER_ID, createdBy: OTHER_USER_ID, codes: ['prompt_upload'] });
+    it('submitter without prompt_upload → ForbiddenException', async () => {
+      stubLookups({ codes: ['prompt_approve'] });
       await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -761,16 +759,16 @@ describe('PromptLibraryUploadService', () => {
       expect(result).toEqual({ canUpload: true, canApprove: false, isWorkspaceSO: false });
     });
 
-    it('returns canApprove=true when prompt_approve held (canUpload always true)', async () => {
+    it('returns canApprove=true when prompt_approve held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['prompt_approve']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: true, canApprove: true, isWorkspaceSO: false });
+      expect(result).toEqual({ canUpload: false, canApprove: true, isWorkspaceSO: false });
     });
 
-    it('returns canUpload=true even when no prompt codes held (upload open to all)', async () => {
+    it('returns both false when no prompt codes held', async () => {
       permissionQuery.getUserPermissions.mockResolvedValue(['some_other_code']);
       const result = await service.getMyPermissions(USER_ID);
-      expect(result).toEqual({ canUpload: true, canApprove: false, isWorkspaceSO: false });
+      expect(result).toEqual({ canUpload: false, canApprove: false, isWorkspaceSO: false });
     });
   });
 });

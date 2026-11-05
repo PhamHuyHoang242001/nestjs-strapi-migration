@@ -62,14 +62,14 @@ export class PromptLibraryUploadService {
     return isAiHubWorkspaceSO(await this.ownerScope.getUserOwnerScope(userId), 'prompt_packages');
   }
 
-  // Prompt upload is open to every logged-in user, so bump only needs creator ∨ supporter.
   private async assertCanBump(userId: number, createdBy: number, packageId: number): Promise<void> {
+    const codes = await this.permissionQuery.getUserPermissions(userId);
     const supporterIds = await this.itemMeta.listSupporterIds(this.dataSource.manager, 'prompt', packageId);
     if (
       !canBumpPackage({
         userId,
         createdBy,
-        hasUpload: true,
+        hasUpload: codes.includes('prompt_upload'),
         supporterIds,
       })
     ) {
@@ -444,12 +444,11 @@ export class PromptLibraryUploadService {
     return { id: packageId, status: dto.status };
   }
 
-  // Return which prompt codes the caller holds (BearerGuard-only endpoint). canUpload is always
-  // true: prompt upload is open to every logged-in user, prompt_upload is no longer checked.
+  // Return which prompt codes the caller holds (BearerGuard-only endpoint).
   async getMyPermissions(userId: number) {
     const codes = await this.permissionQuery.getUserPermissions(userId);
     return {
-      canUpload: true,
+      canUpload: codes.includes('prompt_upload'),
       canApprove: codes.includes('prompt_approve'),
       isWorkspaceSO: await this.isPromptSo(userId),
     };

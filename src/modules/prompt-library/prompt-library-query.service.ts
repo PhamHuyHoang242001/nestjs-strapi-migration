@@ -130,10 +130,14 @@ export class PromptLibraryQueryService {
     return new Map(rows.map((r) => [Number(r.id), r.email]));
   }
 
-  // Edit affordance: rejected + newest live id. Upload is open to every user; submitter/creator
-  // access is already enforced by the calling endpoint (list own-scope, detail/diff access union).
-  private async resolveIsUpdate(packageId: number, version: { id: number; state: string }): Promise<boolean> {
-    if (version.state !== PromptVersionState.REJECTED) {
+  // Edit affordance: rejected + newest live id + upload. Submitter/creator access is already
+  // enforced by the calling endpoint (list own-scope, detail/diff access union).
+  private async resolveIsUpdate(
+    packageId: number,
+    version: { id: number; state: string },
+    canUpload: boolean,
+  ): Promise<boolean> {
+    if (!canUpload || version.state !== PromptVersionState.REJECTED) {
       return false;
     }
     const newestRows = (await this.versionRepo.manager.query(
@@ -280,6 +284,8 @@ export class PromptLibraryQueryService {
     if (!pkg) throw new NotFoundException('Prompt package not found');
 
     // Resolve caller permissions once (per-user TTL cache upstream).
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canUpload = codes.includes('prompt_upload');
     const isOwner = pkg.created_by === userId;
     const isSo = await this.isPromptSo(userId);
     const supporterRows = await this.metaRead.getSupportersByPackageIds('prompt', [pkg.id]);
@@ -300,7 +306,7 @@ export class PromptLibraryQueryService {
     const isUpdate = canBumpPackage({
       userId,
       createdBy: pkg.created_by,
-      hasUpload: true,
+      hasUpload: canUpload,
       supporterIds,
     });
     // hasPendingVersion MUST be sourced from a separate query — the versions[] above is approved-only
@@ -402,6 +408,9 @@ export class PromptLibraryQueryService {
     )) as Array<{ total: number }>;
     const total = Number(countRows[0]?.total ?? 0);
 
+    const codes = await this.permissionQuery.getUserPermissions(userId);
+    const canUpload = codes.includes('prompt_upload');
+
     const limitIdx = rowParams.push(pageSize);
     const offsetIdx = rowParams.push((page - 1) * pageSize);
     const rows = (await this.versionRepo.manager.query(
@@ -456,7 +465,7 @@ export class PromptLibraryQueryService {
       avatar_url: r.avatar_url ?? null,
       // "mới" badge signal: first-ever pending (never had an approved predecessor).
       is_first_pending: r.state === PromptVersionState.PENDING && r.old_version == null,
-      isUpdate: r.is_update === true,
+      isUpdate: canUpload && r.is_update === true,
     }));
 
     return { data, meta: { total, page, limit: pageSize } };
@@ -583,7 +592,7 @@ export class PromptLibraryQueryService {
     // Version detail carries the full usage guide: this endpoint already 403s anyone who is not the
     // submitter, the package creator, or an approver, so no extra scrub is needed here.
     const meta = await this.loadPackageMeta([pkg], [version.id]);
-    const isUpdate = await this.resolveIsUpdate(pkg.id, version);
+    const isUpdate = await this.resolveIsUpdate(pkg.id, version, codes.includes('prompt_upload'));
     return {
       package: {
         id: pkg.id,
@@ -611,7 +620,7 @@ export class PromptLibraryQueryService {
   }
 
   // Diff: return base (active version prompt_content or null) and incoming (target version content).
-  // Bearer-only endpoint. Row-ownership: submitter, creator, or approver.
+  // Controller already requires prompt_upload OR prompt_approve. Row-ownership: submitter, creator, or approver.
   async getDiff(versionId: number, userId: number) {
     const version = await this.versionRepo.findOne({
       where: { id: versionId, is_deleted: false },
@@ -643,7 +652,7 @@ export class PromptLibraryQueryService {
 
     // Resolve the submitter email so the review screen shows "Submitted by" as email, not a raw id.
     const emailMap = await this.resolveEmails([version.submitted_by]);
-    const isUpdate = pkg ? await this.resolveIsUpdate(pkg.id, version) : false;
+    const isUpdate = pkg ? await this.resolveIsUpdate(pkg.id, version, codes.includes('prompt_upload')) : false;
 
     return {
       base: baseContent,

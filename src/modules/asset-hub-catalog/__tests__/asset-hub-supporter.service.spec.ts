@@ -34,7 +34,7 @@ function makeManager(opts: { pkg?: { id: number; created_by: number } | null; el
 function makeService(
   manager: unknown,
   currentSupporters: number[] = [SUPPORTER],
-  codes: string[] = ['skill_upload', 'api_upload', 'coworker_upload'],
+  codes: string[] = ['skill_upload', 'prompt_upload', 'api_upload', 'coworker_upload'],
 ) {
   const dataSource = {
     transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)),
@@ -109,24 +109,24 @@ describe('AssetHubSupporterService.replaceSupporters', () => {
     expect(itemMeta.replaceSupporters).not.toHaveBeenCalled();
   });
 
-  it('prompt: any live user is eligible (no upload-code check)', async () => {
+  it('prompt: only prompt_upload holders are eligible', async () => {
     const { manager, calls } = makeManager({ eligibleIds: [99] });
     const { service, itemMeta } = makeService(manager);
 
     await service.replaceSupporters('prompt', PACKAGE_ID, [99], CREATOR);
 
     const eligibility = calls.find((c) => c.sql.includes('SELECT u.id FROM users u'));
-    expect(eligibility?.sql).not.toContain('user_roles');
-    expect(eligibility?.sql).toContain('u.email IS NOT NULL');
+    expect(eligibility?.sql).toContain('user_roles');
+    expect(eligibility?.params[0]).toBe('prompt_upload');
     expect(itemMeta.replaceSupporters).toHaveBeenCalledWith(manager, 'prompt', PACKAGE_ID, [99]);
   });
 
-  it('prompt: a user the picker would not show (deleted / no email) is rejected', async () => {
+  it('prompt: a user the picker would not show (no prompt_upload / deleted / no email) is rejected', async () => {
     const { manager } = makeManager({ eligibleIds: [] });
     const { service, itemMeta } = makeService(manager);
 
     await expect(service.replaceSupporters('prompt', PACKAGE_ID, [99], CREATOR)).rejects.toThrow(
-      new BadRequestException('INVALID_SUPPORTERS: users not eligible: 99'),
+      new BadRequestException('INVALID_SUPPORTERS: users without prompt_upload: 99'),
     );
     expect(itemMeta.replaceSupporters).not.toHaveBeenCalled();
   });
@@ -171,18 +171,6 @@ describe('AssetHubSupporterService.listCandidates', () => {
     expect(res).toEqual({ data: [{ id: 7, email: 'a@x.vn' }], meta: { total: 1, page: 2, limit: 10 } });
   });
 
-  it('prompt + search: keyword binds as $1 when there is no upload code', async () => {
-    const { service, dataSource } = makeService({});
-    await stubList(service, dataSource).listCandidates('prompt', { search: 'ab' }, CREATOR);
-
-    const [countSql, countArgs] = dataSource.query.mock.calls[0] as [string, unknown[]];
-    const [rowSql, rowArgs] = dataSource.query.mock.calls[1] as [string, unknown[]];
-    expect(countSql).toContain('u.email ILIKE $1');
-    expect(countArgs).toEqual(['%ab%']);
-    expect(rowSql).toContain('LIMIT $2 OFFSET $3');
-    expect(rowArgs).toEqual(['%ab%', 20, 0]);
-  });
-
   it('lists only active users (status active)', async () => {
     const { service, dataSource } = makeService({});
     await stubList(service, dataSource).listCandidates('prompt', {}, CREATOR);
@@ -191,15 +179,15 @@ describe('AssetHubSupporterService.listCandidates', () => {
     expect(countSql).toContain("u.status = 'active'");
   });
 
-  it('prompt: lists every live user (no upload-code filter)', async () => {
+  it('prompt: filters to prompt_upload holders like the other workspaces', async () => {
     const { service, dataSource } = makeService({});
     await stubList(service, dataSource).listCandidates('prompt', {}, CREATOR);
 
     const [countSql, countArgs] = dataSource.query.mock.calls[0] as [string, unknown[]];
     const [, rowArgs] = dataSource.query.mock.calls[1] as [string, unknown[]];
-    expect(countSql).not.toContain('user_roles');
-    expect(countArgs).toEqual([]);
-    expect(rowArgs).toEqual([20, 0]);
+    expect(countSql).toContain('user_roles');
+    expect(countArgs).toEqual(['prompt_upload']);
+    expect(rowArgs).toEqual(['prompt_upload', 20, 0]);
   });
 });
 
@@ -227,6 +215,7 @@ describe('supporter DTOs', () => {
 describe('AssetHubSupporterService upload permission by type', () => {
   it.each([
     ['skill', 'skill_upload'],
+    ['prompt', 'prompt_upload'],
     ['api-catalog', 'api_upload'],
     ['coworker', 'coworker_upload'],
   ] as const)('%s: both endpoints need %s', async (type, code) => {
@@ -239,11 +228,5 @@ describe('AssetHubSupporterService upload permission by type', () => {
 
     const allowed = makeService(manager, [SUPPORTER], [code]);
     await expect(allowed.service.replaceSupporters(type, PACKAGE_ID, [40], CREATOR)).resolves.toBeDefined();
-  });
-
-  it('prompt: no permission needed', async () => {
-    const { manager } = makeManager({ eligibleIds: [40] });
-    const { service } = makeService(manager, [SUPPORTER], []);
-    await expect(service.replaceSupporters('prompt', PACKAGE_ID, [40], CREATOR)).resolves.toBeDefined();
   });
 });
