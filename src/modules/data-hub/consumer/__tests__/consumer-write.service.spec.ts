@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { QueryFailedError } from 'typeorm';
 import { DataHubStatus } from '@modules/databases/data-hub-enums';
 import { PromptAvatarUrlService } from '@modules/prompt-library/prompt-avatar-url.util';
@@ -21,7 +23,7 @@ const stored = {
 };
 
 // Manager answers by SQL shape; every call is recorded for assertions.
-function setup(opts: { current?: unknown; insertError?: Error; soRows?: unknown[] } = {}) {
+function setup(opts: { current?: unknown; insertError?: Error; updateError?: Error; soRows?: unknown[] } = {}) {
   const calls: Call[] = [];
   const manager = {
     query: jest.fn((sql: string, params: unknown[] = []) => {
@@ -33,6 +35,7 @@ function setup(opts: { current?: unknown; insertError?: Error; soRows?: unknown[
       }
       if (sql.includes('FROM data_hub_consumer_so_apps'))
         return Promise.resolve(opts.soRows ?? [{ consumer_id: 9, user_id: 1 }]);
+      if (opts.updateError && sql.includes('UPDATE data_hub_consumers')) return Promise.reject(opts.updateError);
       if (sql.includes('FOR UPDATE')) return Promise.resolve(opts.current === undefined ? [stored] : opts.current);
       return Promise.resolve([]);
     }),
@@ -136,6 +139,34 @@ describe('DataHubConsumerWriteService', () => {
     expect(JSON.parse(h?.params[3] as string)).toMatchObject({ code: 'CRM', name: 'CRM v2', status: 'active' });
   });
 
+  it('update writes a new code (upper-cased by the DTO) and records it in the UPDATE snapshot', async () => {
+    const { service, calls } = setup();
+    await service.update(9, { ...createDto, code: 'CRM_NEW' } as UpdateConsumerDto, 5);
+    const upd = calls.find((c) => c.sql.includes('UPDATE data_hub_consumers'));
+    expect(upd?.sql).toContain('code = $9');
+    expect(upd?.params[8]).toBe('CRM_NEW');
+    expect(JSON.parse(historyOf(calls)?.params[3] as string)).toMatchObject({ code: 'CRM_NEW' });
+  });
+
+  it('update without code keeps the stored code', async () => {
+    const { service, calls } = setup();
+    await service.update(9, { ...createDto, code: undefined, name: 'CRM v2' } as UpdateConsumerDto, 5);
+    expect(calls.find((c) => c.sql.includes('UPDATE data_hub_consumers'))?.params[8]).toBe('CRM');
+  });
+
+  it('update to a code taken by another live app is 409 CONSUMER_CODE_EXISTS', async () => {
+    const err = new QueryFailedError('q', [], {} as never);
+    (err as unknown as { driverError: unknown }).driverError = {
+      code: '23505',
+      constraint: 'uq_data_hub_consumers_code_live',
+    };
+    const { service, calls } = setup({ updateError: err });
+    await expect(service.update(9, { ...createDto, code: 'LOS' } as UpdateConsumerDto, 5)).rejects.toThrow(
+      new ConflictException('CONSUMER_CODE_EXISTS: consumer code already exists'),
+    );
+    expect(historyOf(calls)).toBeUndefined();
+  });
+
   it('update replaces the whole SO APP set (delete then insert) and snapshots the new ids', async () => {
     const { service, calls } = setup();
     await service.update(9, { ...createDto, so_app_user_ids: [4, 2] } as UpdateConsumerDto, 5);
@@ -184,5 +215,23 @@ describe('DataHubConsumerWriteService', () => {
   it('same status fails NO_CHANGES', async () => {
     const { service } = setup();
     await expect(service.updateStatus(9, DataHubStatus.ACTIVE, 5)).rejects.toThrow('NO_CHANGES');
+  });
+});
+
+describe('consumer code in DTOs', () => {
+  const body = { name: 'CRM', category: 'INTERNAL_APP', division_id: 1, short_description: 'd', so_app_user_ids: [1] };
+
+  it('edit: code is optional, upper-cased, and must match the code pattern', async () => {
+    expect(await validate(plainToInstance(UpdateConsumerDto, body))).toHaveLength(0);
+    const dto = plainToInstance(UpdateConsumerDto, { ...body, code: ' crm_new ' });
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.code).toBe('CRM_NEW');
+    const bad = await validate(plainToInstance(UpdateConsumerDto, { ...body, code: 'CRM-NEW' }));
+    expect(bad.map((e) => e.property)).toEqual(['code']);
+  });
+
+  it('create still requires code', async () => {
+    const errors = await validate(plainToInstance(CreateConsumerDto, body));
+    expect(errors.map((e) => e.property)).toEqual(['code']);
   });
 });

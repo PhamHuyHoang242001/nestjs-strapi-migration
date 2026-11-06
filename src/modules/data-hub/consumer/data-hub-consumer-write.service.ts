@@ -63,27 +63,42 @@ export class DataHubConsumerWriteService {
 
   async update(id: number, dto: UpdateConsumerDto, userId: number) {
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
-    return this.dataSource.transaction(async (manager) => {
-      const current = await this.lockCurrent(manager, id);
-      await this.assertDivision(manager, dto.division_id);
-      await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const current = await this.lockCurrent(manager, id);
+        await this.assertDivision(manager, dto.division_id);
+        await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
-      // Code and status are not editable here; carry them over from the stored row.
-      const next = buildConsumerSnapshot({ ...dto, code: current.code, status: current.status });
-      if (snapshotsEqual(this.currentSnapshot(current), next)) throw new BadRequestException('NO_CHANGES');
+        // Status is not editable here; code is kept when left out. A code taken by another live app hits the
+        // live-code unique index (409 below).
+        const next = buildConsumerSnapshot({ ...dto, code: dto.code ?? current.code, status: current.status });
+        if (snapshotsEqual(this.currentSnapshot(current), next)) throw new BadRequestException('NO_CHANGES');
 
-      const versionNo = current.version_no + 1;
-      await manager.query(
-        `UPDATE data_hub_consumers
-         SET name = $2, category = $3, division_id = $4, short_description = $5, avatar_url = $6,
-             version_no = $7, updated_by = $8, updated_at = NOW()
-         WHERE id = $1`,
-        [id, next.name, next.category, next.division_id, next.short_description, next.avatar_url, versionNo, userId],
-      );
-      await replaceSoApps(manager, id, dto.so_app_user_ids);
-      await this.writeHistory(manager, id, versionNo, DataHubServiceHistoryAction.UPDATE, next, userId);
-      return { id, version_no: versionNo };
-    });
+        const versionNo = current.version_no + 1;
+        await manager.query(
+          `UPDATE data_hub_consumers
+           SET name = $2, category = $3, division_id = $4, short_description = $5, avatar_url = $6,
+               version_no = $7, updated_by = $8, updated_at = NOW(), code = $9
+           WHERE id = $1`,
+          [
+            id,
+            next.name,
+            next.category,
+            next.division_id,
+            next.short_description,
+            next.avatar_url,
+            versionNo,
+            userId,
+            next.code,
+          ],
+        );
+        await replaceSoApps(manager, id, dto.so_app_user_ids);
+        await this.writeHistory(manager, id, versionNo, DataHubServiceHistoryAction.UPDATE, next, userId);
+        return { id, version_no: versionNo };
+      });
+    } catch (err) {
+      throw this.mapUniqueViolation(err);
+    }
   }
 
   async updateStatus(id: number, status: DataHubStatus, userId: number) {

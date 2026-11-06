@@ -1,13 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsString, Matches } from 'class-validator';
-import { UpdateConsumerDto } from './update-consumer.dto';
+import { CONSUMER_CODE_MESSAGE, CONSUMER_CODE_PATTERN, ConsumerFieldsDto, toConsumerCode } from './update-consumer.dto';
 
-// Code is normalized to upper case before validation so 'crm_app' and 'CRM_APP' are the same consumer.
-export class CreateConsumerDto extends UpdateConsumerDto {
+export class CreateConsumerDto extends ConsumerFieldsDto {
   @ApiProperty({ example: 'CRM_APP' })
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @Transform(toConsumerCode)
   @IsString()
-  @Matches(/^[A-Z0-9_]{2,100}$/, { message: 'code must match ^[A-Z0-9_]{2,100}$' })
+  @Matches(CONSUMER_CODE_PATTERN, { message: CONSUMER_CODE_MESSAGE })
   readonly code: string;
 }
