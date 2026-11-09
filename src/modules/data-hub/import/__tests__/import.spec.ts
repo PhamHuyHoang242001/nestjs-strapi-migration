@@ -130,7 +130,6 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
         if (sql.includes('FROM data_hub_consumers c')) return existing.map((code) => ({ code }));
         if (sql.includes('FROM data_hub_systems t')) return [{ code: 'OCP' }];
         if (sql.includes('FROM data_hub_systems s')) return [{ id: 2, name: 'OCP' }];
-        if (sql.includes('FROM data_hub_system_services sv')) return [{ id: 7, system_id: 2, name: 'Payment' }];
         return [];
       }),
     };
@@ -197,7 +196,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       expect(h.writeService.create).not.toHaveBeenCalled();
     });
 
-    it('resolves Hệ thống and Dịch vụ hệ thống by name; unknown ones are reported on their cell', async () => {
+    it('resolves Hệ thống by name and takes Dịch vụ hệ thống as free text; unknown systems are reported', async () => {
       const col = (key: string) =>
         sheetDef(CONSUMER_IMPORT_LAYOUT, 'CONSUMERS').columns.findIndex((c) => c.key === key) + 1;
       const h = harness();
@@ -208,17 +207,19 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       });
       const res = await h.service.import(file, false, CALLER);
       expect(h.created).toHaveLength(1);
-      expect(h.created[0]).toMatchObject({ system_id: 2, system_service_id: 7 });
+      expect(h.created[0]).toMatchObject({ system_id: 2, system_service: 'PAYMENT' });
       expect(res.issues.map((i) => [i.row, i.code])).toEqual([[3, 'SYSTEM_NOT_FOUND']]);
 
       const file2 = await edit(await h.template.build({ email: 'so@vpbank.com.vn' }), (s) => {
-        s.getCell(2, col('system_service')).value = 'Khong co';
+        s.getCell(2, col('system_service')).value = 'Bất kỳ tên nào';
         s.getCell(3, col('system')).value = null;
+        s.getCell(3, col('system_service')).value = 'x'.repeat(256);
       });
       const res2 = await harness().service.import(file2, true, CALLER);
-      expect(res2.issues.map((i) => [i.row, i.code])).toEqual([
-        [2, 'SYSTEM_SERVICE_NOT_FOUND'],
-        [3, 'REQUIRED'],
+      // Any service name is accepted (row 2 is valid); only its length is checked.
+      expect(res2.issues.map((i) => [i.row, i.column, i.code])).toEqual([
+        [3, 'G', 'REQUIRED'],
+        [3, 'H', 'TOO_LONG'],
       ]);
     });
 

@@ -35,7 +35,7 @@ export const CONSUMER_COLUMNS: ImportColumn[] = [
     'Dịch vụ hệ thống',
     'o',
     30,
-    'Tên dịch vụ thuộc Hệ thống ở cột trước (gõ tay). Để trống = app không gắn dịch vụ.',
+    'Tên dịch vụ hệ thống, nhập tự do (tối đa 255 ký tự). Để trống = app không gắn dịch vụ.',
   ),
 ];
 

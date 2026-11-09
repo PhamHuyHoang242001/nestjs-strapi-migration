@@ -47,12 +47,13 @@ export class ConsumerFieldsDto {
   @Min(1)
   readonly system_id: number;
 
-  // Dịch vụ hệ thống (optional, must belong to system_id); null / left out = none.
-  @ApiProperty({ required: false, nullable: true })
+  // Dịch vụ hệ thống, free text (optional); null / '' / left out = none.
+  @ApiProperty({ required: false, nullable: true, maxLength: 255 })
+  @Transform(trim)
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  readonly system_service_id?: number | null;
+  @IsString()
+  @MaxLength(255)
+  readonly system_service?: string | null;
 
   @ApiProperty({ maxLength: 200 })
   @Transform(trim)

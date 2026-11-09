@@ -5,7 +5,7 @@ export interface ConsumerSnapshot {
   category: string;
   division_id: number;
   system_id: number | null;
-  system_service_id: number | null;
+  system_service: string | null;
   short_description: string;
   avatar_url: string | null;
   status: string;
@@ -19,7 +19,7 @@ export function buildConsumerSnapshot(src: {
   category: string;
   division_id: number | string;
   system_id?: number | string | null;
-  system_service_id?: number | string | null;
+  system_service?: string | null;
   short_description: string;
   avatar_url?: string | null;
   status: string;
@@ -31,7 +31,8 @@ export function buildConsumerSnapshot(src: {
     category: src.category,
     division_id: Number(src.division_id),
     system_id: src.system_id ? Number(src.system_id) : null,
-    system_service_id: src.system_service_id ? Number(src.system_service_id) : null,
+    // An empty string means no service, like null.
+    system_service: src.system_service ? src.system_service : null,
     short_description: src.short_description,
     // An empty string clears the avatar like null does.
     avatar_url: src.avatar_url ? src.avatar_url : null,

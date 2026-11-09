@@ -21,9 +21,9 @@ export class DataHubConsumer extends BaseSoftDeleteEntity {
   @Column({ type: 'int', nullable: true })
   public system_id: number | null;
 
-  // Dịch vụ hệ thống, optional; must belong to system_id.
-  @Column({ type: 'int', nullable: true })
-  public system_service_id: number | null;
+  // Dịch vụ hệ thống, optional free text.
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  public system_service: string | null;
 
   @Column({ type: 'varchar', length: 1000 })
   public short_description: string;

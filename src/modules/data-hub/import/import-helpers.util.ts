@@ -119,17 +119,6 @@ export async function systemMap(dataSource: DataSource, names: string[]): Promis
   return byKey(rows.map((r) => [lower(r.name), Number(r.id)]));
 }
 
-// Live system services keyed by `<system id>:<lower name>`; a name repeated inside one system maps to null.
-export async function systemServiceMap(dataSource: DataSource, names: string[]): Promise<Map<string, number | null>> {
-  if (names.length === 0) return new Map();
-  const rows: Array<{ id: number; system_id: number; name: string }> = await dataSource.query(
-    `SELECT sv.id, sv.system_id, sv.name FROM data_hub_system_services sv
-     WHERE LOWER(sv.name) = ANY($1) AND ${liveSql('sv')}`,
-    [names.map(lower)],
-  );
-  return byKey(rows.map((r) => [`${Number(r.system_id)}:${lower(r.name)}`, Number(r.id)]));
-}
-
 function byKey(entries: Array<[string, number]>): Map<string, number | null> {
   const out = new Map<string, number | null>();
   entries.forEach(([k, id]) => out.set(k, out.has(k) ? null : id));

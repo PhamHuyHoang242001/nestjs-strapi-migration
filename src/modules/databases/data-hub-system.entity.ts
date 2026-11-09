@@ -1,7 +1,7 @@
 import { Column, Entity } from 'typeorm';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 
-// Hệ thống: parent of Dịch vụ hệ thống and of App thụ hưởng (data_hub_consumers.system_id).
+// Hệ thống: parent of App thụ hưởng (data_hub_consumers.system_id).
 @Entity('data_hub_systems')
 export class DataHubSystem extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 255 })

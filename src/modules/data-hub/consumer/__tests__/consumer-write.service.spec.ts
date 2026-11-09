@@ -17,7 +17,7 @@ const stored = {
   category: 'INTERNAL_APP',
   division_id: 1,
   system_id: 2,
-  system_service_id: null,
+  system_service: null,
   short_description: 'd',
   avatar_url: null,
   status: 'active',
@@ -34,8 +34,7 @@ function setup(
       calls.push({ sql, params });
       if (sql.includes('FROM data_hub_divisions') || sql.includes('FROM data_hub_departments'))
         return Promise.resolve([{ ok: 1 }]);
-      if (sql.includes('FROM data_hub_systems') || sql.includes('FROM data_hub_system_services'))
-        return Promise.resolve(opts.noSystem ? [] : [{ ok: 1 }]);
+      if (sql.includes('FROM data_hub_systems')) return Promise.resolve(opts.noSystem ? [] : [{ ok: 1 }]);
       if (/INSERT INTO data_hub_consumers\s/.test(sql)) {
         return opts.insertError ? Promise.reject(opts.insertError) : Promise.resolve([{ id: 9 }]);
       }
@@ -78,7 +77,7 @@ describe('DataHubConsumerWriteService', () => {
       category: 'INTERNAL_APP',
       division_id: 1,
       system_id: 2,
-      system_service_id: null,
+      system_service: null,
       short_description: 'd',
       avatar_url: null,
       status: 'active',
@@ -89,30 +88,31 @@ describe('DataHubConsumerWriteService', () => {
     expect(insert?.params.slice(8)).toEqual([2, null]);
   });
 
-  it('create rejects an unknown system, or a service that is not in that system', async () => {
+  it('create rejects an unknown system', async () => {
     const { service, calls } = setup({ noSystem: true });
     await expect(service.create(createDto, 5)).rejects.toThrow('INVALID_SYSTEM: system does not exist');
-    await expect(service.create({ ...createDto, system_service_id: 7 } as CreateConsumerDto, 5)).rejects.toThrow(
-      'INVALID_SYSTEM',
-    );
     expect(calls.some((c) => /INSERT INTO data_hub_consumers\s/.test(c.sql))).toBe(false);
   });
 
-  it('a service is checked against the chosen system and stored with it', async () => {
+  it('the system service is free text, stored as typed without any lookup', async () => {
     const { service, calls } = setup();
-    await service.create({ ...createDto, system_service_id: 7 } as CreateConsumerDto, 5);
-    const check = calls.find((c) => c.sql.includes('FROM data_hub_system_services'));
-    expect(check?.sql).toContain('sv.system_id = $2');
-    expect(check?.params).toEqual([7, 2]);
-    expect(calls.find((c) => /INSERT INTO data_hub_consumers\s/.test(c.sql))?.params.slice(8)).toEqual([2, 7]);
+    await service.create({ ...createDto, system_service: 'Thanh toán' } as CreateConsumerDto, 5);
+    expect(calls.some((c) => c.sql.includes('data_hub_system_services'))).toBe(false);
+    expect(calls.find((c) => /INSERT INTO data_hub_consumers\s/.test(c.sql))?.params.slice(8)).toEqual([
+      2,
+      'Thanh toán',
+    ]);
   });
 
   it('update moves the app to another system and records it in the snapshot', async () => {
     const { service, calls } = setup();
-    await service.update(9, { ...createDto, system_id: 3, system_service_id: 8 } as UpdateConsumerDto, 5);
+    await service.update(9, { ...createDto, system_id: 3, system_service: 'Payment' } as UpdateConsumerDto, 5);
     const upd = calls.find((c) => c.sql.includes('UPDATE data_hub_consumers'));
-    expect(upd?.params.slice(9)).toEqual([3, 8]);
-    expect(JSON.parse(historyOf(calls)?.params[3] as string)).toMatchObject({ system_id: 3, system_service_id: 8 });
+    expect(upd?.params.slice(9)).toEqual([3, 'Payment']);
+    expect(JSON.parse(historyOf(calls)?.params[3] as string)).toMatchObject({
+      system_id: 3,
+      system_service: 'Payment',
+    });
   });
 
   it('create with several SOs validates all, links them in submitted order and snapshots sorted ids', async () => {
@@ -277,8 +277,15 @@ describe('consumer code in DTOs', () => {
   it('system is required on create and edit, the service is optional', async () => {
     const errors = await validate(plainToInstance(UpdateConsumerDto, { ...body, system_id: undefined }));
     expect(errors.map((e) => e.property)).toEqual(['system_id']);
-    const ok = plainToInstance(CreateConsumerDto, { ...body, code: 'CRM', system_service_id: null });
+    const ok = plainToInstance(CreateConsumerDto, { ...body, code: 'CRM', system_service: null });
     expect(await validate(ok)).toHaveLength(0);
+    const typed = plainToInstance(CreateConsumerDto, { ...body, code: 'CRM', system_service: '  Thanh toán  ' });
+    expect(await validate(typed)).toHaveLength(0);
+    expect(typed.system_service).toBe('Thanh toán');
+    const long = await validate(
+      plainToInstance(CreateConsumerDto, { ...body, code: 'CRM', system_service: 'x'.repeat(256) }),
+    );
+    expect(long.map((e) => e.property)).toEqual(['system_service']);
   });
 
   it('create still requires code', async () => {

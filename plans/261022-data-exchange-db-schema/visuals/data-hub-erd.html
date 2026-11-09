@@ -45,7 +45,7 @@ svg#links path.hl{stroke:var(--hl);stroke-width:2.2}
     <span><i style="background:#7a4fc0"></i>Bảng nối theo version</span>
     <span><i style="background:#2b8a5f"></i>Từ điển dữ liệu</span>
     <span><i style="background:#c26a0a"></i>App thụ hưởng</span>
-    <span><i style="background:#b4467a"></i>Hệ thống · Dịch vụ hệ thống</span>
+    <span><i style="background:#b4467a"></i>Hệ thống</span>
     <span><i style="background:#5f6670"></i>Đơn vị · Domain tích hợp</span>
     <span><i style="background:#8a8f98"></i>Lịch sử</span>
     <span><b style="color:#1c5fb8">xanh</b> = FK (đường nối đi ra từ đúng field) · <b style="color:#7a3fb0">tím</b> = id user, chỉ lưu id, không FK</span>
@@ -119,7 +119,7 @@ const T = {
     ['id','int','PK'],['code','varchar(100)','UK','UK live, sửa được'],['name','varchar(255)'],
     ['category','varchar(50)','','INTERNAL_APP|PARTNER_ECOSYSTEM'],['division_id','int','FK>data_hub_divisions'],
     ['system_id','int','FK>data_hub_systems','null ở DB, API bắt buộc'],
-    ['system_service_id','int','FK>data_hub_system_services','null, thuộc system_id'],
+    ['system_service','varchar(255)','','null, nhập tự do'],
     ['short_description','varchar(1000)'],['avatar_url','varchar(2000)','','null'],
     ['status','varchar(50)','','active|inactive'],['version_no','int','','default 1'],
     ['created_by','int','U'],['updated_by','int','U','null']]],
@@ -130,9 +130,6 @@ const T = {
     ['action','varchar(50)','','CREATE|UPDATE|STATUS'],['snapshot','jsonb'],['changed_by','int','U']]],
   data_hub_systems: ['c-sys', [
     ['id','int','PK'],['name','varchar(255)','','Hệ thống'],
-    ['created_by','int','U','null'],['updated_by','int','U','null'],['deleted_by','int','U','null']]],
-  data_hub_system_services: ['c-sys', [
-    ['id','int','PK'],['system_id','int','FK>data_hub_systems'],['name','varchar(255)','','Dịch vụ hệ thống'],
     ['created_by','int','U','null'],['updated_by','int','U','null'],['deleted_by','int','U','null']]],
   data_hub_source_tables: ['c-dict', [
     ['id','int','PK'],['name','varchar(255)','UK','UK live, không phân biệt hoa thường'],['description','text','','null'],
@@ -160,8 +157,7 @@ const COLS = [
   ['data_hub_data_service_version_requesters','data_hub_data_service_version_service_owners',
     'data_hub_data_service_version_consumers','data_hub_data_service_version_physical_terms',
     'data_hub_request_units','data_hub_divisions','data_hub_departments','data_hub_department_members'],
-  ['data_hub_consumers','data_hub_consumer_so_apps','data_hub_consumer_histories','data_hub_systems',
-    'data_hub_system_services'],
+  ['data_hub_consumers','data_hub_consumer_so_apps','data_hub_consumer_histories','data_hub_systems'],
   ['data_hub_source_tables','data_hub_physical_terms','data_hub_logical_terms','data_hub_logical_term_histories'],
 ];
 const COL_W = 380, COL_GAP = 120, ROW_GAP = 50, PAD = 30;

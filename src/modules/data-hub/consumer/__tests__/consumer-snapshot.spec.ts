@@ -21,7 +21,7 @@ describe('consumer snapshot', () => {
       'category',
       'division_id',
       'system_id',
-      'system_service_id',
+      'system_service',
       'short_description',
       'avatar_url',
       'status',
@@ -29,7 +29,8 @@ describe('consumer snapshot', () => {
     ]);
     expect(s.division_id).toBe(1);
     expect(s.system_id).toBe(2);
-    expect(s.system_service_id).toBeNull();
+    expect(s.system_service).toBeNull();
+    expect(buildConsumerSnapshot({ ...base, system_service: '' }).system_service).toBeNull();
     expect(s.avatar_url).toBeNull();
   });
 

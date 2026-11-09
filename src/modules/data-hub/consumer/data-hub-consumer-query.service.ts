@@ -151,7 +151,7 @@ export class DataHubConsumerQueryService {
       status: r.status,
       division: org(r.division_id, r.division_code, r.division_name),
       system: named(r.system_id, r.system_name),
-      system_service: named(r.system_service_id, r.system_service_name),
+      system_service: r.system_service,
       so_apps: this.userRefs.toRefs(users, soAppUserIds),
       api_count: c?.api ?? 0,
       sftp_count: c?.sftp ?? 0,
