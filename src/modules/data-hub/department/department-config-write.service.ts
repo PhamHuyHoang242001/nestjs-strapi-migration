@@ -56,7 +56,8 @@ export class DepartmentConfigWriteService {
     }
   }
 
-  // A department referenced by a live data service (through its active version) stays.
+  // A department referenced by a live data service (through its active version) or still holding live members
+  // stays. The FOR UPDATE lock waits for member adds (FOR SHARE), so no member can slip in after the check.
   async remove(id: number, userId: number): Promise<{ id: number; deleted: true }> {
     return this.dataSource.transaction(async (manager) => {
       await this.lock(manager, id, 'UPDATE');
@@ -69,14 +70,16 @@ export class DepartmentConfigWriteService {
       if (Number(services?.n ?? 0) > 0) {
         throw new ConflictException('DEPARTMENT_IN_USE');
       }
+      const [members]: Array<{ n: number }> = await manager.query(
+        `SELECT COUNT(*)::int AS n FROM data_hub_department_members m WHERE m.department_id = $1 AND ${liveSql('m')}`,
+        [id],
+      );
+      if (Number(members?.n ?? 0) > 0) {
+        throw new ConflictException('DEPARTMENT_HAS_MEMBERS');
+      }
       await manager.query(
         `UPDATE data_hub_departments SET deleted_at = NOW(), is_deleted = true, updated_by = $2, updated_at = NOW()
          WHERE id = $1`,
-        [id, userId],
-      );
-      await manager.query(
-        `UPDATE data_hub_department_members m SET ${MEMBER_SOFT_DELETE}
-         WHERE m.department_id = $1 AND ${liveSql('m')}`,
         [id, userId],
       );
       return { id, deleted: true as const };

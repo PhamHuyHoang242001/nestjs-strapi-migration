@@ -67,16 +67,26 @@ describe('DepartmentConfigWriteService', () => {
     expect(usedByService.calls.some((c) => /FROM data_hub_consumers/.test(c.sql))).toBe(false);
   });
 
-  it('delete soft-deletes the department and its live members, recording who deleted', async () => {
+  it('delete is refused while the department still has live members', async () => {
+    const { service, calls } = make([
+      [LOCK, () => [live]],
+      [/FROM data_hub_department_members m/, () => [{ n: 2 }]],
+    ]);
+    await expect(service.remove(5, 3)).rejects.toThrow('DEPARTMENT_HAS_MEMBERS');
+    const count = calls.find((c) => /FROM data_hub_department_members m/.test(c.sql));
+    expect(count?.sql).toContain('m.deleted_at IS NULL AND m.is_deleted IS NOT TRUE');
+    expect(count?.params).toEqual([5]);
+    expect(calls.some((c) => /SET deleted_at/.test(c.sql))).toBe(false);
+  });
+
+  it('delete soft-deletes a department with no data service and no live member, recording who deleted', async () => {
     const { service, calls } = make([[LOCK, () => [live]]]);
     await expect(service.remove(5, 3)).resolves.toEqual({ id: 5, deleted: true });
-    expect(calls.some((c) => /UPDATE data_hub_departments SET deleted_at = NOW\(\), is_deleted = true/.test(c.sql))).toBe(
-      true,
+    const del = calls.find((c) =>
+      /UPDATE data_hub_departments SET deleted_at = NOW\(\), is_deleted = true/.test(c.sql),
     );
-    const members = calls.find((c) => /UPDATE data_hub_department_members m SET/.test(c.sql));
-    expect(members?.sql).toContain('deleted_by = $2');
-    expect(members?.params).toEqual([5, 3]);
-    expect(calls.some((c) => /DELETE FROM data_hub_department_members/.test(c.sql))).toBe(false);
+    expect(del?.params).toEqual([5, 3]);
+    expect(calls.some((c) => /UPDATE data_hub_department_members/.test(c.sql))).toBe(false);
   });
 
   it('addMembers: department locked FOR SHARE, users must be live and hold a data-service right', async () => {
