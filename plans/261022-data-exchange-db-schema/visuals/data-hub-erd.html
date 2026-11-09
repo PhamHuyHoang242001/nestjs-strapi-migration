@@ -32,6 +32,7 @@ svg#links path.hl{stroke:var(--hl);stroke-width:2.2}
 .row .note{grid-column:1/-1}
 .c-svc h3{background:#2f6db5}.c-join h3{background:#7a4fc0}.c-dict h3{background:#2b8a5f}
 .c-con h3{background:#c26a0a}.c-org h3{background:#5f6670}.c-hist h3{background:#8a8f98}.c-ver h3{background:#1f8a9a}
+.c-sys h3{background:#b4467a}
 </style>
 </head>
 <body>
@@ -44,86 +45,108 @@ svg#links path.hl{stroke:var(--hl);stroke-width:2.2}
     <span><i style="background:#7a4fc0"></i>Bảng nối theo version</span>
     <span><i style="background:#2b8a5f"></i>Từ điển dữ liệu</span>
     <span><i style="background:#c26a0a"></i>App thụ hưởng</span>
-    <span><i style="background:#5f6670"></i>Đơn vị</span>
+    <span><i style="background:#b4467a"></i>Hệ thống · Dịch vụ hệ thống</span>
+    <span><i style="background:#5f6670"></i>Đơn vị · Domain tích hợp</span>
     <span><i style="background:#8a8f98"></i>Lịch sử</span>
     <span><b style="color:#1c5fb8">xanh</b> = FK (đường nối đi ra từ đúng field) · <b style="color:#7a3fb0">tím</b> = id user, chỉ lưu id, không FK</span>
-    <span>Mọi bảng có thêm created_at, updated_at; bảng chính thêm deleted_at, is_deleted · Di chuột vào bảng để tô sáng quan hệ</span>
+    <span>Mọi bảng có thêm created_at, updated_at (không vẽ); bảng chính thêm deleted_at, is_deleted (soft delete), trừ bảng nối version_* và consumer_so_apps · UK live = duy nhất trong các dòng chưa xoá · Di chuột vào bảng để tô sáng quan hệ</span>
+    <span>Cập nhật theo schema sau migration 2611091100 (09/11/2026)</span>
   </div>
 </header>
 <div id="viewport"><div id="sizer"><div id="canvas"><svg id="links"></svg></div></div></div>
 <script>
 // [name, type, key, note]; key: PK | FK>table | FK,UK>table | UK | U (user id, no FK)
+// Soft-delete columns (deleted_at, is_deleted) and created_at/updated_at are left out of every card.
 const T = {
   data_hub_data_services: ['c-svc', [
-    ['id','int','PK'],['service_code','varchar(100)','UK'],['service_type','varchar(50)','','API|SFTP · cố định'],
+    ['id','int','PK'],['service_code','varchar(100)','UK','UK live'],['service_type','varchar(50)','','API|SFTP · cố định'],
     ['status','varchar(50)','','active|inactive'],['active_version_id','int','FK>data_hub_data_service_versions','null'],
     ['created_by','int','U'],['updated_by','int','U','null']]],
   data_hub_data_service_versions: ['c-ver', [
     ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],['version_no','int','','UK approved'],
-    ['old_version','int','','null'],['state','varchar(50)','','pending|approved|rejected'],
+    ['old_version','int','','null'],['state','varchar(50)','','pending|approved|rejected · 1 pending'],
     ['name','varchar(255)'],['short_description','varchar(1000)'],['purpose','varchar(2000)','','null'],
+    ['service_ops','varchar(2000)','','Ops dịch vụ, null'],['it_support','jsonb','','{email, phone, link}, null'],
     ['request_unit_id','int','FK>data_hub_request_units'],['division_id','int','FK>data_hub_divisions'],
-    ['department_id','int','FK>data_hub_departments'],['source_table','varchar(1000)'],
-    ['usage_guide_html','text'],['changelog_note','text','','null'],
+    ['department_id','int','FK>data_hub_departments'],
+    ['usage_guide_html','text','','default \'\''],['changelog_note','text','','null'],
     ['submitted_by','int','U'],['reviewed_by','int','U','null'],['reviewed_at','timestamp','','null'],
     ['reject_reason','text','','null']]],
   data_hub_data_service_version_api_specs: ['c-ver', [
-    ['id','int','PK'],['data_service_version_id','int','FK,UK>data_hub_data_service_versions'],
-    ['method','varchar(50)','','enum'],['base_url','varchar(50)','','enum'],['endpoint_path','varchar(1000)'],
-    ['auth_type','varchar(50)','','enum'],['token_endpoint','varchar(1000)','','null'],
-    ['token_auth_method','varchar(50)','','enum, null'],['peak_tps','varchar(255)','','null'],
-    ['update_frequency','varchar(50)','','enum'],['sync_mode','varchar(50)','','enum'],['timeout','varchar(100)','','null'],
-    ['sample_request','jsonb','','null'],['sample_response','jsonb','','null']]],
+    ['id','int','PK'],['data_service_version_id','int','FK,UK>data_hub_data_service_versions','UK live'],
+    ['method','varchar(50)','','GET|POST|PUT|PATCH|DELETE'],['domain_id','int','FK>integration_domain_configs'],
+    ['endpoint_path','varchar(1000)'],['auth_type','varchar(50)','','enum'],['peak_tps','varchar(255)','','null'],
+    ['update_frequency','varchar(50)','','enum'],['sync_mode','varchar(50)','','SYNC|ASYNC'],
+    ['timeout','varchar(100)','','null'],['sample_request','jsonb','','null'],['sample_response','jsonb','','null']]],
   data_hub_data_service_version_sftp_specs: ['c-ver', [
-    ['id','int','PK'],['data_service_version_id','int','FK,UK>data_hub_data_service_versions'],
-    ['host','varchar(255)','','null'],['port','int','','default 22'],['auth_type','varchar(50)','','enum'],
-    ['key_vault_method','varchar(50)','','enum, null'],['vault_account','varchar(255)','','null'],
+    ['id','int','PK'],['data_service_version_id','int','FK,UK>data_hub_data_service_versions','UK live'],
     ['folder_path','varchar(1000)','','null'],['file_name_pattern','varchar(500)','','null'],
     ['file_format','varchar(50)','','enum'],['export_frequency','varchar(50)','','enum'],
-    ['max_file_size','varchar(255)','','null'],['encryption','varchar(50)','','enum'],
-    ['flow_direction','varchar(50)','','enum, null']]],
+    ['max_file_size','varchar(255)','','null'],['encryption','varchar(50)','','PGP_KEY|NONE'],
+    ['flow_direction','varchar(50)','','PUSH|PULL, null']]],
   data_hub_data_service_histories: ['c-hist', [
     ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],
     ['data_service_version_id','int','FK>data_hub_data_service_versions','null'],
     ['version_no','int','','null'],['action','varchar(50)','','CREATE|UPDATE|STATUS'],
-    ['change_note','text','','null'],['changes','jsonb','','changed fields'],['changed_by','int','U']]],
+    ['change_note','text','','null'],['changes','jsonb','','changed fields, null'],['changed_by','int','U']]],
   data_hub_data_service_version_requesters: ['c-join', [
     ['id','int','PK'],['data_service_version_id','int','FK>data_hub_data_service_versions'],
-    ['user_id','int','U','Đầu mối yêu cầu (BU)']]],
-  data_hub_data_service_version_it_supporters: ['c-join', [
+    ['user_id','int','U','Người yêu cầu · UK + version']]],
+  data_hub_data_service_version_service_owners: ['c-join', [
     ['id','int','PK'],['data_service_version_id','int','FK>data_hub_data_service_versions'],
-    ['user_id','int','U','IT hỗ trợ']]],
+    ['user_id','int','U','SO dịch vụ · UK + version']]],
   data_hub_data_service_version_consumers: ['c-join', [
     ['id','int','PK'],['data_service_version_id','int','FK>data_hub_data_service_versions'],
-    ['consumer_id','int','FK>data_hub_consumers']]],
+    ['consumer_id','int','FK>data_hub_consumers','UK + version']]],
   data_hub_data_service_version_physical_terms: ['c-join', [
     ['id','int','PK'],['data_service_version_id','int','FK>data_hub_data_service_versions'],
-    ['physical_term_id','int','FK>data_hub_physical_terms']]],
+    ['physical_term_id','int','FK>data_hub_physical_terms','UK + version']]],
+  integration_domain_configs: ['c-org', [
+    ['id','int','PK'],['url','varchar(255)','UK'],['status','varchar(50)','','active|inactive'],
+    ['type','varchar(50)','','internal|partner'],
+    ['created_by','int','U','null'],['updated_by','int','U','null'],['deleted_by','int','U','null']]],
   data_hub_request_units: ['c-org', [
-    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)'],['category','varchar(100)','','null']]],
+    ['id','int','PK'],['code','varchar(100)','UK','UK live'],['name','varchar(255)'],['category','varchar(100)','','null']]],
   data_hub_divisions: ['c-org', [
-    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)']]],
+    ['id','int','PK'],['code','varchar(100)','UK','UK live'],['name','varchar(255)']]],
   data_hub_departments: ['c-org', [
-    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)']]],
+    ['id','int','PK'],['code','varchar(100)','UK','UK live, không phân biệt hoa thường'],['name','varchar(255)'],
+    ['created_by','int','U','null'],['updated_by','int','U','null']]],
+  data_hub_department_members: ['c-join', [
+    ['id','int','PK'],['department_id','int','FK>data_hub_departments'],['user_id','int','U','UK + department'],
+    ['created_by','int','U','null'],['updated_by','int','U','null'],['deleted_by','int','U','null']]],
   data_hub_consumers: ['c-con', [
-    ['id','int','PK'],['code','varchar(100)','UK'],['name','varchar(255)'],
+    ['id','int','PK'],['code','varchar(100)','UK','UK live, sửa được'],['name','varchar(255)'],
     ['category','varchar(50)','','INTERNAL_APP|PARTNER_ECOSYSTEM'],['division_id','int','FK>data_hub_divisions'],
-    ['department_id','int','FK>data_hub_departments','null'],['short_description','varchar(1000)'],
+    ['system_id','int','FK>data_hub_systems','null ở DB, API bắt buộc'],
+    ['system_service_id','int','FK>data_hub_system_services','null, thuộc system_id'],
+    ['short_description','varchar(1000)'],['avatar_url','varchar(2000)','','null'],
     ['status','varchar(50)','','active|inactive'],['version_no','int','','default 1'],
     ['created_by','int','U'],['updated_by','int','U','null']]],
-  data_hub_consumer_business_contacts: ['c-join', [
-    ['id','int','PK'],['consumer_id','int','FK>data_hub_consumers'],
-    ['user_id','int','U','Đầu mối liên hệ nghiệp vụ']]],
+  data_hub_consumer_so_apps: ['c-join', [
+    ['id','int','PK'],['consumer_id','int','FK>data_hub_consumers'],['user_id','int','U','SO APP · UK + consumer']]],
   data_hub_consumer_histories: ['c-hist', [
     ['id','int','PK'],['consumer_id','int','FK>data_hub_consumers'],['version_no','int','','UK + consumer'],
     ['action','varchar(50)','','CREATE|UPDATE|STATUS'],['snapshot','jsonb'],['changed_by','int','U']]],
+  data_hub_systems: ['c-sys', [
+    ['id','int','PK'],['name','varchar(255)','','Hệ thống'],
+    ['created_by','int','U','null'],['updated_by','int','U','null'],['deleted_by','int','U','null']]],
+  data_hub_system_services: ['c-sys', [
+    ['id','int','PK'],['system_id','int','FK>data_hub_systems'],['name','varchar(255)','','Dịch vụ hệ thống'],
+    ['created_by','int','U','null'],['updated_by','int','U','null'],['deleted_by','int','U','null']]],
+  data_hub_source_tables: ['c-dict', [
+    ['id','int','PK'],['name','varchar(255)','UK','UK live, không phân biệt hoa thường'],['description','text','','null'],
+    ['link','varchar(1000)','','null'],['department_id','int','FK>data_hub_departments'],
+    ['created_by','int','U'],['updated_by','int','U','null']]],
   data_hub_physical_terms: ['c-dict', [
-    ['id','int','PK'],['physical_column','varchar(255)','UK'],['technical_description','text'],
-    ['example_value','varchar(1000)'],['logical_term_id','int','FK>data_hub_logical_terms','null'],
+    ['id','int','PK'],['source_table_id','int','FK>data_hub_source_tables'],
+    ['code','varchar(255)','','UK + bảng nguồn (live)'],['data_service_id','int','FK>data_hub_data_services'],
+    ['technical_description','text'],['data_type','varchar(100)','','null'],['is_required','boolean','','default false'],
+    ['example_value','varchar(1000)','','null'],['logical_term_id','int','FK>data_hub_logical_terms','null'],
     ['created_by','int','U'],['updated_by','int','U','null']]],
   data_hub_logical_terms: ['c-dict', [
-    ['id','int','PK'],['code','varchar(255)','UK'],['short_description','varchar(1000)'],
-    ['example_value','varchar(1000)','','null'],['version_no','int','','default 1'],
+    ['id','int','PK'],['code','varchar(255)','UK','UK live, không phân biệt hoa thường'],
+    ['short_description','varchar(1000)'],['example_value','varchar(1000)','','null'],['version_no','int','','default 1'],
     ['created_by','int','U'],['updated_by','int','U','null']]],
   data_hub_logical_term_histories: ['c-hist', [
     ['id','int','PK'],['logical_term_id','int','FK>data_hub_logical_terms'],['version_no','int','','UK + term'],
@@ -131,14 +154,15 @@ const T = {
 };
 // Column layout: tables stacked top-down per column
 const COLS = [
-  ['data_hub_data_service_histories','data_hub_data_services'],
+  ['data_hub_data_service_histories','data_hub_data_services','integration_domain_configs'],
   ['data_hub_data_service_versions'],
   ['data_hub_data_service_version_api_specs','data_hub_data_service_version_sftp_specs'],
-  ['data_hub_data_service_version_requesters','data_hub_data_service_version_it_supporters',
+  ['data_hub_data_service_version_requesters','data_hub_data_service_version_service_owners',
     'data_hub_data_service_version_consumers','data_hub_data_service_version_physical_terms',
-    'data_hub_request_units','data_hub_divisions','data_hub_departments'],
-  ['data_hub_consumers','data_hub_consumer_business_contacts','data_hub_consumer_histories','data_hub_physical_terms'],
-  ['data_hub_logical_terms','data_hub_logical_term_histories'],
+    'data_hub_request_units','data_hub_divisions','data_hub_departments','data_hub_department_members'],
+  ['data_hub_consumers','data_hub_consumer_so_apps','data_hub_consumer_histories','data_hub_systems',
+    'data_hub_system_services'],
+  ['data_hub_source_tables','data_hub_physical_terms','data_hub_logical_terms','data_hub_logical_term_histories'],
 ];
 const COL_W = 380, COL_GAP = 120, ROW_GAP = 50, PAD = 30;
 const canvas = document.getElementById('canvas'), svg = document.getElementById('links');
