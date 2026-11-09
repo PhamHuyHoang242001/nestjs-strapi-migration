@@ -242,7 +242,12 @@ async function importService(m: EntityManager, s: Row, marker: string, r: Refs, 
     (s.subscribers ?? []).map((c: string) => r.consumerIds.get(c.toUpperCase())),
   );
   await link('data_hub_data_service_version_requesters', 'user_id', [r.userId(s.bu_contact)]);
-  await link('data_hub_data_service_version_it_supporters', 'user_id', [r.userId(s.technical_contact)]);
+  if (s.technical_contact) {
+    await m.query(`UPDATE data_hub_data_service_versions SET it_support = $1::jsonb WHERE id = $2`, [
+      JSON.stringify({ email: s.technical_contact, phone: null, link: null }),
+      ver.id,
+    ]);
+  }
   await m.query(`UPDATE data_hub_data_services SET active_version_id = $1 WHERE id = $2`, [ver.id, pkg.id]);
   await m.query(
     `INSERT INTO data_hub_data_service_histories (data_service_id, data_service_version_id, version_no, action,

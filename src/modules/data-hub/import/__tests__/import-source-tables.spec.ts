@@ -75,7 +75,7 @@ function harness(opts: { canUpdate?: boolean; tableNames?: string[]; services?: 
           department_id: 2,
           consumer_ids: [],
           requester_user_ids: [9],
-          it_supporter_user_ids: [9],
+          it_support: { email: 'it@x.vn', phone: null, link: null },
           service_owner_user_ids: [9],
           api_spec: { method: 'GET' },
           sftp_spec: null,

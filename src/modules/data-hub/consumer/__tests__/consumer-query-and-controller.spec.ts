@@ -17,6 +17,10 @@ const listRow = {
   division_id: 1,
   division_code: 'DIV',
   division_name: 'Div',
+  system_id: 2,
+  system_name: 'OCP',
+  system_service_id: null,
+  system_service_name: null,
 };
 
 function makeQueryService(handler: (sql: string, params?: unknown[]) => unknown[]) {
@@ -60,6 +64,8 @@ describe('DataHubConsumerQueryService', () => {
       avatar_url: '/uploads/crm.png',
       status: 'active',
       division: { id: 1, code: 'DIV', name: 'Div' },
+      system: { id: 2, name: 'OCP' },
+      system_service: null,
       so_apps: [
         { id: 7, email: 'so@x.vn' },
         { id: 8, email: 'so2@x.vn' },

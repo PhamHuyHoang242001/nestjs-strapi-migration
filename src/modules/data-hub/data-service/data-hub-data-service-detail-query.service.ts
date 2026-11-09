@@ -5,6 +5,7 @@ import { activeSql, liveSql } from '../common/data-hub-query.util';
 import { loadSoAppUserIds } from '../consumer/consumer-so-apps.util';
 import { loadVersionSourceTables } from './data-service-source-tables-detail.util';
 import { queryRows } from './data-service-query-rows.util';
+import { ItSupport, toItSupport } from './dto/data-service-it-support.dto';
 import { API_SPEC_FIELDS, ApiSpecInput, SFTP_SPEC_FIELDS, SftpSpecInput } from './data-service-spec.types';
 
 interface DetailRow {
@@ -23,6 +24,7 @@ interface DetailRow {
   short_description: string;
   purpose: string | null;
   service_ops: string | null;
+  it_support: ItSupport | null;
   usage_guide_html: string;
   changelog_note: string | null;
   submitted_by: number;
@@ -64,7 +66,7 @@ export class DataHubDataServiceDetailQueryService {
       this.dataSource,
       `SELECT s.id, s.service_code, s.service_type, s.status, s.active_version_id, s.created_by, s.updated_by,
               s.created_at, s.updated_at,
-              v.version_no, v.state, v.name, v.short_description, v.purpose, v.service_ops, v.usage_guide_html,
+              v.version_no, v.state, v.name, v.short_description, v.purpose, v.service_ops, v.it_support, v.usage_guide_html,
               v.changelog_note, v.submitted_by, v.reviewed_by, v.reviewed_at,
               v.created_at AS version_created_at,
               v.request_unit_id, ru.code AS request_unit_code, ru.name AS request_unit_name,
@@ -87,7 +89,7 @@ export class DataHubDataServiceDetailQueryService {
         `SELECT l.user_id FROM ${table} l WHERE l.data_service_version_id = $1 ORDER BY l.id`,
         [versionId],
       );
-    const [apiRows, sftpRows, requesters, supporters, consumers, termCount, pending, sourceTables] = await Promise.all([
+    const [apiRows, sftpRows, requesters, consumers, termCount, pending, sourceTables] = await Promise.all([
       queryRows<ApiSpecInput & { domain_url: string | null; domain_type: string | null }>(
         this.dataSource,
         `SELECT ${specColumns('a', API_SPEC_FIELDS)}, dm.url AS domain_url, dm.type AS domain_type
@@ -102,7 +104,6 @@ export class DataHubDataServiceDetailQueryService {
         [versionId],
       ),
       link('data_hub_data_service_version_requesters'),
-      link('data_hub_data_service_version_it_supporters'),
       queryRows<ConsumerRow>(
         this.dataSource,
         `SELECT c.id, c.code, c.name, c.category, c.short_description
@@ -128,7 +129,6 @@ export class DataHubDataServiceDetailQueryService {
     ]);
 
     const requesterIds = requesters.map((r) => Number(r.user_id));
-    const supporterIds = supporters.map((r) => Number(r.user_id));
     const ownerIds = (await link('data_hub_data_service_version_service_owners')).map((r) => Number(r.user_id));
     const soAppIds = await loadSoAppUserIds(
       this.dataSource,
@@ -140,7 +140,6 @@ export class DataHubDataServiceDetailQueryService {
       row.submitted_by,
       row.reviewed_by,
       ...requesterIds,
-      ...supporterIds,
       ...ownerIds,
       ...[...soAppIds.values()].flat(),
     ]);
@@ -184,7 +183,7 @@ export class DataHubDataServiceDetailQueryService {
         api_spec: api,
         sftp_spec: sftpRows[0] ?? null,
         requesters: this.userRefs.toRefs(users, requesterIds),
-        it_supporters: this.userRefs.toRefs(users, supporterIds),
+        it_support: toItSupport(row.it_support),
         service_owners: this.userRefs.toRefs(users, ownerIds),
         consumers: consumers.map((c) => ({
           id: Number(c.id),

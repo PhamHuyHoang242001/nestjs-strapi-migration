@@ -41,6 +41,19 @@ export class ConsumerFieldsDto {
   @IsInt()
   readonly division_id: number;
 
+  // Hệ thống (required).
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  readonly system_id: number;
+
+  // Dịch vụ hệ thống (optional, must belong to system_id); null / left out = none.
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  readonly system_service_id?: number | null;
+
   @ApiProperty({ maxLength: 200 })
   @Transform(trim)
   @IsString()

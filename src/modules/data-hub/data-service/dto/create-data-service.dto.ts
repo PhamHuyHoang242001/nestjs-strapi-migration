@@ -20,6 +20,7 @@ import {
 import { DataHubServiceType } from '@modules/databases/data-hub-enums';
 import { ApiDataServiceSpecDto } from './api-data-service-spec.dto';
 import { trimString, visibleHtmlText } from './data-service-dto-transforms';
+import { DataServiceItSupportDto, HasItSupportContact } from './data-service-it-support.dto';
 import { DataServiceSourceTableInputDto } from './data-service-source-table.dto';
 
 @ValidatorConstraint({ name: 'hasVisibleText' })
@@ -108,14 +109,12 @@ export class CreateDataServiceDto {
   @Min(1, { each: true })
   readonly requester_user_ids: number[];
 
-  @ApiProperty({ type: [Number] })
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(50)
-  @ArrayUnique()
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  readonly it_supporter_user_ids: number[];
+  // IT hỗ trợ: free contact info, at least one of email / phone / link.
+  @ApiProperty({ type: DataServiceItSupportDto })
+  @Validate(HasItSupportContact)
+  @ValidateNested()
+  @Type(() => DataServiceItSupportDto)
+  readonly it_support: DataServiceItSupportDto;
 
   // SO dịch vụ
   @ApiProperty({ type: [Number] })

@@ -20,7 +20,6 @@ export interface RefIds {
   consumer_ids: number[];
   physical_term_ids: number[];
   requester_user_ids: number[];
-  it_supporter_user_ids: number[];
   service_owner_user_ids: number[];
   api_spec?: ApiSpecInput | null;
 }
@@ -34,13 +33,7 @@ export interface LoadedVersion {
 // version_no + the VersionSource columns of a stored version row.
 type VersionRow = Omit<
   VersionSource,
-  | 'api_spec'
-  | 'sftp_spec'
-  | 'requester_user_ids'
-  | 'it_supporter_user_ids'
-  | 'service_owner_user_ids'
-  | 'consumer_ids'
-  | 'physical_term_ids'
+  'api_spec' | 'sftp_spec' | 'requester_user_ids' | 'service_owner_user_ids' | 'consumer_ids' | 'physical_term_ids'
 > & { version_no: number };
 
 const unique = (ids: number[]): number[] => Array.from(new Set(ids));
@@ -101,7 +94,6 @@ export class DataServiceSnapshotService {
     const consumerIds = unique(ids.consumer_ids);
     const termIds = unique(ids.physical_term_ids);
     const requesterIds = unique(ids.requester_user_ids);
-    const supporterIds = unique(ids.it_supporter_user_ids);
     const ownerIds = unique(ids.service_owner_user_ids);
 
     // Sequential on purpose: all queries share one transaction connection.
@@ -141,7 +133,7 @@ export class DataServiceSnapshotService {
       throw new BadRequestException(`INVALID_PHYSICAL_TERMS: ${missing(termIds, termRows).join(',')} not found`);
     }
 
-    const userIds = [...requesterIds, ...supporterIds, ...ownerIds];
+    const userIds = [...requesterIds, ...ownerIds];
     if (strict) await this.userRefs.assertUsers(manager, userIds);
     const users = await this.userRefs.resolve(userIds, manager);
     const toUserItems = (list: number[]): RefItem[] =>
@@ -155,7 +147,6 @@ export class DataServiceSnapshotService {
       consumers: consumerRows.map((r) => ({ key: Number(r.id), label: r.code })),
       ...resolvedTerms(termRows),
       requesters: toUserItems(requesterIds),
-      itSupporters: toUserItems(supporterIds),
       serviceOwners: toUserItems(ownerIds),
     };
   }
@@ -164,7 +155,7 @@ export class DataServiceSnapshotService {
   async loadVersion(manager: EntityManager, versionId: number): Promise<LoadedVersion> {
     const [row] = await queryRows<VersionRow>(
       manager,
-      `SELECT v.version_no, v.name, v.short_description, v.purpose, v.service_ops, v.usage_guide_html,
+      `SELECT v.version_no, v.name, v.short_description, v.purpose, v.service_ops, v.it_support, v.usage_guide_html,
               v.request_unit_id, v.division_id, v.department_id
        FROM data_hub_data_service_versions v WHERE v.id = $1`,
       [versionId],
@@ -188,7 +179,6 @@ export class DataServiceSnapshotService {
       [versionId],
     );
     const requesters = await links('data_hub_data_service_version_requesters', 'user_id');
-    const supporters = await links('data_hub_data_service_version_it_supporters', 'user_id');
     const owners = await links('data_hub_data_service_version_service_owners', 'user_id');
     const consumers = await links('data_hub_data_service_version_consumers', 'consumer_id');
     const terms = await links('data_hub_data_service_version_physical_terms', 'physical_term_id');
@@ -201,7 +191,6 @@ export class DataServiceSnapshotService {
       api_spec: apiRows[0] ?? null,
       sftp_spec: sftpRows[0] ?? null,
       requester_user_ids: ids(requesters),
-      it_supporter_user_ids: ids(supporters),
       service_owner_user_ids: ids(owners),
       consumer_ids: ids(consumers),
       physical_term_ids: ids(terms),

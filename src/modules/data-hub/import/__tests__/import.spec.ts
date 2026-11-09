@@ -84,7 +84,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     division_id: 1,
     department_id: 1,
     requester_user_ids: [1],
-    it_supporter_user_ids: [1],
+    it_support: { email: 'it@x.vn' },
     service_owner_user_ids: [1],
     api_spec: {
       method: 'GET',
@@ -128,6 +128,9 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
         }
         if (sql.includes('FROM users u')) return [{ id: 9, email: 'so@vpbank.com.vn' }];
         if (sql.includes('FROM data_hub_consumers c')) return existing.map((code) => ({ code }));
+        if (sql.includes('FROM data_hub_systems t')) return [{ code: 'OCP' }];
+        if (sql.includes('FROM data_hub_systems s')) return [{ id: 2, name: 'OCP' }];
+        if (sql.includes('FROM data_hub_system_services sv')) return [{ id: 7, system_id: 2, name: 'Payment' }];
         return [];
       }),
     };
@@ -173,7 +176,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       });
       const res = await h.service.import(file, false, CALLER);
       expect(res.summary.consumers.created).toBe(2);
-      expect(h.created[0]).toMatchObject({ code: 'APP_LOWER_1', division_id: 1, so_app_user_ids: [9] });
+      expect(h.created[0]).toMatchObject({ code: 'APP_LOWER_1', division_id: 1, so_app_user_ids: [9], system_id: 2 });
       expect(res.consumers[0]).toMatchObject({ status: 'created', id: 101, code: 'APP_LOWER_1' });
     });
 
@@ -192,6 +195,31 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       expect(at('C4')).toEqual(['INVALID_VALUE']);
       expect(at('F4')).toEqual(['USER_NOT_FOUND']);
       expect(h.writeService.create).not.toHaveBeenCalled();
+    });
+
+    it('resolves Hệ thống and Dịch vụ hệ thống by name; unknown ones are reported on their cell', async () => {
+      const col = (key: string) =>
+        sheetDef(CONSUMER_IMPORT_LAYOUT, 'CONSUMERS').columns.findIndex((c) => c.key === key) + 1;
+      const h = harness();
+      const file = await edit(await h.template.build({ email: 'so@vpbank.com.vn' }), (s) => {
+        s.getCell(2, col('system')).value = 'ocp';
+        s.getCell(2, col('system_service')).value = 'PAYMENT';
+        s.getCell(3, col('system')).value = 'NO_SUCH';
+      });
+      const res = await h.service.import(file, false, CALLER);
+      expect(h.created).toHaveLength(1);
+      expect(h.created[0]).toMatchObject({ system_id: 2, system_service_id: 7 });
+      expect(res.issues.map((i) => [i.row, i.code])).toEqual([[3, 'SYSTEM_NOT_FOUND']]);
+
+      const file2 = await edit(await h.template.build({ email: 'so@vpbank.com.vn' }), (s) => {
+        s.getCell(2, col('system_service')).value = 'Khong co';
+        s.getCell(3, col('system')).value = null;
+      });
+      const res2 = await harness().service.import(file2, true, CALLER);
+      expect(res2.issues.map((i) => [i.row, i.code])).toEqual([
+        [2, 'SYSTEM_SERVICE_NOT_FOUND'],
+        [3, 'REQUIRED'],
+      ]);
     });
 
     it('keeps going when one create fails', async () => {
@@ -422,6 +450,25 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       const res = await h2.service.import('API', file, false, CALLER);
       expect(res.issues.map((i) => [i.row, i.code])).toEqual([[3, 'REQUIRED']]);
       expect(h2.created).toHaveLength(1);
+    });
+
+    it('reads IT hỗ trợ as JSON: bad JSON or no contact method is reported on that cell', async () => {
+      const col = sheetOf('API').columns.findIndex((c) => c.key === 'it_supporters') + 1;
+      const h = harness();
+      await h.service.import('API', await exampleFile(), false, CALLER);
+      expect(h.created[0].it_support).toMatchObject({ email: 'so@vpbank.com.vn' });
+
+      const file = await edit(await exampleFile(), 'API', (s) => {
+        s.getCell(2, col).value = 'so@vpbank.com.vn';
+        s.getCell(3, col).value = '{"email":"","link":""}';
+      });
+      const res = await harness().service.import('API', file, false, CALLER);
+      const onCell = res.issues.filter((i) => i.row !== undefined && i.code !== 'CREATE_FAILED');
+      expect(onCell.map((i) => [i.row, i.code])).toEqual([
+        [2, 'INVALID_JSON'],
+        [3, 'INVALID'],
+      ]);
+      expect(new Set(onCell.map((i) => i.column)).size).toBe(1);
     });
 
     it('resolves the domain cell by url (spelling folded) and rejects an unknown one by cell', async () => {

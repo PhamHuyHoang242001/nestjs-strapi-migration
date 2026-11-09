@@ -1,4 +1,5 @@
 import { DiffSnapshot, RefItem } from './data-service-diff.util';
+import { toItSupport } from './dto/data-service-it-support.dto';
 import { API_SPEC_FIELDS, SFTP_SPEC_FIELDS, VersionSource } from './data-service-spec.types';
 
 // Labelled references of a version (org codes, consumer codes, physical columns, user emails).
@@ -12,7 +13,6 @@ export interface ResolvedRefs {
   physicalTerms: RefItem[];
   sourceTables: RefItem[];
   requesters: RefItem[];
-  itSupporters: RefItem[];
   serviceOwners: RefItem[];
 }
 
@@ -27,7 +27,7 @@ export function buildSnapshot(source: VersionSource, refs: ResolvedRefs): DiffSn
     division: refs.division,
     department: refs.department,
     requesters: refs.requesters,
-    it_supporters: refs.itSupporters,
+    it_support: toItSupport(source.it_support),
     service_owners: refs.serviceOwners,
     usage_guide_html: source.usage_guide_html,
     consumers: refs.consumers,

@@ -1,3 +1,5 @@
+import { ItSupport } from './dto/data-service-it-support.dto';
+
 // Column lists + input shapes for the per-type spec rows. One source of truth so reads, writes and
 // snapshots always agree on which spec columns exist.
 
@@ -43,7 +45,7 @@ export interface VersionSource {
   api_spec?: ApiSpecInput | null;
   sftp_spec?: SftpSpecInput | null;
   requester_user_ids: number[];
-  it_supporter_user_ids: number[];
+  it_support: Partial<ItSupport> | null;
   service_owner_user_ids: number[];
   consumer_ids: number[];
   physical_term_ids: number[];

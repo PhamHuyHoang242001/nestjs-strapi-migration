@@ -260,7 +260,7 @@ export async function buildUpdateBody(
     department_id: source.department_id,
     consumer_ids: source.consumer_ids,
     requester_user_ids: source.requester_user_ids,
-    it_supporter_user_ids: source.it_supporter_user_ids,
+    it_support: source.it_support ?? undefined,
     service_owner_user_ids: source.service_owner_user_ids,
     api_spec: source.api_spec ?? undefined,
     sftp_spec: source.sftp_spec ?? undefined,

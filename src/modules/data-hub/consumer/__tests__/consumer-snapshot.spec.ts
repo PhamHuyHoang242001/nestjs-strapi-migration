@@ -5,6 +5,7 @@ const base = {
   name: 'CRM',
   category: 'INTERNAL_APP',
   division_id: '1',
+  system_id: '2',
   short_description: 'd',
   avatar_url: null,
   status: 'active',
@@ -19,12 +20,16 @@ describe('consumer snapshot', () => {
       'name',
       'category',
       'division_id',
+      'system_id',
+      'system_service_id',
       'short_description',
       'avatar_url',
       'status',
       'so_app_user_ids',
     ]);
     expect(s.division_id).toBe(1);
+    expect(s.system_id).toBe(2);
+    expect(s.system_service_id).toBeNull();
     expect(s.avatar_url).toBeNull();
   });
 

@@ -39,7 +39,7 @@ export class DataServiceImportReferenceLookupService {
       codeMap(this.dataSource, 'data_hub_departments', pick('department')),
       consumerMap(this.dataSource, many(['consumers'])),
       domainMap(this.dataSource, urls),
-      userMap(this.dataSource, many(['requesters', 'it_supporters', 'service_owners'])),
+      userMap(this.dataSource, many(['requesters', 'service_owners'])),
       this.access.writableDepartmentIds(caller, 'create'),
     ]);
     return {

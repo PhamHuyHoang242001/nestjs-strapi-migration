@@ -4,6 +4,8 @@ export interface ConsumerSnapshot {
   name: string;
   category: string;
   division_id: number;
+  system_id: number | null;
+  system_service_id: number | null;
   short_description: string;
   avatar_url: string | null;
   status: string;
@@ -16,6 +18,8 @@ export function buildConsumerSnapshot(src: {
   name: string;
   category: string;
   division_id: number | string;
+  system_id?: number | string | null;
+  system_service_id?: number | string | null;
   short_description: string;
   avatar_url?: string | null;
   status: string;
@@ -26,6 +30,8 @@ export function buildConsumerSnapshot(src: {
     name: src.name,
     category: src.category,
     division_id: Number(src.division_id),
+    system_id: src.system_id ? Number(src.system_id) : null,
+    system_service_id: src.system_service_id ? Number(src.system_service_id) : null,
     short_description: src.short_description,
     // An empty string clears the avatar like null does.
     avatar_url: src.avatar_url ? src.avatar_url : null,

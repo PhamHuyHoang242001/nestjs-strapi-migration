@@ -11,6 +11,9 @@ import { ConsumerListFilter, buildConsumerWhere } from './consumer-list-filter.u
 const org = (id: number | null, code: string | null, name: string | null): OrgRef | null =>
   id === null || id === undefined ? null : { id: Number(id), code: code ?? '', name: name ?? '' };
 
+const named = (id: number | null, name: string | null): { id: number; name: string } | null =>
+  id === null || id === undefined ? null : { id: Number(id), name: name ?? '' };
+
 interface ConsumerDetailRow extends ConsumerListRow {
   version_no: number;
   created_by: number;
@@ -147,6 +150,8 @@ export class DataHubConsumerQueryService {
       avatar_url: r.avatar_url,
       status: r.status,
       division: org(r.division_id, r.division_code, r.division_name),
+      system: named(r.system_id, r.system_name),
+      system_service: named(r.system_service_id, r.system_service_name),
       so_apps: this.userRefs.toRefs(users, soAppUserIds),
       api_count: c?.api ?? 0,
       sftp_count: c?.sftp ?? 0,

@@ -1,5 +1,6 @@
 import { EntityManager } from 'typeorm';
 import { DataHubServiceChange, DataHubServiceHistoryAction } from '@modules/databases/data-hub-enums';
+import { toItSupport } from './dto/data-service-it-support.dto';
 import { API_SPEC_FIELDS, SFTP_SPEC_FIELDS, VersionSource } from './data-service-spec.types';
 
 export interface InsertVersionInput {
@@ -52,8 +53,8 @@ export async function insertApprovedVersion(manager: EntityManager, input: Inser
     `INSERT INTO data_hub_data_service_versions
        (data_service_id, version_no, old_version, state, name, short_description, purpose, request_unit_id,
         division_id, department_id, usage_guide_html, changelog_note,
-        submitted_by, reviewed_by, reviewed_at, service_ops)
-     VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NOW(), $13)
+        submitted_by, reviewed_by, reviewed_at, service_ops, it_support)
+     VALUES ($1, $2, $3, 'approved', $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, NOW(), $13, $14::jsonb)
      RETURNING id`,
     [
       input.dataServiceId,
@@ -69,6 +70,7 @@ export async function insertApprovedVersion(manager: EntityManager, input: Inser
       input.changelogNote,
       userId,
       source.service_ops ?? null,
+      JSON.stringify(toItSupport(source.it_support)),
     ],
   );
   const versionId = Number(rows[0].id);
@@ -90,13 +92,6 @@ export async function insertApprovedVersion(manager: EntityManager, input: Inser
     'user_id',
     versionId,
     source.requester_user_ids,
-  );
-  await insertLinks(
-    manager,
-    'data_hub_data_service_version_it_supporters',
-    'user_id',
-    versionId,
-    source.it_supporter_user_ids,
   );
   await insertLinks(
     manager,

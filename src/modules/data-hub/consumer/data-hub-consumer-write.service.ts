@@ -30,6 +30,7 @@ export class DataHubConsumerWriteService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         await this.assertDivision(manager, dto.division_id);
+        await this.assertSystem(manager, dto.system_id, dto.system_service_id);
         await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
         const snapshot = buildConsumerSnapshot({ ...dto, status: DataHubStatus.ACTIVE });
@@ -37,8 +38,8 @@ export class DataHubConsumerWriteService {
           manager,
           `INSERT INTO data_hub_consumers
              (code, name, category, division_id, short_description, avatar_url, status, version_no,
-              created_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8)
+              created_by, system_id, system_service_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10)
            RETURNING id`,
           [
             snapshot.code,
@@ -49,6 +50,8 @@ export class DataHubConsumerWriteService {
             snapshot.avatar_url,
             snapshot.status,
             userId,
+            snapshot.system_id,
+            snapshot.system_service_id,
           ],
         );
         // Insert in the submitted order (snapshot ids are sorted) so display order matches the form.
@@ -67,6 +70,7 @@ export class DataHubConsumerWriteService {
       return await this.dataSource.transaction(async (manager) => {
         const current = await this.lockCurrent(manager, id);
         await this.assertDivision(manager, dto.division_id);
+        await this.assertSystem(manager, dto.system_id, dto.system_service_id);
         await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
         // Status is not editable here; code is kept when left out. A code taken by another live app hits the
@@ -78,7 +82,8 @@ export class DataHubConsumerWriteService {
         await manager.query(
           `UPDATE data_hub_consumers
            SET name = $2, category = $3, division_id = $4, short_description = $5, avatar_url = $6,
-               version_no = $7, updated_by = $8, updated_at = NOW(), code = $9
+               version_no = $7, updated_by = $8, updated_at = NOW(), code = $9, system_id = $10,
+               system_service_id = $11
            WHERE id = $1`,
           [
             id,
@@ -90,6 +95,8 @@ export class DataHubConsumerWriteService {
             versionNo,
             userId,
             next.code,
+            next.system_id,
+            next.system_service_id,
           ],
         );
         await replaceSoApps(manager, id, dto.so_app_user_ids);
@@ -123,7 +130,7 @@ export class DataHubConsumerWriteService {
     const [row] = await sqlRows<Omit<SnapshotSource, 'so_app_user_ids'> & { id: number; version_no: number }>(
       manager,
       `SELECT c.id, c.code, c.name, c.category, c.division_id, c.short_description, c.avatar_url,
-              c.status, c.version_no
+              c.status, c.version_no, c.system_id, c.system_service_id
        FROM data_hub_consumers c
        WHERE c.id = $1 AND ${liveSql('c')}
        FOR UPDATE`,
@@ -140,6 +147,23 @@ export class DataHubConsumerWriteService {
 
   private currentSnapshot(row: CurrentRow): ConsumerSnapshot {
     return buildConsumerSnapshot(row);
+  }
+
+  // Live system; the service (optional) must be live and belong to that system.
+  private async assertSystem(manager: EntityManager, systemId: number, serviceId?: number | null): Promise<void> {
+    const [system] = await sqlRows<{ ok: number }>(
+      manager,
+      `SELECT 1 AS ok FROM data_hub_systems s WHERE s.id = $1 AND ${liveSql('s')}`,
+      [systemId],
+    );
+    if (!system) throw new BadRequestException('INVALID_SYSTEM: system does not exist');
+    if (!serviceId) return;
+    const [service] = await sqlRows<{ ok: number }>(
+      manager,
+      `SELECT 1 AS ok FROM data_hub_system_services sv WHERE sv.id = $1 AND sv.system_id = $2 AND ${liveSql('sv')}`,
+      [serviceId, systemId],
+    );
+    if (!service) throw new BadRequestException('INVALID_SYSTEM_SERVICE: service does not exist in this system');
   }
 
   private async assertDivision(manager: EntityManager, divisionId: number): Promise<void> {

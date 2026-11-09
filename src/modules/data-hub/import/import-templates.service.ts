@@ -16,7 +16,12 @@ export class ConsumerImportTemplateService {
   constructor(private readonly dataSource: DataSource) {}
 
   async build(example?: { email: string }): Promise<Buffer> {
-    const [division = ''] = example ? await sampleCodes(this.dataSource, 'data_hub_divisions') : [];
+    const [[division = ''], [system = '']] = example
+      ? await Promise.all([
+          sampleCodes(this.dataSource, 'data_hub_divisions'),
+          sampleCodes(this.dataSource, 'data_hub_systems', { column: 'name' }),
+        ])
+      : [[], []];
     return buildImportTemplate({
       layout: CONSUMER_IMPORT_LAYOUT,
       fillExample: example
@@ -31,6 +36,7 @@ export class ConsumerImportTemplateService {
                 division,
                 short_description: 'Ứng dụng CRM phục vụ chăm sóc khách hàng',
                 so_apps: example.email,
+                system,
               },
               {
                 code: `APP_DEMO_PARTNER_${tag}`,
@@ -39,6 +45,7 @@ export class ConsumerImportTemplateService {
                 division,
                 short_description: 'Cổng kết nối đối tác bên ngoài',
                 so_apps: example.email,
+                system,
               },
             ]);
           }
@@ -144,7 +151,7 @@ export class DataServiceImportTemplateService {
       department,
       consumers: consumers.join('; '),
       requesters: example.email,
-      it_supporters: example.email,
+      it_supporters: JSON.stringify({ email: example.email, phone: '024.3928.8888 (Ext: 8841)' }),
       service_owners: example.email,
     };
     const tag = exampleTag();

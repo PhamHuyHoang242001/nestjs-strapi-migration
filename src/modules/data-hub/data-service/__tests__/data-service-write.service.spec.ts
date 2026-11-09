@@ -69,7 +69,7 @@ function makeHarness(overrides: Handler[] = []) {
     [/FROM data_hub_departments/, [{ id: 1, code: 'D1' }]],
     [/FROM integration_domain_configs d/, [{ id: 1, url: 'https://api-int.vpbank.com.vn' }]],
     [/FROM data_hub_consumers c/, [{ id: 5, code: 'APP1' }]],
-    [/SELECT id FROM users/, [{ id: 1 }, { id: 2 }]],
+    [/SELECT id FROM users/, [{ id: 1 }]],
     [
       /SELECT id, email FROM users/,
       [
@@ -80,7 +80,6 @@ function makeHarness(overrides: Handler[] = []) {
     [/FROM data_hub_data_service_version_api_specs s/, [storedApiSpec]],
     [/FROM data_hub_data_service_version_sftp_specs s/, []],
     [/FROM data_hub_data_service_version_requesters l/, [{ id: 1 }]],
-    [/FROM data_hub_data_service_version_it_supporters l/, [{ id: 2 }]],
     [/FROM data_hub_data_service_version_service_owners l/, [{ id: 1 }]],
     [/FROM data_hub_data_service_version_consumers l/, [{ id: 5 }]],
     [/FROM data_hub_data_service_version_physical_terms l/, [{ id: 7 }]],
@@ -129,6 +128,7 @@ const storedVersion = {
   request_unit_id: 1,
   division_id: 1,
   department_id: 1,
+  it_support: { email: 'it@x.vn', phone: null, link: null },
 };
 
 const baseDto = (): CreateDataServiceDto =>
@@ -142,7 +142,7 @@ const baseDto = (): CreateDataServiceDto =>
     usage_guide_html: '<p>x</p>',
     consumer_ids: [5],
     requester_user_ids: [1],
-    it_supporter_user_ids: [2],
+    it_support: { email: 'it@x.vn' },
     service_owner_user_ids: [1],
     source_tables: [
       { id: 5, name: 'dw.t', terms: [{ id: 7, code: 'cust_id', technical_description: 'd', data_type: 'VARCHAR' }] },
@@ -191,15 +191,14 @@ describe('DataHubDataServiceWriteService.create', () => {
     expect(versionInsert.params[1]).toBe(1);
     expect(versionInsert.params[2]).toBeNull();
     expect(versionInsert.params[11]).toBe(9);
-    expect(versionInsert.params).toHaveLength(13);
+    expect(versionInsert.params).toHaveLength(14);
     expect(versionInsert.sql).toContain('service_ops');
     expect(versionInsert.sql).not.toContain('source_table');
     expect(versionInsert.sql).not.toContain('usage_guide_markdown');
 
     expect(find(/INSERT INTO data_hub_data_service_version_api_specs/)).toHaveLength(1);
-    expect(
-      find(/INSERT INTO data_hub_data_service_version_(requesters|it_supporters|consumers|physical_terms)/),
-    ).toHaveLength(4);
+    expect(find(/INSERT INTO data_hub_data_service_version_(requesters|consumers|physical_terms)/)).toHaveLength(3);
+    expect(versionInsert.params[13]).toBe(JSON.stringify({ email: 'it@x.vn', phone: null, link: null }));
     expect(find(/UPDATE data_hub_data_services SET active_version_id/)[0].params).toEqual([101, 10]);
 
     const history = find(/INSERT INTO data_hub_data_service_histories/)[0];
@@ -220,7 +219,7 @@ describe('DataHubDataServiceWriteService.create', () => {
     ['INVALID_DIVISION', /FROM data_hub_divisions/, [], {}],
     ['INVALID_DEPARTMENT', /FROM data_hub_departments/, [], {}],
     ['INVALID_DOMAIN', /FROM integration_domain_configs d/, [], {}],
-    ['INVALID_USERS', /SELECT id FROM users/, [{ id: 1 }], {}],
+    ['INVALID_USERS', /SELECT id FROM users/, [{ id: 1 }], { service_owner_user_ids: [2] }],
   ])('%s when a referenced id is missing or not live', async (code, re, rows, patch) => {
     const { service, find } = makeHarness([[re, rows]]);
     const dto = { ...baseDto(), ...patch } as CreateDataServiceDto;

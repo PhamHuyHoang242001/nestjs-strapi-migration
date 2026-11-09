@@ -211,6 +211,7 @@ describe('DataHubDataServiceDetailQueryService', () => {
     department_id: 2,
     department_code: 'D1',
     department_name: 'Dept',
+    it_support: { email: 'it@vpbank.com.vn', phone: null, link: 'https://zalo.me/g/abc' },
   };
 
   it('maps every user reference to {id, email} using one users query', async () => {
@@ -221,7 +222,6 @@ describe('DataHubDataServiceDetailQueryService', () => {
         [{ method: 'GET', domain_id: 4, domain_url: 'https://api-int.vpbank.com.vn', domain_type: 'internal' }],
       ],
       [/version_requesters/, [{ user_id: 3 }]],
-      [/version_it_supporters/, [{ user_id: 4 }]],
       [/version_service_owners/, [{ user_id: 6 }]],
       [
         /FROM data_hub_data_service_version_consumers/,
@@ -246,7 +246,11 @@ describe('DataHubDataServiceDetailQueryService', () => {
     expect(detail).not.toHaveProperty('version');
     expect(detail.version_active.reviewed_by_user).toEqual({ id: 2, email: 'u2@x.vn' });
     expect(detail.version_active.requesters).toEqual([{ id: 3, email: 'u3@x.vn' }]);
-    expect(detail.version_active.it_supporters).toEqual([{ id: 4, email: 'u4@x.vn' }]);
+    expect(detail.version_active.it_support).toEqual({
+      email: 'it@vpbank.com.vn',
+      phone: null,
+      link: 'https://zalo.me/g/abc',
+    });
     expect(detail.version_active.service_owners).toEqual([{ id: 6, email: 'u6@x.vn' }]);
     expect(detail.version_active.consumers[0].so_apps).toEqual([
       { id: 6, email: 'u6@x.vn' },

@@ -1,5 +1,6 @@
 export * from './api-data-service-spec.dto';
 export * from './create-data-service.dto';
+export * from './data-service-it-support.dto';
 export * from './data-service-source-table.dto';
 export * from './export-data-service-query.dto';
 export * from './list-data-service-query.dto';

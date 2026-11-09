@@ -29,6 +29,14 @@ export const CONSUMER_COLUMNS: ImportColumn[] = [
   col('division', 'Mã khối chủ quản', 'r', 18, 'Mã khối chủ quản đã có trong hệ thống (gõ tay).'),
   col('short_description', 'Mô tả ngắn', 'r', 44, 'Tối đa 200 ký tự.'),
   col('so_apps', 'SO APP', 'r', 36, '1-20 email người dùng đang hoạt động, ngăn cách bằng dấu ;'),
+  col('system', 'Hệ thống', 'r', 30, 'Tên hệ thống đã có trong hệ thống (gõ tay, không phân biệt hoa thường).'),
+  col(
+    'system_service',
+    'Dịch vụ hệ thống',
+    'o',
+    30,
+    'Tên dịch vụ thuộc Hệ thống ở cột trước (gõ tay). Để trống = app không gắn dịch vụ.',
+  ),
 ];
 
 export const CONSUMER_IMPORT_LAYOUT: ImportLayout = {
@@ -98,7 +106,13 @@ const SERVICE_COMMON: ImportColumn[] = [
     '0-20 mã app đang hoạt động đã có trong hệ thống (tạo ở import App thụ hưởng), ngăn cách bằng dấu ; (vd APP_CRM; APP_LOS). Để trống = dịch vụ chưa có app.',
   ),
   col('requesters', 'Người yêu cầu', 'r', 34, '1-50 email người dùng, ngăn cách bằng dấu ;'),
-  col('it_supporters', 'IT hỗ trợ', 'r', 34, '1-50 email người dùng, ngăn cách bằng dấu ;'),
+  col(
+    'it_supporters',
+    'IT hỗ trợ',
+    'r',
+    44,
+    'JSON có tối thiểu 1 trong 3 key: email (nhiều email cách nhau bởi ;), phone (nhiều SĐT cách nhau bởi ;), link (1 link, bắt đầu bằng https://teams.microsoft.com hoặc https://zalo.me). Vd {"email":"a@vpbank.com.vn; b@vpbank.com.vn","phone":"0901234567","link":"https://zalo.me/g/abc"}',
+  ),
   col('service_owners', 'SO dịch vụ', 'r', 34, '1-50 email người dùng, ngăn cách bằng dấu ;'),
   col(
     'usage_guide_html',

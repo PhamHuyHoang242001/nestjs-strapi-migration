@@ -17,6 +17,8 @@ import {
   lookupMany,
   resolveActiveConsumer,
   resolveUser,
+  systemMap,
+  systemServiceMap,
   uniqueLower,
   userMap,
 } from './import-helpers.util';
@@ -43,7 +45,52 @@ import {
 
 const CONSUMER_SHEET = 'CONSUMERS';
 // Property of the create body -> column of the sheet.
-const CONSUMER_COLUMN_OF: Record<string, string> = { division_id: 'division', so_app_user_ids: 'so_apps' };
+const CONSUMER_COLUMN_OF: Record<string, string> = {
+  division_id: 'division',
+  so_app_user_ids: 'so_apps',
+  system_id: 'system',
+  system_service_id: 'system_service',
+};
+
+// Hệ thống by name, then Dịch vụ hệ thống by name inside that system; unknown or ambiguous names are reported.
+function lookupSystem(
+  r: ImportRow,
+  systems: Map<string, number | null>,
+  services: Map<string, number | null>,
+  issues: ImportIssueCollector,
+): { system_id?: number; system_service_id?: number } {
+  const { system, system_service: service } = r.values;
+  if (system === '') return {};
+  const systemId = systems.get(system.toLowerCase());
+  if (systemId === undefined) {
+    issues.add(CONSUMER_SHEET, r.row, 'system', 'SYSTEM_NOT_FOUND', `Hệ thống "${system}" không tồn tại`);
+    return {};
+  }
+  if (systemId === null) {
+    issues.add(CONSUMER_SHEET, r.row, 'system', 'SYSTEM_AMBIGUOUS', `Có nhiều hệ thống tên "${system}"`);
+    return {};
+  }
+  if (service === '') return { system_id: systemId };
+  const serviceId = services.get(`${systemId}:${service.toLowerCase()}`);
+  if (serviceId === undefined) {
+    issues.add(
+      CONSUMER_SHEET,
+      r.row,
+      'system_service',
+      'SYSTEM_SERVICE_NOT_FOUND',
+      `Dịch vụ "${service}" không thuộc hệ thống "${system}"`,
+    );
+  } else if (serviceId === null) {
+    issues.add(
+      CONSUMER_SHEET,
+      r.row,
+      'system_service',
+      'SYSTEM_SERVICE_AMBIGUOUS',
+      `Có nhiều dịch vụ tên "${service}"`,
+    );
+  }
+  return { system_id: systemId, system_service_id: serviceId ?? undefined };
+}
 
 export interface ConsumerImportResult {
   dry_run: boolean;
@@ -74,10 +121,12 @@ export class ConsumerImportService {
     const rows = sheets[CONSUMER_SHEET];
     const issues = new ImportIssueCollector(CONSUMER_IMPORT_LAYOUT);
     const upper = (code: string) => code.toUpperCase();
-    const [divisions, users, taken] = await Promise.all([
+    const [divisions, users, taken, systems, services] = await Promise.all([
       codeMap(this.dataSource, 'data_hub_divisions', uniqueLower(rows.map((r) => r.values.division))),
       userMap(this.dataSource, uniqueLower(rows.flatMap((r) => splitList(r.values.so_apps)))),
       this.existingCodes(rows.map((r) => upper(r.values.code))),
+      systemMap(this.dataSource, uniqueLower(rows.map((r) => r.values.system))),
+      systemServiceMap(this.dataSource, uniqueLower(rows.map((r) => r.values.system_service))),
     ]);
     const inFile = new Map<string, number>();
     rows.forEach((r) => r.values.code && inFile.set(upper(r.values.code), (inFile.get(upper(r.values.code)) ?? 0) + 1));
@@ -100,6 +149,7 @@ export class ConsumerImportService {
         division_id: lookupCode(CONSUMER_SHEET, r, 'division', divisions, issues),
         short_description: v.short_description,
         so_app_user_ids: lookupMany(CONSUMER_SHEET, r, 'so_apps', resolveUser(users), issues),
+        ...lookupSystem(r, systems, services, issues),
       };
       const dto = await validateDto(CreateConsumerDto, plain, issues, (path) => ({
         sheet: CONSUMER_SHEET,
@@ -342,7 +392,8 @@ export function buildServiceDraft(
     department_id: departmentId,
     consumer_ids: lookupMany(SERVICES_SHEET, r, 'consumers', resolveActiveConsumer(refs.consumers), issues),
     requester_user_ids: lookupMany(SERVICES_SHEET, r, 'requesters', user, issues),
-    it_supporter_user_ids: lookupMany(SERVICES_SHEET, r, 'it_supporters', user, issues),
+    // JSON { email, phone, link }; the DTO checks the values and that at least one is given.
+    it_support: parseJson(r, 'it_supporters', issues),
     service_owner_user_ids: lookupMany(SERVICES_SHEET, r, 'service_owners', user, issues),
   };
   if (kind === 'API') {
@@ -382,7 +433,7 @@ const COLUMN_OF: Record<string, string> = {
   department_id: 'department',
   consumer_ids: 'consumers',
   requester_user_ids: 'requesters',
-  it_supporter_user_ids: 'it_supporters',
+  it_support: 'it_supporters',
   service_owner_user_ids: 'service_owners',
   domain_id: 'domain',
 };
