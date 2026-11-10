@@ -35,7 +35,7 @@ Migration `src/migration/2610221500-create-data-hub-tables.ts`; entities `src/mo
 
 ### Data Hub permissions
 - 10 codes `dh_*` (the 3 physical-term codes were dropped by `2610271000`) (migration `2610261000-add-data-hub-permissions.ts`, module `/data-hub`, ids MAX+1 by code); consts in `data-hub/common/data-hub-permission-codes.ts`.
-- `DataHubPermissionGuard` + `@RequireDataHubPermission` / `@RequireDataHubSuperAdmin` gate every write; `DataHubAccessService` is the single rule (explicit role codes of user-client callers via `PermissionCacheService`, super_admin bypass) also used by `GET /v1/data-hub/my-permissions` and `is_update` on details. `common/__tests__/data-hub-write-route-permissions.spec.ts` fails on any ungated write route.
+- The shared `PermissionGuard` + `@RequirePermission(DH_PERMISSIONS.*)` gate every write (one code per route); `DataHubAccessService` answers the same codes for `GET /v1/data-hub/my-permissions`, `is_update` on details and the department-membership check of data service writes. `common/__tests__/data-hub-write-route-permissions.spec.ts` fails on any ungated write route.
 - Data services are scoped by department (Đơn vị phát hành): writes need the code AND membership in `data_hub_department_members` (migration `2610261100-create-data-hub-department-members.ts`), checked inside the write transaction with the department row FOR SHARE (department delete takes FOR UPDATE). `GET /v1/data-hub/departments/writable?action=` feeds the form.
 - Department config API `/v1/data-hub/department-configs` (CRUD + members + candidates with current rights). The logical/physical Excel import was removed.
 - Local test accounts: `src/scripts/seed-data-hub-permission-test-users.ts` (dev-only, password from `DH_TEST_USER_PASSWORD`).

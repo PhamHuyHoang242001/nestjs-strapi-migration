@@ -1,3 +1,5 @@
+import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
+import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { BearerGuard } from '@common/guards/bearer.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import {
@@ -18,7 +20,6 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { dataHubCaller } from '../common/data-hub-caller.util';
 import { DH_PERMISSIONS } from '../common/data-hub-permission-codes';
-import { DataHubPermissionGuard, RequireDataHubPermission } from '../common/data-hub-permission.guard';
 import { DataHubPageQueryDto } from '../common/data-hub-query.util';
 import { DepartmentConfigQueryService } from './department-config-query.service';
 import { DepartmentConfigWriteService } from './department-config-write.service';
@@ -33,7 +34,7 @@ import {
 @Controller('v1/data-hub/department-configs')
 @ApiTags('data-hub-department-configs')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, DataHubPermissionGuard)
+@UseGuards(BearerGuard, PermissionGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class DepartmentConfigController {
   constructor(
@@ -43,56 +44,56 @@ export class DepartmentConfigController {
 
   @ApiOperation({ summary: 'List departments (newest first)' })
   @Get()
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_VIEW)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_VIEW)
   list(@Query() q: DataHubPageQueryDto) {
     return this.query.list(q);
   }
 
   @ApiOperation({ summary: 'Create a department' })
   @Post()
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_CREATE)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_CREATE)
   create(@Body() dto: DepartmentConfigBodyDto, @Req() req: RequestWithInfo) {
     return this.write.create(dto, dataHubCaller(req).id);
   }
 
   @ApiOperation({ summary: 'Department detail with members and their current data-service rights' })
   @Get(':id')
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_VIEW)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_VIEW)
   detail(@Param('id', ParseIntPipe) id: number) {
     return this.query.detail(id);
   }
 
   @ApiOperation({ summary: 'Edit a department' })
   @Put(':id')
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: DepartmentConfigBodyDto, @Req() req: RequestWithInfo) {
     return this.write.update(id, dto, dataHubCaller(req).id);
   }
 
   @ApiOperation({ summary: 'Soft-delete a department not used by live data services' })
   @Delete(':id')
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_DELETE)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_DELETE)
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithInfo) {
     return this.write.remove(id, dataHubCaller(req).id);
   }
 
   @ApiOperation({ summary: 'Users holding a data-service right who are not members yet' })
   @Get(':id/member-candidates')
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
   candidates(@Param('id', ParseIntPipe) id: number, @Query() q: DataHubPageQueryDto) {
     return this.query.candidates(id, q);
   }
 
   @ApiOperation({ summary: 'Add members' })
   @Post(':id/members')
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
   addMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: AddDepartmentMembersDto, @Req() req: RequestWithInfo) {
     return this.write.addMembers(id, dto.user_ids, dataHubCaller(req).id);
   }
 
   @ApiOperation({ summary: 'Remove members' })
   @Delete(':id/members')
-  @RequireDataHubPermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.DEPARTMENT_UPDATE)
   removeMembers(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RemoveDepartmentMembersDto,

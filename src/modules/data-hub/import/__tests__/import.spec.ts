@@ -5,7 +5,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import * as ExcelJS from 'exceljs';
 import { DH_PERMISSIONS as P } from '../../common/data-hub-permission-codes';
-import { DATA_HUB_PERMISSION_KEY } from '../../common/data-hub-permission.guard';
+import { PERMISSION_META_KEY } from '@common/authorization/constants/authorization.constant';
 import { CreateConsumerDto } from '../../consumer/dto';
 import { CreateDataServiceDto, UpdateDataServiceDto } from '../../data-service/dto';
 import { LogicalTermBodyDto } from '../../dictionary/dto';
@@ -68,7 +68,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
     ])('%s is gated by the code', (handler, method) => {
       const fn = ctrl.prototype[handler] as object;
       expect(Reflect.getMetadata(METHOD_METADATA, fn)).toBe(method);
-      expect(Reflect.getMetadata(DATA_HUB_PERMISSION_KEY, fn)).toEqual([code]);
+      expect(Reflect.getMetadata(PERMISSION_META_KEY, fn)).toEqual([code]);
     });
   });
 }

@@ -1,3 +1,5 @@
+import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
+import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { BearerGuard } from '@common/guards/bearer.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import {
@@ -22,7 +24,6 @@ import { Response } from 'express';
 import { DataHubAccessService } from '../common/data-hub-access.service';
 import { dataHubCaller } from '../common/data-hub-caller.util';
 import { DH_PERMISSIONS } from '../common/data-hub-permission-codes';
-import { DataHubPermissionGuard, RequireDataHubPermission } from '../common/data-hub-permission.guard';
 import { DataHubPageQueryDto } from '../common/data-hub-query.util';
 import { DataHubDataServiceDetailQueryService } from './data-hub-data-service-detail-query.service';
 import { DataHubDataServiceTermsQueryService } from './data-hub-data-service-terms-query.service';
@@ -49,7 +50,7 @@ const requireUserId = (req: RequestWithInfo): number => {
 @Controller('v1/data-hub/data-services')
 @ApiTags('data-hub-data-services')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, DataHubPermissionGuard)
+@UseGuards(BearerGuard, PermissionGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class DataHubDataServiceController {
   constructor(
@@ -79,7 +80,7 @@ export class DataHubDataServiceController {
 
   @ApiOperation({ summary: 'Create a data service (version 1, auto-approved)' })
   @Post()
-  @RequireDataHubPermission(DH_PERMISSIONS.DATA_SERVICE_CREATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE)
   create(@Body() dto: CreateDataServiceDto, @Req() req: RequestWithInfo) {
     return this.writeService.create(dto, dataHubCaller(req));
   }
@@ -114,14 +115,14 @@ export class DataHubDataServiceController {
 
   @ApiOperation({ summary: 'Edit a data service (creates a new auto-approved version)' })
   @Put(':id')
-  @RequireDataHubPermission(DH_PERMISSIONS.DATA_SERVICE_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDataServiceDto, @Req() req: RequestWithInfo) {
     return this.writeService.update(id, dto, dataHubCaller(req));
   }
 
   @ApiOperation({ summary: 'Activate / deactivate a data service' })
   @Patch(':id/status')
-  @RequireDataHubPermission(DH_PERMISSIONS.DATA_SERVICE_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   setStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateDataServiceStatusDto,

@@ -1,3 +1,5 @@
+import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
+import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { BearerGuard } from '@common/guards/bearer.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import {
@@ -22,7 +24,6 @@ import { Response } from 'express';
 import { DataHubAccessService } from '../common/data-hub-access.service';
 import { dataHubCaller } from '../common/data-hub-caller.util';
 import { DH_PERMISSIONS } from '../common/data-hub-permission-codes';
-import { DataHubPermissionGuard, RequireDataHubPermission } from '../common/data-hub-permission.guard';
 import { DataHubPageQueryDto } from '../common/data-hub-query.util';
 import { DataHubConsumerExportService } from './data-hub-consumer-export.service';
 import { DataHubConsumerQueryService } from './data-hub-consumer-query.service';
@@ -30,7 +31,7 @@ import { DataHubConsumerTermsQueryService } from './data-hub-consumer-terms-quer
 import { DataHubConsumerWriteService } from './data-hub-consumer-write.service';
 import { CreateConsumerDto, ListConsumerQueryDto, UpdateConsumerDto, UpdateConsumerStatusDto } from './dto';
 
-// Reads need only a logged-in user; writes need the consumer codes (DataHubPermissionGuard).
+// Reads need only a logged-in user; writes need the consumer codes (PermissionGuard).
 const requireUserId = (req: RequestWithInfo): number => {
   const userId = req.info?.user?.id as number;
   if (!userId) throw new ForbiddenException('User not authenticated');
@@ -40,7 +41,7 @@ const requireUserId = (req: RequestWithInfo): number => {
 @Controller('v1/data-hub/consumers')
 @ApiTags('data-hub-consumers')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, DataHubPermissionGuard)
+@UseGuards(BearerGuard, PermissionGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class DataHubConsumerController {
   constructor(
@@ -104,21 +105,21 @@ export class DataHubConsumerController {
 
   @ApiOperation({ summary: 'Create consumer' })
   @Post()
-  @RequireDataHubPermission(DH_PERMISSIONS.CONSUMER_CREATE)
+  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE)
   create(@Body() dto: CreateConsumerDto, @Req() req: RequestWithInfo) {
     return this.writeService.create(dto, requireUserId(req));
   }
 
   @ApiOperation({ summary: 'Update consumer (code is immutable)' })
   @Put(':id')
-  @RequireDataHubPermission(DH_PERMISSIONS.CONSUMER_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.CONSUMER_UPDATE)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateConsumerDto, @Req() req: RequestWithInfo) {
     return this.writeService.update(id, dto, requireUserId(req));
   }
 
   @ApiOperation({ summary: 'Activate / deactivate consumer' })
   @Patch(':id/status')
-  @RequireDataHubPermission(DH_PERMISSIONS.CONSUMER_UPDATE)
+  @RequirePermission(DH_PERMISSIONS.CONSUMER_UPDATE)
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateConsumerStatusDto,

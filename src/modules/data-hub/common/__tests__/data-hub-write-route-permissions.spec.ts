@@ -7,17 +7,14 @@ import { LogicalTermController } from '../../dictionary/logical-term.controller'
 import { PhysicalTermController } from '../../dictionary/physical-term.controller';
 import { SourceTableController } from '../../dictionary/source-table.controller';
 import { DH_PERMISSIONS as P } from '../data-hub-permission-codes';
-import {
-  DATA_HUB_PERMISSION_KEY,
-  DATA_HUB_SUPER_ADMIN_KEY,
-  DataHubPermissionGuard,
-} from '../data-hub-permission.guard';
+import { PERMISSION_META_KEY } from '@common/authorization/constants/authorization.constant';
+import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 
 type Ctor = { prototype: Record<string, unknown>; name: string };
 
 // Expected gate of every non-GET handler (and of the department-config reads). A new write route without an
 // entry here fails this spec, so no write can ship open by accident.
-const EXPECTED: Record<string, Record<string, string[] | 'super_admin'>> = {
+const EXPECTED: Record<string, Record<string, string[]>> = {
   DataHubConsumerController: {
     create: [P.CONSUMER_CREATE],
     update: [P.CONSUMER_UPDATE],
@@ -57,12 +54,12 @@ const handlers = (c: Ctor) =>
   );
 
 describe('Data Hub route permissions', () => {
-  it.each(CONTROLLERS.map((c) => [c.name, c]))('%s: DataHubPermissionGuard is applied', (_n, c) => {
+  it.each(CONTROLLERS.map((c) => [c.name, c]))('%s: PermissionGuard is applied', (_n, c) => {
     const guards = (Reflect.getMetadata(GUARDS_METADATA, c) ?? []) as unknown[];
     const methodGuards = handlers(c).flatMap(
       (h) => (Reflect.getMetadata(GUARDS_METADATA, c.prototype[h] as object) ?? []) as unknown[],
     );
-    expect([...guards, ...methodGuards]).toContain(DataHubPermissionGuard);
+    expect([...guards, ...methodGuards]).toContain(PermissionGuard);
   });
 
   it.each(CONTROLLERS.map((c) => [c.name, c]))('%s: every write handler has its expected gate', (name, c) => {
@@ -70,9 +67,7 @@ describe('Data Hub route permissions', () => {
     for (const h of handlers(c)) {
       const fn = c.prototype[h] as object;
       const method = Reflect.getMetadata(METHOD_METADATA, fn) as RequestMethod;
-      const codes = Reflect.getMetadata(DATA_HUB_PERMISSION_KEY, fn) as string[] | undefined;
-      const superOnly = Reflect.getMetadata(DATA_HUB_SUPER_ADMIN_KEY, fn) as boolean | undefined;
-      const gate = superOnly ? 'super_admin' : codes;
+      const gate = Reflect.getMetadata(PERMISSION_META_KEY, fn) as string[] | undefined;
       if (method !== RequestMethod.GET || expected[h] !== undefined) {
         expect({ handler: h, gate }).toEqual({ handler: h, gate: expected[h] });
       } else {
