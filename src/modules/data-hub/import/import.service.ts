@@ -298,7 +298,16 @@ export interface ServiceDraft {
   valid?: boolean;
 }
 
-const API_SPEC_KEYS = ['method', 'endpoint_path', 'auth_type', 'peak_tps', 'update_frequency', 'sync_mode', 'timeout'];
+const API_SPEC_KEYS = [
+  'method',
+  'endpoint_path',
+  'auth_type',
+  'encryption',
+  'peak_tps',
+  'update_frequency',
+  'sync_mode',
+  'timeout',
+];
 const SFTP_SPEC_KEYS = [
   'folder_path',
   'file_name_pattern',

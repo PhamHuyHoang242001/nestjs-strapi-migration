@@ -111,6 +111,7 @@ const storedApiSpec = {
   domain_id: 1,
   endpoint_path: '/v1/x',
   auth_type: 'BEARER_TOKEN',
+  encryption: 'NONE',
   peak_tps: null,
   update_frequency: 'REALTIME',
   sync_mode: 'SYNC',

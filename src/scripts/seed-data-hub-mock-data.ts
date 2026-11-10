@@ -220,7 +220,7 @@ async function importService(m: EntityManager, s: Row, marker: string, r: Refs, 
     await m.query(
       `INSERT INTO data_hub_data_service_version_sftp_specs (data_service_version_id, folder_path,
          file_name_pattern, file_format, export_frequency, encryption, flow_direction)
-       VALUES ($1, $2, $3, $4, $5, 'PGP_KEY', $6)`,
+       VALUES ($1, $2, $3, $4, $5, 'HYBRID', $6)`,
       [
         ver.id,
         M.truncate(s.endpoint_path, 1000) || null,

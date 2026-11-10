@@ -38,6 +38,7 @@ export const FIELD_META: FieldMeta[] = [
   f('api_domain', 'technical', 'ref', 'Domain', 'Domain'),
   f('api_endpoint_path', 'technical', 'scalar', 'Endpoint', 'Endpoint path'),
   f('api_auth_type', 'technical', 'scalar', 'Kiểu xác thực', 'Auth type'),
+  f('api_encryption', 'technical', 'scalar', 'Mã hóa', 'Encryption'),
   f('api_peak_tps', 'technical', 'scalar', 'TPS cao điểm', 'Peak TPS'),
   f('api_update_frequency', 'technical', 'scalar', 'Tần suất cập nhật', 'Update frequency'),
   f('api_sync_mode', 'technical', 'scalar', 'Chế độ đồng bộ', 'Sync mode'),

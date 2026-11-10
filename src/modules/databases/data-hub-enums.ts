@@ -80,8 +80,9 @@ export enum DataHubSftpExportFrequency {
   ADHOC = 'ADHOC',
 }
 
-export enum DataHubSftpEncryption {
-  PGP_KEY = 'PGP_KEY',
+// Encryption of a data service, same values for API and SFTP specs.
+export enum DataHubEncryption {
+  HYBRID = 'HYBRID',
   NONE = 'NONE',
 }
 

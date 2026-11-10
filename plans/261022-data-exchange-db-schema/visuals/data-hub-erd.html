@@ -50,7 +50,7 @@ svg#links path.hl{stroke:var(--hl);stroke-width:2.2}
     <span><i style="background:#8a8f98"></i>Lịch sử</span>
     <span><b style="color:#1c5fb8">xanh</b> = FK (đường nối đi ra từ đúng field) · <b style="color:#7a3fb0">tím</b> = id user, chỉ lưu id, không FK</span>
     <span>Mọi bảng có thêm created_at, updated_at (không vẽ); bảng chính thêm deleted_at, is_deleted (soft delete), trừ bảng nối version_* và consumer_so_apps · UK live = duy nhất trong các dòng chưa xoá · Di chuột vào bảng để tô sáng quan hệ</span>
-    <span>Cập nhật theo schema sau migration 2611101000 (10/11/2026)</span>
+    <span>Cập nhật theo schema sau migration 2611101600 (10/11/2026)</span>
   </div>
 </header>
 <div id="viewport"><div id="sizer"><div id="canvas"><svg id="links"></svg></div></div></div>
@@ -75,14 +75,14 @@ const T = {
   data_hub_data_service_version_api_specs: ['c-ver', [
     ['id','int','PK'],['data_service_version_id','int','FK,UK>data_hub_data_service_versions','UK live'],
     ['method','varchar(50)','','GET|POST|PUT|PATCH|DELETE'],['domain_id','int','FK>integration_domain_configs'],
-    ['endpoint_path','varchar(1000)'],['auth_type','varchar(50)','','enum'],['peak_tps','varchar(255)','','null'],
+    ['endpoint_path','varchar(1000)'],['auth_type','varchar(50)','','enum'],['encryption','varchar(50)','','HYBRID|NONE'],['peak_tps','varchar(255)','','null'],
     ['update_frequency','varchar(50)','','enum'],['sync_mode','varchar(50)','','SYNC|ASYNC'],
     ['timeout','varchar(100)','','null'],['sample_request','jsonb','','null'],['sample_response','jsonb','','null']]],
   data_hub_data_service_version_sftp_specs: ['c-ver', [
     ['id','int','PK'],['data_service_version_id','int','FK,UK>data_hub_data_service_versions','UK live'],
     ['folder_path','varchar(1000)','','null'],['file_name_pattern','varchar(500)','','null'],
     ['file_format','varchar(50)','','enum'],['export_frequency','varchar(50)','','enum'],
-    ['max_file_size','varchar(255)','','null'],['encryption','varchar(50)','','PGP_KEY|NONE'],
+    ['max_file_size','varchar(255)','','null'],['encryption','varchar(50)','','HYBRID|NONE'],
     ['flow_direction','varchar(50)','','PUSH|PULL, null']]],
   data_hub_data_service_histories: ['c-hist', [
     ['id','int','PK'],['data_service_id','int','FK>data_hub_data_services'],

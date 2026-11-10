@@ -7,7 +7,7 @@ import {
   DataHubApiUpdateFrequency,
   DataHubConsumerCategory,
   DataHubServiceType,
-  DataHubSftpEncryption,
+  DataHubEncryption,
   DataHubSftpExportFrequency,
   DataHubSftpFileFormat,
   DataHubSftpFlowDirection,
@@ -142,6 +142,7 @@ export const API_COLUMNS: ImportColumn[] = [
   ),
   col('endpoint_path', 'Endpoint path', 'r', 36, 'Đường dẫn sau base URL, tối đa 1000 ký tự. Vd /v1/customers/{cif}.'),
   col('auth_type', 'Auth type', 'r', 22, 'Cách xác thực khi gọi API.', values(DataHubApiAuthType)),
+  col('encryption', 'Mã hoá', 'r', 12, 'Mã hoá dữ liệu.', values(DataHubEncryption)),
   col('peak_tps', 'Peak TPS', 'o', 12, 'Số hoặc chữ, tối đa 255 ký tự.'),
   col('update_frequency', 'Tần suất cập nhật', 'r', 18, 'Độ mới của dữ liệu.', values(DataHubApiUpdateFrequency)),
   col('sync_mode', 'Chế độ đồng bộ', 'r', 16, 'Kiểu gọi.', values(DataHubApiSyncMode)),
@@ -157,7 +158,7 @@ export const SFTP_COLUMNS: ImportColumn[] = [
   col('file_format', 'Định dạng file', 'r', 14, 'Định dạng file.', values(DataHubSftpFileFormat)),
   col('export_frequency', 'Tần suất xuất', 'r', 16, 'Tần suất xuất file.', values(DataHubSftpExportFrequency)),
   col('max_file_size', 'Dung lượng tối đa', 'o', 16, 'Số hoặc chữ, tối đa 255 ký tự. Vd 2GB.'),
-  col('encryption', 'Mã hoá', 'r', 12, 'Mã hoá file.', values(DataHubSftpEncryption)),
+  col('encryption', 'Mã hoá', 'r', 12, 'Mã hoá file.', values(DataHubEncryption)),
   col('flow_direction', 'Chiều luồng', 'o', 12, 'Chiều luồng dữ liệu.', values(DataHubSftpFlowDirection)),
 ];
 

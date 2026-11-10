@@ -8,6 +8,7 @@ const base = {
   domain_id: 1,
   endpoint_path: '/v1/x',
   auth_type: 'CLIENT_ID',
+  encryption: 'NONE',
   update_frequency: 'REALTIME',
 };
 
@@ -35,6 +36,24 @@ describe('ApiDataServiceSpecDto timeout rule', () => {
   it('a timeout given for ASYNC is still validated (length)', () => {
     expect(invalidFields({ sync_mode: 'ASYNC', timeout: '60s' })).toEqual([]);
     expect(invalidFields({ sync_mode: 'ASYNC', timeout: 'x'.repeat(101) })).toEqual(['timeout']);
+  });
+});
+
+describe('encryption', () => {
+  it('API spec requires encryption, HYBRID or NONE only', () => {
+    expect(invalidFields({ sync_mode: 'ASYNC', encryption: 'HYBRID' })).toEqual([]);
+    expect(invalidFields({ sync_mode: 'ASYNC', encryption: undefined })).toEqual(['encryption']);
+    expect(invalidFields({ sync_mode: 'ASYNC', encryption: 'PGP_KEY' })).toEqual(['encryption']);
+  });
+
+  it('SFTP spec accepts HYBRID / NONE and rejects the old PGP_KEY', () => {
+    const sftp = (encryption: unknown) =>
+      validateSync(
+        plainToInstance(SftpDataServiceSpecDto, { file_format: 'CSV', export_frequency: 'HOURLY', encryption }),
+      ).map((e) => e.property);
+    expect(sftp('HYBRID')).toEqual([]);
+    expect(sftp('NONE')).toEqual([]);
+    expect(sftp('PGP_KEY')).toEqual(['encryption']);
   });
 });
 

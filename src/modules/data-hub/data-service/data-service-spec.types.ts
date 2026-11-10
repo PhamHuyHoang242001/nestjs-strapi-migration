@@ -8,6 +8,7 @@ export const API_SPEC_FIELDS = [
   'domain_id',
   'endpoint_path',
   'auth_type',
+  'encryption',
   'peak_tps',
   'update_frequency',
   'sync_mode',

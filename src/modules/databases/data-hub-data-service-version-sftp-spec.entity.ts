@@ -1,7 +1,7 @@
 import { Column, Entity, JoinColumn, OneToOne } from 'typeorm';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
 import {
-  DataHubSftpEncryption,
+  DataHubEncryption,
   DataHubSftpExportFrequency,
   DataHubSftpFileFormat,
   DataHubSftpFlowDirection,
@@ -30,7 +30,7 @@ export class DataHubDataServiceVersionSftpSpec extends BaseSoftDeleteEntity {
   public max_file_size: string | null;
 
   @Column({ type: 'varchar', length: 50 })
-  public encryption: DataHubSftpEncryption;
+  public encryption: DataHubEncryption;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   public flow_direction: DataHubSftpFlowDirection | null;

@@ -1,6 +1,12 @@
 import { Column, Entity, JoinColumn, ManyToOne, OneToOne } from 'typeorm';
 import { BaseSoftDeleteEntity } from '@configuration/base-entity';
-import { DataHubApiAuthType, DataHubApiMethod, DataHubApiSyncMode, DataHubApiUpdateFrequency } from './data-hub-enums';
+import {
+  DataHubApiAuthType,
+  DataHubEncryption,
+  DataHubApiMethod,
+  DataHubApiSyncMode,
+  DataHubApiUpdateFrequency,
+} from './data-hub-enums';
 import { DataHubDataServiceVersion } from './data-hub-data-service-version.entity';
 import { IntegrationDomainConfig } from './integration-domain-config.entity';
 
@@ -26,6 +32,9 @@ export class DataHubDataServiceVersionApiSpec extends BaseSoftDeleteEntity {
 
   @Column({ type: 'varchar', length: 50 })
   public auth_type: DataHubApiAuthType;
+
+  @Column({ type: 'varchar', length: 50, default: DataHubEncryption.NONE })
+  public encryption: DataHubEncryption;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   public peak_tps: string | null;

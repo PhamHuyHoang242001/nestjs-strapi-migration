@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import {
-  DataHubSftpEncryption,
+  DataHubEncryption,
   DataHubSftpExportFrequency,
   DataHubSftpFileFormat,
   DataHubSftpFlowDirection,
@@ -39,9 +39,9 @@ export class SftpDataServiceSpecDto {
   @MaxLength(255)
   readonly max_file_size?: string;
 
-  @ApiProperty({ enum: DataHubSftpEncryption })
-  @IsEnum(DataHubSftpEncryption)
-  readonly encryption: DataHubSftpEncryption;
+  @ApiProperty({ enum: DataHubEncryption })
+  @IsEnum(DataHubEncryption)
+  readonly encryption: DataHubEncryption;
 
   @ApiProperty({ required: false, enum: DataHubSftpFlowDirection })
   @IsOptional()

@@ -6,6 +6,7 @@ import {
   DataHubApiMethod,
   DataHubApiSyncMode,
   DataHubApiUpdateFrequency,
+  DataHubEncryption,
 } from '@modules/databases/data-hub-enums';
 import { numberToString, trimString } from './data-service-dto-transforms';
 
@@ -32,6 +33,10 @@ export class ApiDataServiceSpecDto {
   @ApiProperty({ enum: DataHubApiAuthType })
   @IsEnum(DataHubApiAuthType)
   readonly auth_type: DataHubApiAuthType;
+
+  @ApiProperty({ enum: DataHubEncryption })
+  @IsEnum(DataHubEncryption)
+  readonly encryption: DataHubEncryption;
 
   @ApiProperty({ required: false, maxLength: 255 })
   @IsOptional()

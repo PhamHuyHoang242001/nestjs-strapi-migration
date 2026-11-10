@@ -91,6 +91,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       domain_id: 1,
       endpoint_path: '/x',
       auth_type: 'BEARER_TOKEN',
+      encryption: 'NONE',
       update_frequency: 'REALTIME',
       sync_mode: 'ASYNC',
     },
@@ -412,7 +413,13 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
         department_id: 2,
         consumer_ids: [40, 41],
         service_owner_user_ids: [9],
-        api_spec: { method: 'GET', sync_mode: 'SYNC', timeout: '3000', sample_request: { cif: '10012345' } },
+        api_spec: {
+          method: 'GET',
+          encryption: 'HYBRID',
+          sync_mode: 'SYNC',
+          timeout: '3000',
+          sample_request: { cif: '10012345' },
+        },
       });
       expect(h.created[0].source_tables).toBeUndefined();
       expect(res.services[0]).toMatchObject({ status: 'created', id: 100, service_code: 'API_EDA_C360_100' });
@@ -424,7 +431,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       expect(res.summary.services.created).toBe(1);
       expect(h.created[0]).toMatchObject({
         service_type: DataHubServiceType.SFTP,
-        sftp_spec: { folder_path: '/outbound/card/', encryption: 'PGP_KEY' },
+        sftp_spec: { folder_path: '/outbound/card/', encryption: 'HYBRID' },
       });
     });
 
