@@ -14,8 +14,9 @@ export class DataHubConsumer extends BaseSoftDeleteEntity {
   @Column({ type: 'varchar', length: 50 })
   public category: DataHubConsumerCategory;
 
-  @Column({ type: 'int' })
-  public division_id: number;
+  // Đơn vị chủ quản (required by the API; NULL only on apps created before owner units existed).
+  @Column({ type: 'int', nullable: true })
+  public owner_unit_id: number | null;
 
   // Hệ thống (required by the API; NULL only on apps created before systems existed).
   @Column({ type: 'int', nullable: true })

@@ -16,9 +16,9 @@ export class ConsumerImportTemplateService {
   constructor(private readonly dataSource: DataSource) {}
 
   async build(example?: { email: string }): Promise<Buffer> {
-    const [[division = ''], [system = '']] = example
+    const [[ownerUnit = ''], [system = '']] = example
       ? await Promise.all([
-          sampleCodes(this.dataSource, 'data_hub_divisions'),
+          sampleCodes(this.dataSource, 'data_hub_owner_units', { column: 'name' }),
           sampleCodes(this.dataSource, 'data_hub_systems', { column: 'name' }),
         ])
       : [[], []];
@@ -33,7 +33,7 @@ export class ConsumerImportTemplateService {
                 code: `APP_DEMO_CRM_${tag}`,
                 name: `CRM nội bộ ${tag}`,
                 category: DataHubConsumerCategory.INTERNAL_APP,
-                division,
+                owner_unit: ownerUnit,
                 short_description: 'Ứng dụng CRM phục vụ chăm sóc khách hàng',
                 so_apps: example.email,
                 system,
@@ -42,7 +42,7 @@ export class ConsumerImportTemplateService {
                 code: `APP_DEMO_PARTNER_${tag}`,
                 name: `Cổng đối tác ${tag}`,
                 category: DataHubConsumerCategory.PARTNER_ECOSYSTEM,
-                division,
+                owner_unit: ownerUnit,
                 short_description: 'Cổng kết nối đối tác bên ngoài',
                 so_apps: example.email,
                 system,

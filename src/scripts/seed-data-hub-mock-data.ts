@@ -70,16 +70,16 @@ async function seed(m: EntityManager, w: M.MapWarnings) {
       code,
       name: M.truncate(s.subscriber_name, 255),
       category: s.category === 'PARTNER_ECOSYSTEM' ? 'PARTNER_ECOSYSTEM' : 'INTERNAL_APP',
-      division_id: divisions.get(M.consumerDivisionCode(String(s.business_unit ?? ''))),
+      owner_unit_id: null,
       short_description: M.truncate(s.short_description ?? s.description, 1000),
       avatar_url: null,
       status: 'active',
       so_app_user_ids: [so],
     };
     const [row]: Row[] = await m.query(
-      `INSERT INTO data_hub_consumers (code, name, category, division_id, short_description,
-         created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [code, snapshot.name, snapshot.category, snapshot.division_id, snapshot.short_description, so],
+      `INSERT INTO data_hub_consumers (code, name, category, short_description, created_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [code, snapshot.name, snapshot.category, snapshot.short_description, so],
     );
     await m.query(`INSERT INTO data_hub_consumer_so_apps (consumer_id, user_id) VALUES ($1, $2)`, [row.id, so]);
     await m.query(

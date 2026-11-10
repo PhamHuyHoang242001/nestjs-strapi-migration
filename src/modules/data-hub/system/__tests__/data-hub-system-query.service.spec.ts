@@ -22,4 +22,15 @@ describe('DataHubSystemQueryService', () => {
     expect(rowSql).toContain('LIMIT $2 OFFSET $3');
     expect(rowParams).toEqual(['%50\\%\\_off%', 5, 5]);
   });
+
+  it('lists live owner units by name from their own table, with the same paging', async () => {
+    const { service, query } = makeService([{ id: '4', name: 'Khối Vận hành' }]);
+    const res = await service.listOwnerUnits({} as DataHubPageQueryDto);
+    expect(res).toEqual({ data: [{ id: 4, name: 'Khối Vận hành' }], meta: { total: 3, page: 1, limit: 10 } });
+    const [countSql] = query.mock.calls[0];
+    const [rowSql, rowParams] = query.mock.calls[1];
+    expect(countSql).toContain('FROM data_hub_owner_units s WHERE s.deleted_at IS NULL AND s.is_deleted IS NOT TRUE');
+    expect(rowSql).toContain('FROM data_hub_owner_units s');
+    expect(rowParams).toEqual([10, 0]);
+  });
 });

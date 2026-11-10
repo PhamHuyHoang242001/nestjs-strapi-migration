@@ -123,9 +123,8 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
   function harness(existing: string[] = []) {
     const dataSource = {
       query: jest.fn((sql: string) => {
-        if (sql.includes('data_hub_divisions')) {
-          return sql.includes('t.name') ? [{ code: 'EDA', name: 'EDA' }] : [{ id: 1, code: 'EDA' }];
-        }
+        if (sql.includes('FROM data_hub_owner_units t')) return [{ code: 'Khối Vận hành' }];
+        if (sql.includes('FROM data_hub_owner_units s')) return [{ id: 3, name: 'Khối Vận hành' }];
         if (sql.includes('FROM users u')) return [{ id: 9, email: 'so@vpbank.com.vn' }];
         if (sql.includes('FROM data_hub_consumers c')) return existing.map((code) => ({ code }));
         if (sql.includes('FROM data_hub_systems t')) return [{ code: 'OCP' }];
@@ -175,7 +174,12 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       });
       const res = await h.service.import(file, false, CALLER);
       expect(res.summary.consumers.created).toBe(2);
-      expect(h.created[0]).toMatchObject({ code: 'APP_LOWER_1', division_id: 1, so_app_user_ids: [9], system_id: 2 });
+      expect(h.created[0]).toMatchObject({
+        code: 'APP_LOWER_1',
+        owner_unit_id: 3,
+        so_app_user_ids: [9],
+        system_id: 2,
+      });
       expect(res.consumers[0]).toMatchObject({ status: 'created', id: 101, code: 'APP_LOWER_1' });
     });
 
@@ -184,7 +188,7 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       const file = await edit(await h.template.build({ email: 'so@vpbank.com.vn' }), (s) => {
         s.getCell('A2').value = 'TAKEN_APP';
         s.getCell('A3').value = 'DUP_APP';
-        s.getRow(4).values = ['DUP_APP', 'n', 'BAD', 'EDA', 'd', 'nobody@x.vn'];
+        s.getRow(4).values = ['DUP_APP', 'n', 'BAD', 'khối vận hành', 'd', 'nobody@x.vn'];
       });
       const res = await h.service.import(file, false, CALLER);
       const at = (cell: string) => res.issues.filter((i) => `${i.column}${i.row}` === cell).map((i) => i.code);
@@ -194,6 +198,17 @@ import { cellText, headerText, sheetDef } from '../import-workbook.util';
       expect(at('C4')).toEqual(['INVALID_VALUE']);
       expect(at('F4')).toEqual(['USER_NOT_FOUND']);
       expect(h.writeService.create).not.toHaveBeenCalled();
+    });
+
+    it('resolves Đơn vị chủ quản by name; an unknown one is reported on its cell', async () => {
+      const h = harness();
+      const file = await edit(await h.template.build({ email: 'so@vpbank.com.vn' }), (s) => {
+        s.getCell('D2').value = 'KHỐI VẬN HÀNH';
+        s.getCell('D3').value = 'Khối EDA';
+      });
+      const res = await h.service.import(file, true, CALLER);
+      expect(res.issues.map((i) => [i.column, i.row, i.code])).toEqual([['D', 3, 'OWNER_UNIT_NOT_FOUND']]);
+      expect(res.issues[0].message).toBe('Đơn vị chủ quản "Khối EDA" không tồn tại');
     });
 
     it('resolves Hệ thống by name and takes Dịch vụ hệ thống as free text; unknown systems are reported', async () => {

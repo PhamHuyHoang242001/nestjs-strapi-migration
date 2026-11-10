@@ -10,14 +10,13 @@ import { LogicalTermWriteService } from '../dictionary/logical-term-write.servic
 import { ImportDataServiceDto, LogicalTermImportRowDto } from './import-dto';
 import {
   checkRequired,
-  codeMap,
   errorText,
   ImportRunGuard,
   lookupCode,
   lookupMany,
   resolveActiveConsumer,
   resolveUser,
-  systemMap,
+  nameMap,
   uniqueLower,
   userMap,
 } from './import-helpers.util';
@@ -45,26 +44,34 @@ import {
 const CONSUMER_SHEET = 'CONSUMERS';
 // Property of the create body -> column of the sheet.
 const CONSUMER_COLUMN_OF: Record<string, string> = {
-  division_id: 'division',
+  owner_unit_id: 'owner_unit',
   so_app_user_ids: 'so_apps',
   system_id: 'system',
 };
 
-// Hệ thống by name; unknown or ambiguous names are reported. Dịch vụ hệ thống is free text, taken as typed.
-function lookupSystem(
+// Name-matched references of a consumer row: column key -> error code prefix and label in messages.
+const BY_NAME = {
+  system: { code: 'SYSTEM', label: 'Hệ thống' },
+  owner_unit: { code: 'OWNER_UNIT', label: 'Đơn vị chủ quản' },
+} as const;
+
+// Hệ thống / Đơn vị chủ quản by name; unknown or ambiguous names are reported. Dịch vụ hệ thống is free text.
+function lookupByName(
   r: ImportRow,
-  systems: Map<string, number | null>,
+  key: keyof typeof BY_NAME,
+  ids: Map<string, number | null>,
   issues: ImportIssueCollector,
 ): number | undefined {
-  const { system } = r.values;
-  if (system === '') return undefined;
-  const systemId = systems.get(system.toLowerCase());
-  if (systemId === undefined) {
-    issues.add(CONSUMER_SHEET, r.row, 'system', 'SYSTEM_NOT_FOUND', `Hệ thống "${system}" không tồn tại`);
-  } else if (systemId === null) {
-    issues.add(CONSUMER_SHEET, r.row, 'system', 'SYSTEM_AMBIGUOUS', `Có nhiều hệ thống tên "${system}"`);
+  const name = r.values[key];
+  if (name === '') return undefined;
+  const { code, label } = BY_NAME[key];
+  const id = ids.get(name.toLowerCase());
+  if (id === undefined) {
+    issues.add(CONSUMER_SHEET, r.row, key, `${code}_NOT_FOUND`, `${label} "${name}" không tồn tại`);
+  } else if (id === null) {
+    issues.add(CONSUMER_SHEET, r.row, key, `${code}_AMBIGUOUS`, `Có nhiều ${label.toLowerCase()} tên "${name}"`);
   }
-  return systemId ?? undefined;
+  return id ?? undefined;
 }
 
 export interface ConsumerImportResult {
@@ -76,7 +83,7 @@ export interface ConsumerImportResult {
 }
 
 // Bulk create of App thụ hưởng. Each row is checked with CreateConsumerDto (the create API's own rules) and the
-// same lookups (division by code, SO APP by email); each valid row is then created through the consumer write
+// same lookups (owner unit and system by name, SO APP by email); each valid row is then created through the consumer write
 // service in its own transaction.
 @Injectable()
 export class ConsumerImportService {
@@ -96,11 +103,11 @@ export class ConsumerImportService {
     const rows = sheets[CONSUMER_SHEET];
     const issues = new ImportIssueCollector(CONSUMER_IMPORT_LAYOUT);
     const upper = (code: string) => code.toUpperCase();
-    const [divisions, users, taken, systems] = await Promise.all([
-      codeMap(this.dataSource, 'data_hub_divisions', uniqueLower(rows.map((r) => r.values.division))),
+    const [ownerUnits, users, taken, systems] = await Promise.all([
+      nameMap(this.dataSource, 'data_hub_owner_units', uniqueLower(rows.map((r) => r.values.owner_unit))),
       userMap(this.dataSource, uniqueLower(rows.flatMap((r) => splitList(r.values.so_apps)))),
       this.existingCodes(rows.map((r) => upper(r.values.code))),
-      systemMap(this.dataSource, uniqueLower(rows.map((r) => r.values.system))),
+      nameMap(this.dataSource, 'data_hub_systems', uniqueLower(rows.map((r) => r.values.system))),
     ]);
     const inFile = new Map<string, number>();
     rows.forEach((r) => r.values.code && inFile.set(upper(r.values.code), (inFile.get(upper(r.values.code)) ?? 0) + 1));
@@ -120,10 +127,10 @@ export class ConsumerImportService {
         code: v.code,
         name: v.name,
         category: v.category.toUpperCase(),
-        division_id: lookupCode(CONSUMER_SHEET, r, 'division', divisions, issues),
+        owner_unit_id: lookupByName(r, 'owner_unit', ownerUnits, issues),
         short_description: v.short_description,
         so_app_user_ids: lookupMany(CONSUMER_SHEET, r, 'so_apps', resolveUser(users), issues),
-        system_id: lookupSystem(r, systems, issues),
+        system_id: lookupByName(r, 'system', systems, issues),
         system_service: v.system_service,
       };
       const dto = await validateDto(CreateConsumerDto, plain, issues, (path) => ({

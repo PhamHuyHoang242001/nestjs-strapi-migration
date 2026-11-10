@@ -15,7 +15,7 @@ const stored = {
   code: 'CRM',
   name: 'CRM',
   category: 'INTERNAL_APP',
-  division_id: 1,
+  owner_unit_id: 1,
   system_id: 2,
   system_service: null,
   short_description: 'd',
@@ -32,7 +32,7 @@ function setup(
   const manager = {
     query: jest.fn((sql: string, params: unknown[] = []) => {
       calls.push({ sql, params });
-      if (sql.includes('FROM data_hub_divisions') || sql.includes('FROM data_hub_departments'))
+      if (sql.includes('FROM data_hub_owner_units') || sql.includes('FROM data_hub_departments'))
         return Promise.resolve([{ ok: 1 }]);
       if (sql.includes('FROM data_hub_systems')) return Promise.resolve(opts.noSystem ? [] : [{ ok: 1 }]);
       if (/INSERT INTO data_hub_consumers\s/.test(sql)) {
@@ -55,7 +55,7 @@ const createDto = {
   code: 'CRM',
   name: 'CRM',
   category: 'INTERNAL_APP',
-  division_id: 1,
+  owner_unit_id: 1,
   system_id: 2,
   short_description: 'd',
   so_app_user_ids: [1],
@@ -75,7 +75,7 @@ describe('DataHubConsumerWriteService', () => {
       code: 'CRM',
       name: 'CRM',
       category: 'INTERNAL_APP',
-      division_id: 1,
+      owner_unit_id: 1,
       system_id: 2,
       system_service: null,
       short_description: 'd',
@@ -157,13 +157,24 @@ describe('DataHubConsumerWriteService', () => {
     await expect(service.create(createDto, 5)).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('create rejects an unknown division', async () => {
+  it('create rejects an unknown or deleted owner unit', async () => {
     const { service } = setup();
+    const calls: string[] = [];
     const manager = (service as unknown as { dataSource: { transaction: jest.Mock } }).dataSource;
     manager.transaction.mockImplementationOnce((cb: (m: unknown) => unknown) =>
-      cb({ query: () => Promise.resolve([]) }),
+      cb({ query: (sql: string) => (calls.push(sql), Promise.resolve([])) }),
     );
-    await expect(service.create(createDto, 5)).rejects.toThrow('INVALID_DIVISION');
+    await expect(service.create(createDto, 5)).rejects.toThrow('INVALID_OWNER_UNIT');
+    expect(calls[0]).toContain('FROM data_hub_owner_units u');
+    expect(calls[0]).toContain('u.deleted_at IS NULL AND u.is_deleted IS NOT TRUE');
+  });
+
+  it('stores the owner unit on create and update', async () => {
+    const { service, calls } = setup();
+    await service.create({ ...createDto, owner_unit_id: 4 } as CreateConsumerDto, 5);
+    expect(calls.find((c) => /INSERT INTO data_hub_consumers\s/.test(c.sql))?.params[3]).toBe(4);
+    await service.update(9, { ...createDto, owner_unit_id: 6 } as UpdateConsumerDto, 5);
+    expect(calls.find((c) => c.sql.includes('UPDATE data_hub_consumers'))?.params[3]).toBe(6);
   });
 
   it('update bumps version_no and writes an UPDATE snapshot keeping stored code/status', async () => {
@@ -259,7 +270,7 @@ describe('consumer code in DTOs', () => {
   const body = {
     name: 'CRM',
     category: 'INTERNAL_APP',
-    division_id: 1,
+    owner_unit_id: 1,
     system_id: 2,
     short_description: 'd',
     so_app_user_ids: [1],
@@ -277,6 +288,10 @@ describe('consumer code in DTOs', () => {
   it('system is required on create and edit, the service is optional', async () => {
     const errors = await validate(plainToInstance(UpdateConsumerDto, { ...body, system_id: undefined }));
     expect(errors.map((e) => e.property)).toEqual(['system_id']);
+    const noUnit = await validate(plainToInstance(UpdateConsumerDto, { ...body, owner_unit_id: undefined }));
+    expect(noUnit.map((e) => e.property)).toEqual(['owner_unit_id']);
+    const zero = await validate(plainToInstance(UpdateConsumerDto, { ...body, owner_unit_id: 0 }));
+    expect(zero.map((e) => e.property)).toEqual(['owner_unit_id']);
     const ok = plainToInstance(CreateConsumerDto, { ...body, code: 'CRM', system_service: null });
     expect(await validate(ok)).toHaveLength(0);
     const typed = plainToInstance(CreateConsumerDto, { ...body, code: 'CRM', system_service: '  Thanh toán  ' });

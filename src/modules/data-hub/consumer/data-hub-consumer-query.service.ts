@@ -5,11 +5,8 @@ import { DataHubUserRef, DataHubUserRefService } from '../common/data-hub-user-r
 import { DataHubConsumerCountsService } from './data-hub-consumer-counts.service';
 import { sqlRows } from './consumer-sql.util';
 import { loadSoAppUserIds } from './consumer-so-apps.util';
-import { CONSUMER_ITEM_COLUMNS, CONSUMER_ITEM_JOINS, ConsumerListRow, OrgRef } from './consumer-item-sql.util';
+import { CONSUMER_ITEM_COLUMNS, CONSUMER_ITEM_JOINS, ConsumerListRow } from './consumer-item-sql.util';
 import { ConsumerListFilter, buildConsumerWhere } from './consumer-list-filter.util';
-
-const org = (id: number | null, code: string | null, name: string | null): OrgRef | null =>
-  id === null || id === undefined ? null : { id: Number(id), code: code ?? '', name: name ?? '' };
 
 const named = (id: number | null, name: string | null): { id: number; name: string } | null =>
   id === null || id === undefined ? null : { id: Number(id), name: name ?? '' };
@@ -149,7 +146,7 @@ export class DataHubConsumerQueryService {
       short_description: r.short_description,
       avatar_url: r.avatar_url,
       status: r.status,
-      division: org(r.division_id, r.division_code, r.division_name),
+      owner_unit: named(r.owner_unit_id, r.owner_unit_name),
       system: named(r.system_id, r.system_name),
       system_service: r.system_service,
       so_apps: this.userRefs.toRefs(users, soAppUserIds),

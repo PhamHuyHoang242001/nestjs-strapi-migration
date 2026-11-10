@@ -109,14 +109,20 @@ export async function consumerMap(dataSource: DataSource, codes: string[]): Prom
   return new Map(rows.map((r) => [lower(r.code), { id: Number(r.id), active: r.status === 'active' }]));
 }
 
-// Live systems by name (case-insensitive); a name shared by several live systems maps to null.
-export async function systemMap(dataSource: DataSource, names: string[]): Promise<Map<string, number | null>> {
+// Live rows of a name-only catalog (Hệ thống, Đơn vị chủ quản) by name, case-insensitive; a name shared by several
+// live rows maps to null. Case is folded here, not with SQL LOWER(), which only folds ASCII under a C database
+// locale (Vietnamese "KHỐI" would not match "Khối"); these small hand-loaded catalogs are read whole.
+export async function nameMap(
+  dataSource: DataSource,
+  table: 'data_hub_systems' | 'data_hub_owner_units',
+  names: string[],
+): Promise<Map<string, number | null>> {
   if (names.length === 0) return new Map();
   const rows: Array<{ id: number; name: string }> = await dataSource.query(
-    `SELECT s.id, s.name FROM data_hub_systems s WHERE LOWER(s.name) = ANY($1) AND ${liveSql('s')}`,
-    [names.map(lower)],
+    `SELECT s.id, s.name FROM ${table} s WHERE ${liveSql('s')}`,
   );
-  return byKey(rows.map((r) => [lower(r.name), Number(r.id)]));
+  const wanted = new Set(names.map(lower));
+  return byKey(rows.filter((r) => wanted.has(lower(r.name))).map((r) => [lower(r.name), Number(r.id)]));
 }
 
 function byKey(entries: Array<[string, number]>): Map<string, number | null> {

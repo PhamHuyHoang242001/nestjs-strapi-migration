@@ -3,7 +3,7 @@ export interface ConsumerSnapshot {
   code: string;
   name: string;
   category: string;
-  division_id: number;
+  owner_unit_id: number | null;
   system_id: number | null;
   system_service: string | null;
   short_description: string;
@@ -17,7 +17,7 @@ export function buildConsumerSnapshot(src: {
   code: string;
   name: string;
   category: string;
-  division_id: number | string;
+  owner_unit_id?: number | string | null;
   system_id?: number | string | null;
   system_service?: string | null;
   short_description: string;
@@ -29,7 +29,7 @@ export function buildConsumerSnapshot(src: {
     code: src.code,
     name: src.name,
     category: src.category,
-    division_id: Number(src.division_id),
+    owner_unit_id: src.owner_unit_id ? Number(src.owner_unit_id) : null,
     system_id: src.system_id ? Number(src.system_id) : null,
     // An empty string means no service, like null.
     system_service: src.system_service ? src.system_service : null,

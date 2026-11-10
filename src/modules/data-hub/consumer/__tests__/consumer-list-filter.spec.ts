@@ -18,11 +18,12 @@ describe('buildConsumerWhere', () => {
     const { where, params } = buildConsumerWhere({
       keyword: '50%_off',
       category: 'INTERNAL_APP',
-      division_ids: [1, 2],
+      owner_unit_ids: [1, 2],
     });
     expect(params).toEqual(['active', 'INTERNAL_APP', [1, 2], '%50\\%\\_off%']);
     expect(where).not.toContain('50%');
     expect(where).toContain('ILIKE $4');
+    expect(where).toContain('c.owner_unit_id = ANY($3)');
   });
 
   it('connection_type requires an active-version link of that service type', () => {

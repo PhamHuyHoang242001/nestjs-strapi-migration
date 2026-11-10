@@ -29,7 +29,7 @@ export class DataHubConsumerWriteService {
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
     try {
       return await this.dataSource.transaction(async (manager) => {
-        await this.assertDivision(manager, dto.division_id);
+        await this.assertOwnerUnit(manager, dto.owner_unit_id);
         await this.assertSystem(manager, dto.system_id);
         await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
@@ -37,7 +37,7 @@ export class DataHubConsumerWriteService {
         const [row] = await sqlRows<{ id: number }>(
           manager,
           `INSERT INTO data_hub_consumers
-             (code, name, category, division_id, short_description, avatar_url, status, version_no,
+             (code, name, category, owner_unit_id, short_description, avatar_url, status, version_no,
               created_by, system_id, system_service)
            VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10)
            RETURNING id`,
@@ -45,7 +45,7 @@ export class DataHubConsumerWriteService {
             snapshot.code,
             snapshot.name,
             snapshot.category,
-            snapshot.division_id,
+            snapshot.owner_unit_id,
             snapshot.short_description,
             snapshot.avatar_url,
             snapshot.status,
@@ -69,7 +69,7 @@ export class DataHubConsumerWriteService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         const current = await this.lockCurrent(manager, id);
-        await this.assertDivision(manager, dto.division_id);
+        await this.assertOwnerUnit(manager, dto.owner_unit_id);
         await this.assertSystem(manager, dto.system_id);
         await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
@@ -81,7 +81,7 @@ export class DataHubConsumerWriteService {
         const versionNo = current.version_no + 1;
         await manager.query(
           `UPDATE data_hub_consumers
-           SET name = $2, category = $3, division_id = $4, short_description = $5, avatar_url = $6,
+           SET name = $2, category = $3, owner_unit_id = $4, short_description = $5, avatar_url = $6,
                version_no = $7, updated_by = $8, updated_at = NOW(), code = $9, system_id = $10,
                system_service = $11
            WHERE id = $1`,
@@ -89,7 +89,7 @@ export class DataHubConsumerWriteService {
             id,
             next.name,
             next.category,
-            next.division_id,
+            next.owner_unit_id,
             next.short_description,
             next.avatar_url,
             versionNo,
@@ -129,7 +129,7 @@ export class DataHubConsumerWriteService {
   private async lockCurrent(manager: EntityManager, id: number): Promise<CurrentRow> {
     const [row] = await sqlRows<Omit<SnapshotSource, 'so_app_user_ids'> & { id: number; version_no: number }>(
       manager,
-      `SELECT c.id, c.code, c.name, c.category, c.division_id, c.short_description, c.avatar_url,
+      `SELECT c.id, c.code, c.name, c.category, c.owner_unit_id, c.short_description, c.avatar_url,
               c.status, c.version_no, c.system_id, c.system_service
        FROM data_hub_consumers c
        WHERE c.id = $1 AND ${liveSql('c')}
@@ -158,13 +158,13 @@ export class DataHubConsumerWriteService {
     if (!system) throw new BadRequestException('INVALID_SYSTEM: system does not exist');
   }
 
-  private async assertDivision(manager: EntityManager, divisionId: number): Promise<void> {
-    const [division] = await sqlRows<{ ok: number }>(
+  private async assertOwnerUnit(manager: EntityManager, ownerUnitId: number): Promise<void> {
+    const [unit] = await sqlRows<{ ok: number }>(
       manager,
-      `SELECT 1 AS ok FROM data_hub_divisions d WHERE d.id = $1 AND ${liveSql('d')}`,
-      [divisionId],
+      `SELECT 1 AS ok FROM data_hub_owner_units u WHERE u.id = $1 AND ${liveSql('u')}`,
+      [ownerUnitId],
     );
-    if (!division) throw new BadRequestException('INVALID_DIVISION: division does not exist');
+    if (!unit) throw new BadRequestException('INVALID_OWNER_UNIT: owner unit does not exist');
   }
 
   private async writeHistory(

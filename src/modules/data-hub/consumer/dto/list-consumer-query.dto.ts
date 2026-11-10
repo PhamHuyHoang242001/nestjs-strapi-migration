@@ -21,7 +21,7 @@ export class ListConsumerQueryDto extends DataHubPageQueryDto {
   @IsArray()
   @ArrayMaxSize(100)
   @IsInt({ each: true })
-  readonly division_ids?: number[];
+  readonly owner_unit_ids?: number[];
 
   @ApiProperty({ required: false, type: [Number] })
   @IsOptional()

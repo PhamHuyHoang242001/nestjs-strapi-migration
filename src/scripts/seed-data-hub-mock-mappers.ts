@@ -79,20 +79,6 @@ export const requestUnitCode = (workspace: string, w: MapWarnings): string => {
   return 'DBS';
 };
 
-// Consumer business_unit is free text like "Khối Khách hàng Cá nhân (RB)": use the closest known division.
-export const consumerDivisionCode = (businessUnit: string): string => {
-  const bu = businessUnit.toUpperCase();
-  if (bu.includes('(RB)')) return 'WS_RB';
-  if (bu.includes('SME')) return 'WS_SME';
-  if (bu.includes('COMM')) return 'WS_COMM';
-  if (bu.includes('RISK')) return 'WS_RISK';
-  if (bu.includes('FIN') || bu.includes('TREASURY')) return 'WS_FIN';
-  if (bu.includes('OPS')) return 'WS_OPS';
-  if (bu.includes('DIGITAL') || bu.includes('SỐ')) return 'WS_DGO';
-  if (bu.includes('EDA')) return 'EDA';
-  return 'WS_IT';
-};
-
 const pick = <T extends string>(value: string, map: Record<string, T>, fallback: T, label: string, w: MapWarnings) => {
   const hit = map[value];
   if (hit) return hit;

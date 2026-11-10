@@ -37,9 +37,11 @@ export class ConsumerFieldsDto {
   @IsEnum(DataHubConsumerCategory)
   readonly category: DataHubConsumerCategory;
 
+  // Đơn vị chủ quản (required).
   @ApiProperty()
   @IsInt()
-  readonly division_id: number;
+  @Min(1)
+  readonly owner_unit_id: number;
 
   // Hệ thống (required).
   @ApiProperty()

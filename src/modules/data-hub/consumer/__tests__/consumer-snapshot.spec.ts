@@ -4,7 +4,7 @@ const base = {
   code: 'CRM',
   name: 'CRM',
   category: 'INTERNAL_APP',
-  division_id: '1',
+  owner_unit_id: '1',
   system_id: '2',
   short_description: 'd',
   avatar_url: null,
@@ -19,7 +19,7 @@ describe('consumer snapshot', () => {
       'code',
       'name',
       'category',
-      'division_id',
+      'owner_unit_id',
       'system_id',
       'system_service',
       'short_description',
@@ -27,7 +27,7 @@ describe('consumer snapshot', () => {
       'status',
       'so_app_user_ids',
     ]);
-    expect(s.division_id).toBe(1);
+    expect(s.owner_unit_id).toBe(1);
     expect(s.system_id).toBe(2);
     expect(s.system_service).toBeNull();
     expect(buildConsumerSnapshot({ ...base, system_service: '' }).system_service).toBeNull();
@@ -35,7 +35,9 @@ describe('consumer snapshot', () => {
   });
 
   it('detects equality and differences', () => {
-    expect(snapshotsEqual(buildConsumerSnapshot(base), buildConsumerSnapshot({ ...base, division_id: 1 }))).toBe(true);
+    expect(snapshotsEqual(buildConsumerSnapshot(base), buildConsumerSnapshot({ ...base, owner_unit_id: 1 }))).toBe(
+      true,
+    );
     expect(snapshotsEqual(buildConsumerSnapshot(base), buildConsumerSnapshot({ ...base, name: 'x' }))).toBe(false);
   });
 
