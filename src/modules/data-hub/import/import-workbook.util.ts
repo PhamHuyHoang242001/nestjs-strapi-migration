@@ -24,6 +24,8 @@ export interface ImportColumn {
   note: string;
   // Fixed values of an enum column, shown as an in-cell dropdown (inline list, no helper sheet).
   options?: string[];
+  // Not read: a row holding only this column counts as empty (the STT numbering column).
+  skip?: boolean;
 }
 
 export const col = (
@@ -34,6 +36,17 @@ export const col = (
   note: string,
   options?: string[],
 ): ImportColumn => ({ key, header, level, width, note, options });
+
+// STT (row number) first column: shown in the template for the user, never read.
+export const STT_KEY = 'stt';
+export const sttCol = (): ImportColumn => ({
+  key: STT_KEY,
+  header: 'STT',
+  level: 'o',
+  width: 6,
+  note: 'Số thứ tự, hệ thống không đọc cột này.',
+  skip: true,
+});
 
 export interface ImportSheetDef {
   // Key used in rows, issues and results; the sheet name is what the user sees.
@@ -64,8 +77,8 @@ export const sheetDef = (layout: ImportLayout, key: string): ImportSheetDef => {
   return def;
 };
 
-// Header text as written in the template: required columns end with " *".
-export const headerText = (c: ImportColumn): string => (c.level === 'r' ? `${c.header} *` : c.header);
+// Header text as written in the template: exactly the agreed column name (required columns are shown in red).
+export const headerText = (c: ImportColumn): string => c.header;
 
 export const IMPORT_FILE_BYTES = 5 * 1024 * 1024;
 // Rows of the template that get formatting and dropdowns unless a sheet says otherwise.
@@ -174,7 +187,7 @@ export function readSheetRows(workbook: ExcelJS.Workbook, def: ImportSheetDef, l
       columns.forEach((c, i) => {
         const text = cellText(row.getCell(i + 1).value);
         values[c.key] = text;
-        if (text !== '') empty = false;
+        if (text !== '' && !c.skip) empty = false;
       });
       if (empty) return;
       if (rows.length >= limit) throw TOO_MANY;
@@ -345,8 +358,9 @@ export async function validateDto<T extends object>(
   return instance;
 }
 
-// created = written (or updated), valid = passed a dry run, skipped = left alone on purpose.
-export type RowOutcome = 'created' | 'valid' | 'failed' | 'skipped';
+// created / updated = written, unchanged = matched a record that already holds the same values, valid = passed a
+// dry run, skipped = left alone on purpose.
+export type RowOutcome = 'created' | 'updated' | 'unchanged' | 'valid' | 'failed' | 'skipped';
 
 export interface RowResult {
   outcome: RowOutcome;
@@ -356,6 +370,8 @@ export interface RowResult {
 
 const LABEL: Record<RowOutcome, string> = {
   created: 'Thành công',
+  updated: 'Đã cập nhật',
+  unchanged: 'Không thay đổi',
   valid: 'Hợp lệ',
   failed: 'Lỗi',
   skipped: 'Bỏ qua',
@@ -363,6 +379,8 @@ const LABEL: Record<RowOutcome, string> = {
 
 const FILL: Record<RowOutcome, string> = {
   created: 'FFD9F2E3',
+  updated: 'FFD9F2E3',
+  unchanged: 'FFFFF1CC',
   valid: 'FFD9F2E3',
   failed: 'FFFBDADA',
   skipped: 'FFFFF1CC',
@@ -474,7 +492,7 @@ export function writeExampleRows(workbook: ExcelJS.Workbook, def: ImportSheetDef
   if (!sheet) return;
   rows.forEach((values, i) => {
     def.columns.forEach((c, j) => {
-      const v = values[c.key];
+      const v = c.key === STT_KEY ? String(i + 1) : values[c.key];
       if (v) sheet.getCell(i + 2, j + 1).value = v;
     });
   });

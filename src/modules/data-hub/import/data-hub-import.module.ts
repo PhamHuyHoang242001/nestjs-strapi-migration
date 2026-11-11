@@ -20,7 +20,9 @@ import {
   LogicalTermImportTemplateService,
   SourceTableImportTemplateService,
 } from './import-templates.service';
-import { ConsumerImportService, DataServiceImportService, LogicalTermImportService } from './import.service';
+import { ConsumerImportService } from './consumer-import.service';
+import { DataServiceImportService } from './data-service-import.service';
+import { LogicalTermImportService } from './logical-term-import.service';
 
 // Bulk imports (create-only, one data sheet per file): App thụ hưởng, Thuật ngữ chuẩn hoá, Dịch vụ API / SFTP and
 // Bảng nguồn & thuật ngữ nghiệp vụ. Rows are written through the regular write services of each entity.

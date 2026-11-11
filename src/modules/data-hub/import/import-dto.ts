@@ -1,7 +1,6 @@
 import { ApiProperty, OmitType } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
-import { CreateDataServiceDto } from '../data-service/dto';
+import { IsBoolean, IsOptional } from 'class-validator';
 import { LogicalTermBodyDto } from '../dictionary/dto';
 
 // Query strings arrive as text; anything but "false" / "0" keeps the safe default.
@@ -33,19 +32,6 @@ export class ImportTemplateQueryDto {
   @IsOptional()
   @IsBoolean()
   readonly example: boolean = false;
-}
-
-// What the bulk import validates a service row against: the create body, except that consumers are optional.
-// A service may be imported with no App thụ hưởng; POST /data-services keeps requiring 1..20 (CreateDataServiceDto is unchanged).
-export class ImportDataServiceDto extends OmitType(CreateDataServiceDto, ['consumer_ids'] as const) {
-  @ApiProperty({ required: false, type: [Number] })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(20)
-  @ArrayUnique()
-  @IsInt({ each: true })
-  @Min(1, { each: true })
-  readonly consumer_ids?: number[];
 }
 
 // What the bulk import validates a row against: the create body without the physical term mapping. A logical term

@@ -69,7 +69,12 @@ export class DataHubDataServiceWriteService {
   ) {}
 
   // The caller must belong to the chosen department (Đơn vị phát hành); the role code is checked by the guard.
-  async create(dto: CreateDataServiceDto, caller: DataHubCaller): Promise<DataServiceWriteResult> {
+  // `serviceCode` = the code given by the import (already validated and checked free); the form gets a generated one.
+  async create(
+    dto: CreateDataServiceDto,
+    caller: DataHubCaller,
+    serviceCode?: string,
+  ): Promise<DataServiceWriteResult> {
     const source = toSource(dto);
     const userId = caller.id;
     try {
@@ -79,16 +84,13 @@ export class DataHubDataServiceWriteService {
         assertSpecMatchesType(dto.service_type, dto);
         const refs = await this.snapshots.resolveRefs(manager, source, true);
         const dataServiceId = await reserveServiceId(manager);
-        const serviceCode = buildServiceCode(
-          dto.service_type,
-          refs.division?.label ?? '',
-          refs.department?.label ?? '',
-          dataServiceId,
-        );
+        const code =
+          serviceCode ??
+          buildServiceCode(dto.service_type, refs.division?.label ?? '', refs.department?.label ?? '', dataServiceId);
         await manager.query(
           `INSERT INTO data_hub_data_services (id, service_code, service_type, status, created_by)
            VALUES ($1, $2, $3, 'active', $4)`,
-          [dataServiceId, serviceCode, dto.service_type, userId],
+          [dataServiceId, code, dto.service_type, userId],
         );
         await this.applyTerms(manager, dataServiceId, dto, caller, source, refs);
         const versionId = await insertApprovedVersion(manager, {
@@ -112,17 +114,24 @@ export class DataHubDataServiceWriteService {
           changes: diffSnapshots(null, buildSnapshot(source, refs)),
           userId,
         });
-        return { id: dataServiceId, service_code: serviceCode, version_id: versionId, version_no: 1 };
+        return { id: dataServiceId, service_code: code, version_id: versionId, version_no: 1 };
       });
     } catch (err) {
-      rethrowConflict(err, 'SERVICE_CODE_EXISTS: please retry');
+      rethrowConflict(err, 'SERVICE_CODE_EXISTS: service code already exists');
     }
   }
 
-  // Every edit is a new approved version; nothing is written when no field changed.
+  // Every edit is a new approved version; nothing is written when no field changed. The service code is fixed at
+  // creation and never rebuilt here.
   // Department membership is checked right after the row lock, before any validation or diff, so a caller
   // outside the department always gets 403 (also when moving the service to another department).
-  async update(id: number, dto: UpdateDataServiceDto, caller: DataHubCaller): Promise<DataServiceWriteResult> {
+  // keepSourceTables (import): the body carries no source tables; the service keeps the terms of its active version.
+  async update(
+    id: number,
+    dto: UpdateDataServiceDto,
+    caller: DataHubCaller,
+    opts: { keepSourceTables?: boolean } = {},
+  ): Promise<DataServiceWriteResult> {
     const source = toSource(dto);
     const userId = caller.id;
     try {
@@ -132,7 +141,12 @@ export class DataHubDataServiceWriteService {
         assertSpecMatchesType(pkg.service_type, dto);
         const previous = await this.snapshots.loadVersion(manager, pkg.active_version_id);
         const refs = await this.snapshots.resolveRefs(manager, source, true);
-        await this.applyTerms(manager, id, dto, caller, source, refs);
+        if (opts.keepSourceTables) {
+          source.physical_term_ids = previous.source.physical_term_ids;
+          Object.assign(refs, await this.snapshots.resolveTerms(manager, source.physical_term_ids));
+        } else {
+          await this.applyTerms(manager, id, dto, caller, source, refs);
+        }
         const changes = diffSnapshots(previous.snapshot, buildSnapshot(source, refs));
         if (changes.length === 0) throw new BadRequestException('NO_CHANGES: nothing to update');
 
@@ -151,17 +165,9 @@ export class DataHubDataServiceWriteService {
           changelogNote: dto.changelog_note ?? null,
           source,
         });
-        // The code follows the division/department of the new version (codes in an older format are rebuilt too).
-        const serviceCode = buildServiceCode(
-          pkg.service_type,
-          refs.division?.label ?? '',
-          refs.department?.label ?? '',
-          id,
-        );
         await manager.query(
-          `UPDATE data_hub_data_services SET active_version_id = $1, service_code = $2, updated_by = $3,
-             updated_at = NOW() WHERE id = $4`,
-          [versionId, serviceCode, userId, id],
+          `UPDATE data_hub_data_services SET active_version_id = $1, updated_by = $2, updated_at = NOW() WHERE id = $3`,
+          [versionId, userId, id],
         );
         await insertServiceHistory(manager, {
           dataServiceId: id,
@@ -172,7 +178,7 @@ export class DataHubDataServiceWriteService {
           changes,
           userId,
         });
-        return { id, service_code: serviceCode, version_id: versionId, version_no: versionNo };
+        return { id, service_code: pkg.service_code, version_id: versionId, version_no: versionNo };
       });
     } catch (err) {
       rethrowConflict(err, 'VERSION_CONFLICT: concurrent edit, please retry');

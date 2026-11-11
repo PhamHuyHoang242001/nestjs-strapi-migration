@@ -3,7 +3,9 @@ import * as ExcelJS from 'exceljs';
 import { SourceTableService } from '../import-lookups.service';
 import { SourceTableImportService } from '../import-source-tables.service';
 import { SourceTableImportTemplateService } from '../import-templates.service';
+import { SOURCE_TABLE_IMPORT_LAYOUT as LAYOUT } from '../import-layouts';
 import { cellText } from '../import-workbook.util';
+import { colOf, letterOfKey } from './import-test-helpers';
 
 const CALLER = { id: 1, type: 'super_admin' };
 const SHEET = 'BANG_NGUON_THUAT_NGU';
@@ -156,13 +158,13 @@ describe('SourceTableImportService', () => {
   it('reports by cell and applies nothing when one row of the service is bad', async () => {
     const h = harness({ tableNames: ['other_table'] });
     const file = await edit(await exampleFile(), (s) => {
-      s.getCell('I2').value = 'NO_SUCH_LOGICAL';
-      s.getCell('D4').value = 'dob';
+      s.getCell(2, colOf(LAYOUT, 'logical_code')).value = 'NO_SUCH_LOGICAL';
+      s.getCell(4, colOf(LAYOUT, 'code')).value = 'dob';
     });
     const res = await h.service.import(file, false, CALLER);
     const at = (cell: string) => res.issues.filter((i) => `${i.column}${i.row}` === cell).map((i) => i.code);
-    expect(at('I2')).toEqual(['LOGICAL_TERM_NOT_FOUND']);
-    expect(at('D4')).toEqual(['PHYSICAL_CODE_DUPLICATE']);
+    expect(at(`${letterOfKey(LAYOUT, 'logical_code')}2`)).toEqual(['LOGICAL_TERM_NOT_FOUND']);
+    expect(at(`${letterOfKey(LAYOUT, 'code')}4`)).toEqual(['PHYSICAL_CODE_DUPLICATE']);
     expect(h.writeService.update).not.toHaveBeenCalled();
     expect(res.source_tables.map((e) => e.status)).toEqual(['failed', 'skipped', 'failed']);
   });
@@ -170,16 +172,16 @@ describe('SourceTableImportService', () => {
   it('rejects an existing table of another service, an unknown service, a code already in the own table and a missing permission', async () => {
     const h = harness({ tableNames: ['c360_x'] });
     const file = await edit(await exampleFile(), (s) => {
-      s.getCell('B2').value = 'C360_X';
-      s.getCell('B3').value = 'OWN_TABLE';
-      s.getCell('D3').value = 'old_col';
-      s.getCell('A4').value = 'NO_SUCH_SERVICE';
+      s.getCell(2, colOf(LAYOUT, 'table_name')).value = 'C360_X';
+      s.getCell(3, colOf(LAYOUT, 'table_name')).value = 'OWN_TABLE';
+      s.getCell(3, colOf(LAYOUT, 'code')).value = 'old_col';
+      s.getCell(4, colOf(LAYOUT, 'service_code')).value = 'NO_SUCH_SERVICE';
     });
     const res = await h.service.import(file, true, CALLER);
     const at = (cell: string) => res.issues.filter((i) => `${i.column}${i.row}` === cell).map((i) => i.code);
-    expect(at('B2')).toEqual(['SOURCE_TABLE_NAME_EXISTS']);
-    expect(at('D3')).toEqual(['PHYSICAL_CODE_EXISTS']);
-    expect(at('A4')).toEqual(['SERVICE_NOT_FOUND']);
+    expect(at(`${letterOfKey(LAYOUT, 'table_name')}2`)).toEqual(['SOURCE_TABLE_NAME_EXISTS']);
+    expect(at(`${letterOfKey(LAYOUT, 'code')}3`)).toEqual(['PHYSICAL_CODE_EXISTS']);
+    expect(at(`${letterOfKey(LAYOUT, 'service_code')}4`)).toEqual(['SERVICE_NOT_FOUND']);
 
     const denied = await harness({ canUpdate: false }).service.import(await exampleFile(), true, CALLER);
     expect(denied.issues.map((i) => i.code)).toEqual(['PERMISSION_DENIED', 'PERMISSION_DENIED', 'PERMISSION_DENIED']);

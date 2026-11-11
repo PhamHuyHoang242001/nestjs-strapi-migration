@@ -6,8 +6,8 @@ const TYPE_PREFIX: Record<DataHubServiceType, string> = {
   [DataHubServiceType.SFTP]: 'SFTP',
 };
 
-// `[SERVICE]_<division code>_<department code>_<id>`, e.g. API_EDA_DPD_1, SFTP_IT_DPIS_23. The id makes the
-// code unique, so it is rebuilt whenever the division or department of the active version changes.
+// `[SERVICE]_<division code>_<department code>_<id>`, e.g. API_EDA_DPD_1, SFTP_IT_DPIS_23: the code given to a
+// service created on the form (the id makes it unique). It is fixed at creation; the import may set its own code.
 export const buildServiceCode = (
   type: DataHubServiceType,
   divisionCode: string,

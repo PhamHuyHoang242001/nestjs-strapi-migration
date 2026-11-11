@@ -29,7 +29,9 @@ import {
   LogicalTermImportTemplateService,
   SourceTableImportTemplateService,
 } from './import-templates.service';
-import { ConsumerImportService, DataServiceImportService, LogicalTermImportService } from './import.service';
+import { ConsumerImportService } from './consumer-import.service';
+import { DataServiceImportService } from './data-service-import.service';
+import { LogicalTermImportService } from './logical-term-import.service';
 
 // Own base path: under /consumers the `:id` routes would capture "import".
 @Controller('v1/data-hub/consumer-imports')
@@ -46,7 +48,7 @@ export class ConsumerImportController {
 
   @ApiOperation({ summary: 'Download the App thụ hưởng import template' })
   @Get('template')
-  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE)
+  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE, DH_PERMISSIONS.CONSUMER_UPDATE)
   async template(@Query() q: ImportTemplateQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     const caller = dataHubCaller(req);
     const example = q.example ? { email: await callerEmail(this.dataSource, caller.id) } : undefined;
@@ -55,7 +57,7 @@ export class ConsumerImportController {
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) App thụ hưởng' })
   @Post()
-  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE)
+  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE, DH_PERMISSIONS.CONSUMER_UPDATE)
   @ImportUpload()
   import(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -80,14 +82,14 @@ export class LogicalTermImportController {
 
   @ApiOperation({ summary: 'Download the Thuật ngữ chuẩn hoá import template' })
   @Get('template')
-  @RequirePermission(DH_PERMISSIONS.LOGICAL_TERM_CREATE)
+  @RequirePermission(DH_PERMISSIONS.LOGICAL_TERM_CREATE, DH_PERMISSIONS.LOGICAL_TERM_UPDATE)
   async template(@Query() q: ImportTemplateQueryDto, @Res() res: Response) {
     sendTemplate(res, await this.templateService.build(q.example), 'thuat-ngu-chuan-hoa', q.example);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) logical terms' })
   @Post()
-  @RequirePermission(DH_PERMISSIONS.LOGICAL_TERM_CREATE)
+  @RequirePermission(DH_PERMISSIONS.LOGICAL_TERM_CREATE, DH_PERMISSIONS.LOGICAL_TERM_UPDATE)
   @ImportUpload()
   import(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -118,14 +120,14 @@ export class DataServiceImportController {
 
   @ApiOperation({ summary: 'Download the API data service import template' })
   @Get('api/template')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   apiTemplate(@Query() q: ImportTemplateQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     return this.template('API', q, req, res);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) API data services' })
   @Post('api')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   @ImportUpload()
   importApi(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -137,14 +139,14 @@ export class DataServiceImportController {
 
   @ApiOperation({ summary: 'Download the SFTP data service import template' })
   @Get('sftp/template')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   sftpTemplate(@Query() q: ImportTemplateQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     return this.template('SFTP', q, req, res);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) SFTP data services' })
   @Post('sftp')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE)
+  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   @ImportUpload()
   importSftp(
     @UploadedFile() file: Express.Multer.File | undefined,

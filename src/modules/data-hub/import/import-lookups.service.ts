@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { DataHubServiceType } from '@modules/databases/data-hub-enums';
 import { DataHubAccessService, DataHubCaller } from '../common/data-hub-access.service';
 import { liveSql } from '../common/data-hub-query.util';
 import { DetailSourceTable, loadVersionSourceTables } from '../data-service/data-service-source-tables-detail.util';
@@ -18,8 +19,17 @@ export interface ImportReferences {
   domains: Map<string, number>;
   // Live users; an email shared by several live users maps to null (cannot tell which one is meant).
   users: Map<string, number | null>;
-  // Departments the caller may create services in; null = every department (super_admin).
-  writableDepartmentIds: Set<number> | null;
+  // Departments the caller may create services in / update services of; null = every department (super_admin).
+  writableDepartmentIds: { create: Set<number> | null; update: Set<number> | null };
+  // Live services by lower-case code: a row with one of these codes updates that service.
+  services: Map<string, ExistingService>;
+}
+
+export interface ExistingService {
+  id: number;
+  type: DataHubServiceType;
+  // Department (Đơn vị phát hành) of the active version.
+  departmentId: number | null;
 }
 
 @Injectable()
@@ -33,15 +43,19 @@ export class DataServiceImportReferenceLookupService {
     const pick = (key: string) => uniqueLower(rows.map((r) => r.values[key]));
     const many = (keys: string[]) => uniqueLower(rows.flatMap((r) => keys.flatMap((k) => splitList(r.values[k]))));
     const urls = [...new Set(rows.map((r) => normalizeDomainUrl(r.values.domain ?? '')).filter(Boolean))];
-    const [requestUnits, divisions, departments, consumers, domains, users, writable] = await Promise.all([
-      codeMap(this.dataSource, 'data_hub_request_units', pick('request_unit')),
-      codeMap(this.dataSource, 'data_hub_divisions', pick('division')),
-      codeMap(this.dataSource, 'data_hub_departments', pick('department')),
-      consumerMap(this.dataSource, many(['consumers'])),
-      domainMap(this.dataSource, urls),
-      userMap(this.dataSource, many(['requesters', 'service_owners'])),
-      this.access.writableDepartmentIds(caller, 'create'),
-    ]);
+    const [requestUnits, divisions, departments, consumers, domains, users, canCreate, canUpdate, services] =
+      await Promise.all([
+        codeMap(this.dataSource, 'data_hub_request_units', pick('request_unit')),
+        codeMap(this.dataSource, 'data_hub_divisions', pick('division')),
+        codeMap(this.dataSource, 'data_hub_departments', pick('department')),
+        consumerMap(this.dataSource, many(['consumers'])),
+        domainMap(this.dataSource, urls),
+        userMap(this.dataSource, many(['requesters', 'service_owners'])),
+        this.access.writableDepartmentIds(caller, 'create'),
+        this.access.writableDepartmentIds(caller, 'update'),
+        this.services(pick('service_code')),
+      ]);
+    const asSet = (ids: number[] | null) => (ids === null ? null : new Set(ids));
     return {
       requestUnits,
       divisions,
@@ -49,8 +63,35 @@ export class DataServiceImportReferenceLookupService {
       consumers,
       domains,
       users,
-      writableDepartmentIds: writable === null ? null : new Set(writable),
+      writableDepartmentIds: { create: asSet(canCreate), update: asSet(canUpdate) },
+      services,
     };
+  }
+
+  private async services(codes: string[]): Promise<Map<string, ExistingService>> {
+    if (codes.length === 0) return new Map();
+    const rows: Array<{
+      id: number;
+      service_code: string;
+      service_type: DataHubServiceType;
+      department_id: number | null;
+    }> = await this.dataSource.query(
+      `SELECT s.id, s.service_code, s.service_type, v.department_id
+       FROM data_hub_data_services s
+       LEFT JOIN data_hub_data_service_versions v ON v.id = s.active_version_id
+       WHERE LOWER(s.service_code) = ANY($1) AND ${liveSql('s')}`,
+      [codes],
+    );
+    return new Map(
+      rows.map((r) => [
+        lower(r.service_code),
+        {
+          id: Number(r.id),
+          type: r.service_type,
+          departmentId: r.department_id === null ? null : Number(r.department_id),
+        },
+      ]),
+    );
   }
 }
 

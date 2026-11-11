@@ -179,6 +179,13 @@ describe('DataHubDataServiceWriteService.create', () => {
     await expect(service.create(dto, as(3))).rejects.toThrow('DEPARTMENT_FORBIDDEN');
   });
 
+  it('create uses the code given by the import instead of generating one', async () => {
+    const { service, find } = makeHarness();
+    const result = await service.create(baseDto(), as(9), 'MY_SERVICE_01');
+    expect(result.service_code).toBe('MY_SERVICE_01');
+    expect(find(/INSERT INTO data_hub_data_services/)[0].params).toEqual([10, 'MY_SERVICE_01', 'API', 9]);
+  });
+
   it('writes package, approved version 1, spec, links, active pointer and CREATE history in order', async () => {
     const { service, calls, find } = makeHarness();
     const result = await service.create(baseDto(), as(9));
@@ -255,6 +262,16 @@ describe('DataHubDataServiceWriteService.create', () => {
 });
 
 describe('DataHubDataServiceWriteService.update', () => {
+  it('keepSourceTables (import): terms are not synced, the new version keeps the active version terms', async () => {
+    const { service, find } = makeHarness();
+    // The import sends the row's fields only: no source_tables.
+    const body = { ...toUpdate({ ...baseDto(), name: 'Renamed' } as CreateDataServiceDto), source_tables: undefined };
+    await service.update(10, body as never, as(3), { keepSourceTables: true });
+    expect(find(/(INSERT INTO|UPDATE) data_hub_(physical_terms|source_tables)/)).toHaveLength(0);
+    const links = find(/INSERT INTO data_hub_data_service_version_physical_terms/)[0];
+    expect(links.params).toContainEqual([7]);
+  });
+
   it('throws NO_CHANGES and writes nothing when the body equals the active version', async () => {
     const { service, find } = makeHarness();
     await expect(service.update(10, toUpdate(baseDto()), as(3))).rejects.toThrow('NO_CHANGES');
@@ -266,18 +283,15 @@ describe('DataHubDataServiceWriteService.update', () => {
     const dto = toUpdate({ ...baseDto(), name: 'Renamed', changelog_note: 'why' } as CreateDataServiceDto);
     const result = await service.update(10, dto, as(3));
 
-    // the code is rebuilt from the new version's division/department (an old-format code is replaced)
-    expect(result).toEqual({ id: 10, service_code: 'API_FIN_D1_10', version_id: 101, version_no: 5 });
+    // the code is fixed at creation: an edit (even of division/department) keeps it as stored
+    expect(result).toEqual({ id: 10, service_code: 'API-FIN-001', version_id: 101, version_no: 5 });
     const versionInsert = find(/INSERT INTO data_hub_data_service_versions/)[0];
     expect(versionInsert.params.slice(0, 3)).toEqual([10, 5, 1]);
     expect(versionInsert.params[10]).toBe('why');
     expect(versionInsert.params[11]).toBe(3);
-    expect(find(/UPDATE data_hub_data_services SET active_version_id/)[0].params).toEqual([
-      101,
-      'API_FIN_D1_10',
-      3,
-      10,
-    ]);
+    const pointer = find(/UPDATE data_hub_data_services SET active_version_id/)[0];
+    expect(pointer.params).toEqual([101, 3, 10]);
+    expect(pointer.sql).not.toContain('service_code');
 
     const history = find(/INSERT INTO data_hub_data_service_histories/)[0];
     expect(history.params[3]).toBe('UPDATE');

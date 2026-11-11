@@ -85,6 +85,7 @@ const USAGE_GUIDE_LATER = 'Bổ sung hướng dẫn sử dụng sau';
 
 const API_ROWS = (tag: string): Array<Record<string, string>> => [
   {
+    service_code: `API_DEMO_${tag}_1`,
     name: `Tra cứu hồ sơ khách hàng 360 ${tag}`,
     short_description: 'Trả thông tin định danh và liên hệ của khách hàng theo CIF',
     usage_guide_html: USAGE_GUIDE_LATER,
@@ -102,6 +103,7 @@ const API_ROWS = (tag: string): Array<Record<string, string>> => [
     sample_response: '{"cif":"10012345","full_name":"Nguyễn Văn A","dob":"1990-05-12"}',
   },
   {
+    service_code: `API_DEMO_${tag}_2`,
     name: `Lịch sử khoản vay ${tag}`,
     short_description: 'Danh sách khoản vay đã giải ngân của khách hàng',
     usage_guide_html: USAGE_GUIDE_LATER,
@@ -118,6 +120,7 @@ const API_ROWS = (tag: string): Array<Record<string, string>> => [
 
 const SFTP_ROWS = (tag: string): Array<Record<string, string>> => [
   {
+    service_code: `SFTP_DEMO_${tag}_1`,
     name: `Xuất giao dịch thẻ hằng ngày ${tag}`,
     short_description: 'File giao dịch thẻ tín dụng phát sinh trong ngày D-1',
     usage_guide_html: USAGE_GUIDE_LATER,
@@ -132,8 +135,9 @@ const SFTP_ROWS = (tag: string): Array<Record<string, string>> => [
   },
 ];
 
-// Builds the API / SFTP service import template. The sample uses real org codes, the newest active apps (so it
-// links what the App thụ hưởng import just created) and the caller's email, and imports as-is.
+// Builds the API / SFTP service import template. The sample uses new service codes (so it creates services), real
+// org codes, the newest active apps (so it links what the App thụ hưởng import just created) and the caller's
+// email, and imports as-is; importing it a second time updates the same services.
 @Injectable()
 export class DataServiceImportTemplateService {
   constructor(private readonly dataSource: DataSource) {}
@@ -153,7 +157,8 @@ export class DataServiceImportTemplateService {
       department,
       consumers: consumers.join('; '),
       requesters: example.email,
-      it_supporters: JSON.stringify({ email: example.email, phone: '024.3928.8888 (Ext: 8841)' }),
+      it_support_email: example.email,
+      it_support_phone: '0243928888',
       service_owners: example.email,
     };
     const tag = exampleTag();
