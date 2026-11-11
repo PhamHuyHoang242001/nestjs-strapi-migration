@@ -26,6 +26,12 @@ describe('buildConsumerWhere', () => {
     expect(where).toContain('c.owner_unit_id = ANY($3)');
   });
 
+  it('system_ids keeps only apps of those systems', () => {
+    const { where, params } = buildConsumerWhere({ system_ids: [3, 4] });
+    expect(params).toEqual(['active', [3, 4]]);
+    expect(where).toContain('c.system_id = ANY($2)');
+  });
+
   it('connection_type requires an active-version link of that service type', () => {
     const { where, params } = buildConsumerWhere({ connection_type: 'SFTP' });
     expect(where).toContain('EXISTS');

@@ -27,6 +27,14 @@ export class ListConsumerQueryDto extends DataHubPageQueryDto {
   @IsOptional()
   @Transform(toNumberArray)
   @IsArray()
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  readonly system_ids?: number[];
+
+  @ApiProperty({ required: false, type: [Number] })
+  @IsOptional()
+  @Transform(toNumberArray)
+  @IsArray()
   @ArrayMaxSize(200)
   @IsInt({ each: true })
   readonly logical_term_ids?: number[];

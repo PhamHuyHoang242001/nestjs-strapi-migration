@@ -5,6 +5,7 @@ export interface ConsumerListFilter {
   category?: string;
   status?: 'active' | 'inactive' | 'all';
   owner_unit_ids?: number[];
+  system_ids?: number[];
   logical_term_ids?: number[];
   connection_type?: string;
 }
@@ -30,6 +31,7 @@ export function buildConsumerWhere(f: ConsumerListFilter): { where: string; para
   if (status !== 'all') conds.push(`c.status = ${bind(status)}`);
   if (f.category) conds.push(`c.category = ${bind(f.category)}`);
   if (f.owner_unit_ids?.length) conds.push(`c.owner_unit_id = ANY(${bind(f.owner_unit_ids)})`);
+  if (f.system_ids?.length) conds.push(`c.system_id = ANY(${bind(f.system_ids)})`);
 
   const search = searchTerm(f.keyword);
   if (search) {
