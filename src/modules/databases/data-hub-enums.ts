@@ -70,6 +70,7 @@ export enum DataHubSftpFileFormat {
   PARQUET = 'PARQUET',
   XLSX = 'XLSX',
   JSON = 'JSON',
+  GZIP = 'GZIP',
 }
 
 export enum DataHubSftpExportFrequency {
