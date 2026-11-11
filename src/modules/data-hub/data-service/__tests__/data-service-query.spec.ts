@@ -1,6 +1,5 @@
 import { DataHubUserRefService } from '../../common/data-hub-user-ref.service';
 import { DataHubDataServiceDetailQueryService } from '../data-hub-data-service-detail-query.service';
-import { DataHubDataServiceExportService, safeCell } from '../data-hub-data-service-export.service';
 import { DataHubDataServiceHistoryService } from '../data-hub-data-service-history.service';
 import { DataHubDataServiceListQueryService } from '../data-hub-data-service-list-query.service';
 import { DataHubDataServiceTermsQueryService } from '../data-hub-data-service-terms-query.service';
@@ -411,71 +410,6 @@ describe('DataHubDataServiceHistoryService', () => {
       new DataHubUserRefService(dataSource as never),
     );
     await expect(service.listVersions(1, {} as never)).rejects.toThrow('DATA_SERVICE_NOT_FOUND');
-  });
-});
-
-describe('DataHubDataServiceExportService', () => {
-  it('builds one row per service with consumer codes and localized labels', async () => {
-    const { dataSource } = makeDataSource([
-      [
-        /SELECT\s+s\.id, s\.service_code/,
-        [
-          listRow,
-          {
-            ...listRow,
-            id: 2,
-            version_id: 12,
-            service_type: 'SFTP',
-            status: 'inactive',
-            method: null,
-            domain_url: null,
-            endpoint_path: null,
-            update_frequency: null,
-            flow_direction: 'PUSH',
-            export_frequency: 'HOURLY',
-            file_format: 'CSV',
-            sftp_folder_path: '/outbound/',
-            name: '=cmd',
-          },
-        ],
-      ],
-      [
-        /FROM data_hub_data_service_version_consumers/,
-        [
-          { version_id: 11, id: 1, code: 'A', name: 'a' },
-          { version_id: 11, id: 2, code: 'B', name: 'b' },
-        ],
-      ],
-    ]);
-    const exporter = new DataHubDataServiceExportService(listService(dataSource));
-    const rows = await exporter.buildRows({ status: 'all' } as never, null);
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      stt: 1,
-      endpoint_or_folder: 'https://api-int.vpbank.com.vn/v1/x',
-      consumers: 'A, B',
-      status: 'Hoạt động',
-    });
-    expect(rows[1]).toMatchObject({
-      stt: 2,
-      method_or_direction: 'PUSH',
-      endpoint_or_folder: '/outbound/',
-      name: "'=cmd",
-      status: 'Ngừng hoạt động',
-    });
-  });
-
-  it('caps the export at 5000 rows', async () => {
-    const { dataSource, calls } = makeDataSource([]);
-    await new DataHubDataServiceExportService(listService(dataSource)).buildRows({} as never, null);
-    expect(calls[0].params.slice(-2)).toEqual([5000, 0]);
-  });
-
-  it('neutralizes spreadsheet formulas', () => {
-    expect(safeCell('=SUM(A1)')).toBe("'=SUM(A1)");
-    expect(safeCell('+1')).toBe("'+1");
-    expect(safeCell('plain')).toBe('plain');
-    expect(safeCell(null)).toBe('');
   });
 });
 

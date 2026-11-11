@@ -2,7 +2,7 @@ import { RequirePermission } from '@common/authorization/decorators/require-perm
 import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { BearerGuard } from '@common/guards/bearer.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
-import { exportExcelToResponse } from '@common/utils/export-excel.helper';
+import { exportExcelSheetsToResponse } from '@common/utils/export-excel.helper';
 import {
   Body,
   Controller,
@@ -26,7 +26,9 @@ import { dataHubCaller } from '../common/data-hub-caller.util';
 import { DH_PERMISSIONS } from '../common/data-hub-permission-codes';
 import { DataHubPageQueryDto } from '../common/data-hub-query.util';
 import { ListLogicalTermQueryDto, LogicalTermBodyDto } from './dto';
-import { LogicalTermExportService, LOGICAL_TERM_EXPORT_COLUMNS } from './logical-term-export.service';
+import { LogicalTermExportService } from './logical-term-export.service';
+import { LOGICAL_TERM_IMPORT_LAYOUT } from '../import/import-layouts';
+import { layoutSheet } from '../import/layout-export.util';
 import { LogicalTermHistoryService } from './logical-term-history.service';
 import { LogicalTermQueryService } from './logical-term-query.service';
 import { LogicalTermWriteService } from './logical-term-write.service';
@@ -73,12 +75,12 @@ export class LogicalTermController {
     return this.queryService.options(q);
   }
 
-  @ApiOperation({ summary: 'Export dictionary to xlsx (one row per physical term)' })
+  @ApiOperation({ summary: 'Export logical terms to xlsx in the import template columns (one row per term)' })
   @Get('export')
   async export(@Query() q: ListLogicalTermQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     requireUserId(req);
     const rows = await this.exportService.buildRows(q);
-    await exportExcelToResponse(res, { sheetName: 'logical-terms', columns: LOGICAL_TERM_EXPORT_COLUMNS, rows });
+    await exportExcelSheetsToResponse(res, 'thuat-ngu-chuan-hoa', [layoutSheet(LOGICAL_TERM_IMPORT_LAYOUT, rows)]);
   }
 
   @ApiOperation({ summary: 'Logical term detail' })

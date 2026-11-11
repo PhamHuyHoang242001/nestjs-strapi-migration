@@ -1,43 +1,30 @@
 import { Injectable } from '@nestjs/common';
 import { Response } from 'express';
 import { DataSource } from 'typeorm';
-import { exportExcelToResponse } from '@common/utils/export-excel.helper';
+import { exportExcelSheetsToResponse } from '@common/utils/export-excel.helper';
 import { DataHubUserRefService } from '../common/data-hub-user-ref.service';
+import { CONSUMER_IMPORT_LAYOUT } from '../import/import-layouts';
+import { layoutSheet, listCell } from '../import/layout-export.util';
 import { sqlRows } from './consumer-sql.util';
 import { loadSoAppUserIds } from './consumer-so-apps.util';
 import { ConsumerListFilter, buildConsumerWhere } from './consumer-list-filter.util';
-import { DataHubConsumerCountsService } from './data-hub-consumer-counts.service';
 import { CONSUMER_ITEM_COLUMNS, CONSUMER_ITEM_JOINS, ConsumerListRow } from './consumer-item-sql.util';
 
 const EXPORT_ROW_CAP = 5000;
 
-type ExportRow = ConsumerListRow;
-
-const COLUMNS = [
-  { header: 'STT', key: 'stt', width: 8 },
-  { header: 'Mã', key: 'code', width: 22 },
-  { header: 'Tên', key: 'name', width: 32 },
-  { header: 'Phân loại', key: 'category', width: 22 },
-  { header: 'Đơn vị chủ quản', key: 'owner_unit', width: 28 },
-  { header: 'Số API', key: 'api_count', width: 10 },
-  { header: 'Số SFTP', key: 'sftp_count', width: 10 },
-  { header: 'SO APP', key: 'so_apps', width: 30 },
-  { header: 'Mô tả', key: 'description', width: 50 },
-  { header: 'Trạng thái', key: 'status', width: 14 },
-];
-
+// Export of App thụ hưởng in the import template's columns (STT, Mã định danh App, Tên App thụ hưởng, Hệ thống,
+// Dịch vụ hệ thống, Phân loại, Đơn vị chủ quản, SO App, Mô tả ngắn (VI)); the file can be imported back.
 @Injectable()
 export class DataHubConsumerExportService {
   constructor(
     private readonly dataSource: DataSource,
-    private readonly counts: DataHubConsumerCountsService,
     private readonly userRefs: DataHubUserRefService,
   ) {}
 
   // Same filters as the list, no paging; capped so one request cannot dump the whole table.
   async buildRows(filter: ConsumerListFilter): Promise<Array<Record<string, unknown>>> {
     const { where, params } = buildConsumerWhere(filter);
-    const rows = await sqlRows<ExportRow>(
+    const rows = await sqlRows<ConsumerListRow>(
       this.dataSource,
       `SELECT ${CONSUMER_ITEM_COLUMNS}
        FROM data_hub_consumers c ${CONSUMER_ITEM_JOINS}
@@ -46,33 +33,25 @@ export class DataHubConsumerExportService {
        LIMIT $${params.length + 1}`,
       [...params, EXPORT_ROW_CAP],
     );
-    const ids = rows.map((r) => Number(r.id));
-    const [counts, soAppIds] = await Promise.all([
-      this.counts.loadServiceCounts(ids),
-      loadSoAppUserIds(this.dataSource, ids),
-    ]);
+    const soAppIds = await loadSoAppUserIds(
+      this.dataSource,
+      rows.map((r) => Number(r.id)),
+    );
     const users = await this.userRefs.resolve([...soAppIds.values()].flat());
-    const emails = (id: number): string =>
-      this.userRefs
-        .toRefs(users, soAppIds.get(id) ?? [])
-        .map((u) => u.email ?? String(u.id))
-        .join(', ');
-    return rows.map((r, i) => ({
-      stt: i + 1,
+    return rows.map((r) => ({
       code: r.code,
       name: r.name,
+      system: r.system_name ?? '',
+      system_service: r.system_service ?? '',
       category: r.category,
       owner_unit: r.owner_unit_name ?? '',
-      api_count: counts.get(Number(r.id))?.api ?? 0,
-      sftp_count: counts.get(Number(r.id))?.sftp ?? 0,
-      so_apps: emails(Number(r.id)),
-      description: r.short_description,
-      status: r.status,
+      so_apps: listCell(this.userRefs.toRefs(users, soAppIds.get(Number(r.id)) ?? []).map((u) => u.email)),
+      short_description: r.short_description,
     }));
   }
 
   async export(filter: ConsumerListFilter, res: Response): Promise<void> {
     const rows = await this.buildRows(filter);
-    await exportExcelToResponse(res, { sheetName: 'consumers', columns: COLUMNS, rows });
+    await exportExcelSheetsToResponse(res, 'app-thu-huong', [layoutSheet(CONSUMER_IMPORT_LAYOUT, rows)]);
   }
 }

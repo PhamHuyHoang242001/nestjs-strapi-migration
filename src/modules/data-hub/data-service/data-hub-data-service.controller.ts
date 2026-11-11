@@ -71,7 +71,11 @@ export class DataHubDataServiceController {
     return this.listQuery.list(q, inactiveDepartmentIds);
   }
 
-  @ApiOperation({ summary: 'Export filtered data services to XLSX (max 5000 rows)' })
+  @ApiOperation({
+    summary:
+      'Export filtered data services to XLSX in the import template columns (max 5000): sheet DICH_VU_API and/or ' +
+      'DICH_VU_SFTP, by service_type (none = both)',
+  })
   @Get('export')
   async export(@Query() q: ExportDataServiceQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     const inactiveDepartmentIds = await this.access.inactiveServiceDepartmentIds(dataHubCaller(req));

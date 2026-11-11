@@ -102,17 +102,3 @@ export function buildLogicalTermFilter(q: TermFilter, params: unknown[]): string
   }
   return conds;
 }
-
-// Conditions on alias `p` for physicals that have no logical term (export tail rows).
-export function buildUnmappedPhysicalFilter(q: TermFilter, params: unknown[]): string[] {
-  const conds: string[] = ['p.logical_term_id IS NULL'];
-  if (q.search) {
-    params.push(`%${escapeLike(q.search)}%`);
-    conds.push(physicalSearchSql('p', params.length));
-  }
-  if (q.consumer_ids && q.consumer_ids.length > 0) {
-    params.push(q.consumer_ids);
-    conds.push(consumerExistsSql('p', params.length));
-  }
-  return conds;
-}
