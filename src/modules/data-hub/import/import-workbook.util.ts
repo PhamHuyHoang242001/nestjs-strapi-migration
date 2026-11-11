@@ -5,6 +5,8 @@ import { ClassConstructor, plainToInstance } from 'class-transformer';
 import { validate, ValidationError } from 'class-validator';
 import * as dayjs from 'dayjs';
 import * as ExcelJS from 'exceljs';
+import { safeExcelText } from '@common/utils/export-excel.helper';
+import { assertXlsxWithinLimits } from './import-xlsx-size-guard.util';
 
 // Layout model shared by every Data Hub bulk import. The template builder and the parser both read the same
 // layout, so a column added to a layout appears in the downloaded template and is read back from the upload in
@@ -80,7 +82,7 @@ export const sheetDef = (layout: ImportLayout, key: string): ImportSheetDef => {
 // Header text as written in the template: exactly the agreed column name (required columns are shown in red).
 export const headerText = (c: ImportColumn): string => c.header;
 
-export const IMPORT_FILE_BYTES = 5 * 1024 * 1024;
+export const IMPORT_FILE_BYTES = 2 * 1024 * 1024;
 // Rows of the template that get formatting and dropdowns unless a sheet says otherwise.
 export const DEFAULT_TEMPLATE_ROWS = 1000;
 
@@ -139,7 +141,10 @@ export function cellText(value: ExcelJS.CellValue): string {
     if ('error' in value) return '';
     return '';
   }
-  return String(value).trim();
+  // A result file uploaded again: drop the apostrophe its formula guard added (see buildResultWorkbook).
+  return String(value)
+    .trim()
+    .replace(/^'(?=[=+\-@\t\r])/, '');
 }
 
 // Header labels are compared loosely (Unicode form, case, spaces, the trailing required mark).
@@ -205,6 +210,8 @@ export async function loadImportWorkbook(
   file: Buffer,
   layout: ImportLayout,
 ): Promise<{ workbook: ExcelJS.Workbook; sheets: ImportSheetRows }> {
+  // Before ExcelJS inflates anything: bounded size and cell count, whatever the zip headers claim.
+  assertXlsxWithinLimits(file);
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(file as unknown as ArrayBuffer);
@@ -386,6 +393,16 @@ const FILL: Record<RowOutcome, string> = {
   skipped: 'FFFFF1CC',
 };
 
+// Uploaded cell made inert: text stays text (formula-like text prefixed), objects (formulas, hyperlinks, rich
+// text) become their shown text; numbers, dates and booleans are kept.
+function neutralizeCell(cell: ExcelJS.Cell): void {
+  const value = cell.value;
+  if (typeof value === 'string') cell.value = safeExcelText(value);
+  else if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    cell.value = safeExcelText(cellText(value));
+  }
+}
+
 // Writes "Kết quả" and "Chi tiết" columns after the template columns of every data sheet of the uploaded workbook,
 // so the user fixes the rows in the same file and uploads it again (the two extra columns are ignored on read).
 export async function buildResultWorkbook(
@@ -414,8 +431,10 @@ export async function buildResultWorkbook(
     sheet.getColumn(detailCol).width = 70;
 
     // Old results (a result file uploaded again) are cleared first; only rows stored in the file are visited.
+    // The uploaded cells go back to the user: formulas, links and rich text become their plain (safe) text.
     sheet.eachRow({ includeEmpty: false }, (row, r) => {
       if (r < 2) return;
+      for (let c = 1; c <= columns.length; c++) neutralizeCell(row.getCell(c));
       row.getCell(statusCol).value = null;
       row.getCell(detailCol).value = null;
     });
@@ -438,7 +457,7 @@ export async function buildResultWorkbook(
       status.value = LABEL[outcome];
       status.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: FILL[outcome] } };
       const detail = row.getCell(detailCol);
-      detail.value = details.join('\n');
+      detail.value = safeExcelText(details.join('\n'));
       detail.alignment = { wrapText: true, vertical: 'top' };
     }
   }

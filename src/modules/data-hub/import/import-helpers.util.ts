@@ -205,7 +205,7 @@ export class ImportRunGuard {
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-// Multipart `file` (an .xlsx up to 5 MB) held in memory, documented for Swagger.
+// Multipart `file` (an .xlsx up to 2 MB) held in memory, documented for Swagger.
 export const ImportUpload = () =>
   applyDecorators(
     ApiConsumes('multipart/form-data'),

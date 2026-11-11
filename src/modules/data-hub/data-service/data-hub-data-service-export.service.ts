@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as dayjs from 'dayjs';
 import { Response } from 'express';
 import * as ExcelJS from 'exceljs';
-import { ExcelColumn } from '@common/utils/export-excel.helper';
+import { ExcelColumn, safeExcelText } from '@common/utils/export-excel.helper';
 import { DataHubDataServiceListQueryService } from './data-hub-data-service-list-query.service';
 import { ExportDataServiceQueryDto } from './dto';
 
@@ -27,11 +27,8 @@ export const EXPORT_COLUMNS: ExcelColumn[] = [
   { header: 'Ngày cập nhật', key: 'updated_at', width: 18 },
 ];
 
-// Cells starting with = + - @ would be run as formulas by Excel; prefix them so user text stays text.
-export const safeCell = (value: string | null): string => {
-  if (value === null) return '';
-  return /^[=+\-@]/.test(value) ? `'${value}` : value;
-};
+// Cells starting with = + - @ (or tab / CR) would be run as formulas by Excel; prefix them so user text stays text.
+export const safeCell = (value: string | null): string => safeExcelText(value ?? '');
 
 @Injectable()
 export class DataHubDataServiceExportService {
