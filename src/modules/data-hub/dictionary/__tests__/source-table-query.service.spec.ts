@@ -80,6 +80,7 @@ describe('SourceTableQueryService (dictionary)', () => {
       [/COUNT\(\*\)::int AS total/, () => [{ total: 1 }]],
       [/ORDER BY st.name, st.id/, () => [group]],
       [/SELECT DISTINCT x.st_id/, () => [{ st_id: 5, id: 2, code: 'C360', name: 'C360' }]],
+      [/WHERE p.source_table_id = ANY\(\$1::int\[\]\)/, () => [{ ...termRow, source_table_id: 5 }]],
     ]);
     const caller = { id: 7 };
     const res = await new SourceTableQueryService(dataSource as never, access as never).selectable(
@@ -91,7 +92,26 @@ describe('SourceTableQueryService (dictionary)', () => {
     expect(calls[0].sql).toContain('st.department_id = ANY($1::int[])');
     expect(calls[0].sql).toContain('sp.data_service_id = $2::int');
     expect(calls[0].sql).toContain('st.name ILIKE $3');
-    expect(res.data).toEqual([{ ...group, departments: [{ id: 2, code: 'C360', name: 'C360' }], divisions: [] }]);
+    expect(res.data).toEqual([
+      {
+        ...group,
+        departments: [{ id: 2, code: 'C360', name: 'C360' }],
+        divisions: [],
+        physical_terms: [
+          {
+            id: 1,
+            code: 'cust_id',
+            technical_description: 'd',
+            example_value: null,
+            logical_term: null,
+            data_service: { id: 3, service_code: 'API-1', name: 'Svc' },
+          },
+        ],
+      },
+    ]);
+    // Same rule as term_count: only terms of active services with a live active version.
+    const termsSql = calls.find((c) => /WHERE p.source_table_id = ANY/.test(c.sql))?.sql ?? '';
+    expect(termsSql).toContain('os.active_version_id');
   });
 
   it('filters tables by department (creating or active-version) and division of active versions', async () => {

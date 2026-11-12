@@ -4,6 +4,7 @@ import { DataHubAccessService, DataHubCaller } from '../common/data-hub-access.s
 import { escapeLike, liveSql, searchTerm, toPaging } from '../common/data-hub-query.util';
 import {
   dictionaryScope,
+  listGroupsTerms,
   listGroupTerms,
   listSourceTableGroupsWithTerms,
   SourceTableFilter,
@@ -69,7 +70,8 @@ export class SourceTableQueryService {
   }
 
   // Picker of the data-service form: tables of the caller's departments (see sourceTableScopeSql), listed right
-  // away without choosing the Đơn vị phát hành first; term_count counts every live term in the table.
+  // away without choosing the Đơn vị phát hành first; term_count counts every live term in the table and
+  // physical_terms lists those same terms.
   async selectable(caller: DataHubCaller, q: SelectableSourceTableQueryDto) {
     const { page, limit, offset } = toPaging(q);
     const scope = await this.access.sourceTableDepartmentIds(caller);
@@ -94,7 +96,11 @@ export class SourceTableQueryService {
          ${where} ORDER BY st.name, st.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset],
       );
-    const orgs = await this.orgsOf(rows.map((r) => Number(r.id)));
+    const ids = rows.map((r) => Number(r.id));
+    const [orgs, terms] = await Promise.all([
+      this.orgsOf(ids),
+      listGroupsTerms(this.dataSource, dictionaryScope(), ids),
+    ]);
     return {
       data: rows.map((r) => ({
         ...r,
@@ -102,6 +108,7 @@ export class SourceTableQueryService {
         term_count: Number(r.term_count),
         departments: orgs.departments.get(Number(r.id)) ?? [],
         divisions: orgs.divisions.get(Number(r.id)) ?? [],
+        physical_terms: terms.get(Number(r.id)) ?? [],
       })),
       meta: { total, page, limit },
     };
