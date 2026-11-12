@@ -1,6 +1,5 @@
-import { RequirePermission } from '@common/authorization/decorators/require-permission.decorator';
-import { PermissionGuard } from '@common/authorization/guards/permission.guard';
 import { BearerGuard } from '@common/guards/bearer.guard';
+import { IsSuperAdminGuard } from '@common/guards/is-super-admin.guard';
 import { RequestWithInfo } from '@common/types/request-with-info';
 import {
   Controller,
@@ -18,7 +17,6 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { DataSource } from 'typeorm';
 import { dataHubCaller } from '../common/data-hub-caller.util';
-import { DH_PERMISSIONS } from '../common/data-hub-permission-codes';
 import { ImportQueryDto, ImportTemplateQueryDto } from './import-dto';
 import { callerEmail, ImportUpload, sendTemplate, xlsxUpload } from './import-helpers.util';
 import { ServiceImportKind } from './import-layouts';
@@ -33,11 +31,13 @@ import { ConsumerImportService } from './consumer-import.service';
 import { DataServiceImportService } from './data-service-import.service';
 import { LogicalTermImportService } from './logical-term-import.service';
 
+// Every import route (templates and uploads) is for super_admin only.
+
 // Own base path: under /consumers the `:id` routes would capture "import".
 @Controller('v1/data-hub/consumer-imports')
 @ApiTags('data-hub-consumer-imports')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, PermissionGuard)
+@UseGuards(BearerGuard, IsSuperAdminGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class ConsumerImportController {
   constructor(
@@ -48,7 +48,6 @@ export class ConsumerImportController {
 
   @ApiOperation({ summary: 'Download the App thụ hưởng import template' })
   @Get('template')
-  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE, DH_PERMISSIONS.CONSUMER_UPDATE)
   async template(@Query() q: ImportTemplateQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     const caller = dataHubCaller(req);
     const example = q.example ? { email: await callerEmail(this.dataSource, caller.id) } : undefined;
@@ -57,7 +56,6 @@ export class ConsumerImportController {
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) App thụ hưởng' })
   @Post()
-  @RequirePermission(DH_PERMISSIONS.CONSUMER_CREATE, DH_PERMISSIONS.CONSUMER_UPDATE)
   @ImportUpload()
   import(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -72,7 +70,7 @@ export class ConsumerImportController {
 @Controller('v1/data-hub/logical-term-imports')
 @ApiTags('data-hub-logical-term-imports')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, PermissionGuard)
+@UseGuards(BearerGuard, IsSuperAdminGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class LogicalTermImportController {
   constructor(
@@ -82,14 +80,12 @@ export class LogicalTermImportController {
 
   @ApiOperation({ summary: 'Download the Thuật ngữ chuẩn hoá import template' })
   @Get('template')
-  @RequirePermission(DH_PERMISSIONS.LOGICAL_TERM_CREATE, DH_PERMISSIONS.LOGICAL_TERM_UPDATE)
   async template(@Query() q: ImportTemplateQueryDto, @Res() res: Response) {
     sendTemplate(res, await this.templateService.build(q.example), 'thuat-ngu-chuan-hoa', q.example);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) logical terms' })
   @Post()
-  @RequirePermission(DH_PERMISSIONS.LOGICAL_TERM_CREATE, DH_PERMISSIONS.LOGICAL_TERM_UPDATE)
   @ImportUpload()
   import(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -104,7 +100,7 @@ export class LogicalTermImportController {
 @Controller('v1/data-hub/data-service-imports')
 @ApiTags('data-hub-data-service-imports')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, PermissionGuard)
+@UseGuards(BearerGuard, IsSuperAdminGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class DataServiceImportController {
   constructor(
@@ -120,14 +116,12 @@ export class DataServiceImportController {
 
   @ApiOperation({ summary: 'Download the API data service import template' })
   @Get('api/template')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   apiTemplate(@Query() q: ImportTemplateQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     return this.template('API', q, req, res);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) API data services' })
   @Post('api')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   @ImportUpload()
   importApi(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -139,14 +133,12 @@ export class DataServiceImportController {
 
   @ApiOperation({ summary: 'Download the SFTP data service import template' })
   @Get('sftp/template')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   sftpTemplate(@Query() q: ImportTemplateQueryDto, @Req() req: RequestWithInfo, @Res() res: Response) {
     return this.template('SFTP', q, req, res);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) SFTP data services' })
   @Post('sftp')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_CREATE, DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   @ImportUpload()
   importSftp(
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -161,7 +153,7 @@ export class DataServiceImportController {
 @Controller('v1/data-hub/source-table-imports')
 @ApiTags('data-hub-source-table-imports')
 @ApiBearerAuth()
-@UseGuards(BearerGuard, PermissionGuard)
+@UseGuards(BearerGuard, IsSuperAdminGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class SourceTableImportController {
   constructor(
@@ -171,14 +163,12 @@ export class SourceTableImportController {
 
   @ApiOperation({ summary: 'Download the source table + physical term import template' })
   @Get('template')
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   async template(@Query() q: ImportTemplateQueryDto, @Res() res: Response) {
     sendTemplate(res, await this.templateService.build(q.example), 'bang-nguon-thuat-ngu', q.example);
   }
 
   @ApiOperation({ summary: 'Check (dry_run=true, default) or import (dry_run=false) source tables and terms' })
   @Post()
-  @RequirePermission(DH_PERMISSIONS.DATA_SERVICE_UPDATE)
   @ImportUpload()
   import(
     @UploadedFile() file: Express.Multer.File | undefined,

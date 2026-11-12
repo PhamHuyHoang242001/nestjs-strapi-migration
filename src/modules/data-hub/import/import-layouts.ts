@@ -44,7 +44,7 @@ export const CONSUMER_COLUMNS: ImportColumn[] = [
     'Tên đơn vị chủ quản đã có trong hệ thống (gõ tay, không phân biệt hoa thường).',
   ),
   col('so_apps', 'SO App', 'r', 36, '1-20 email người dùng đang hoạt động, ngăn cách bằng dấu ;'),
-  col('short_description', 'Mô tả ngắn (VI)', 'r', 44, 'Tối đa 200 ký tự.'),
+  col('short_description', 'Mô tả ngắn (VI)', 'r', 44, 'Tối đa 1000 ký tự.'),
 ];
 
 export const CONSUMER_IMPORT_LAYOUT: ImportLayout = {

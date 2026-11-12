@@ -57,11 +57,11 @@ export class ConsumerFieldsDto {
   @MaxLength(255)
   readonly system_service?: string | null;
 
-  @ApiProperty({ maxLength: 200 })
+  @ApiProperty({ maxLength: 1000 })
   @Transform(trim)
   @IsString()
   @IsNotEmpty()
-  @MaxLength(200)
+  @MaxLength(1000)
   readonly short_description: string;
 
   // URL returned by the upload API; null or '' clears the avatar.

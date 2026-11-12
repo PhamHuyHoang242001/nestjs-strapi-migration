@@ -1,8 +1,9 @@
-import { RequestMethod } from '@nestjs/common';
-import { METHOD_METADATA } from '@nestjs/common/constants';
+import { ForbiddenException, RequestMethod } from '@nestjs/common';
+import { GUARDS_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { PERMISSION_META_KEY } from '@common/authorization/constants/authorization.constant';
+import { BearerGuard } from '@common/guards/bearer.guard';
+import { IsSuperAdminGuard } from '@common/guards/is-super-admin.guard';
 import * as ExcelJS from 'exceljs';
-import { DH_PERMISSIONS as P } from '../../common/data-hub-permission-codes';
 import {
   ConsumerImportController,
   DataServiceImportController,
@@ -208,42 +209,40 @@ describe('import templates', () => {
 
 describe('import routes', () => {
   type Ctor = { prototype: Record<string, unknown> };
-  // Imports that create or update accept either right (each row is then checked); the source table import edits.
-  const CASES: Array<[string, Ctor, string, string, string[]]> = [
-    ['consumers', ConsumerImportController as never, 'template', 'import', [P.CONSUMER_CREATE, P.CONSUMER_UPDATE]],
-    [
-      'logical terms',
-      LogicalTermImportController as never,
-      'template',
-      'import',
-      [P.LOGICAL_TERM_CREATE, P.LOGICAL_TERM_UPDATE],
-    ],
-    [
-      'API services',
-      DataServiceImportController as never,
-      'apiTemplate',
-      'importApi',
-      [P.DATA_SERVICE_CREATE, P.DATA_SERVICE_UPDATE],
-    ],
-    [
-      'SFTP services',
-      DataServiceImportController as never,
-      'sftpTemplate',
-      'importSftp',
-      [P.DATA_SERVICE_CREATE, P.DATA_SERVICE_UPDATE],
-    ],
-    ['source tables', SourceTableImportController as never, 'template', 'import', [P.DATA_SERVICE_UPDATE]],
+  const CASES: Array<[string, Ctor, string, string]> = [
+    ['consumers', ConsumerImportController as never, 'template', 'import'],
+    ['logical terms', LogicalTermImportController as never, 'template', 'import'],
+    ['API services', DataServiceImportController as never, 'apiTemplate', 'importApi'],
+    ['SFTP services', DataServiceImportController as never, 'sftpTemplate', 'importSftp'],
+    ['source tables', SourceTableImportController as never, 'template', 'import'],
   ];
 
-  describe.each(CASES)('%s', (_n, ctrl, template, upload, codes) => {
+  describe.each(CASES)('%s', (_n, ctrl, template, upload) => {
+    it('the controller is for super_admin only', () => {
+      expect(Reflect.getMetadata(GUARDS_METADATA, ctrl)).toEqual([BearerGuard, IsSuperAdminGuard]);
+    });
+
     it.each([
       [template, RequestMethod.GET],
       [upload, RequestMethod.POST],
-    ])('%s is gated by the import codes', (handler, method) => {
+    ])('%s needs no role permission code on top', (handler, method) => {
       const fn = ctrl.prototype[handler] as object;
       expect(Reflect.getMetadata(METHOD_METADATA, fn)).toBe(method);
-      expect(Reflect.getMetadata(PERMISSION_META_KEY, fn)).toEqual(codes);
+      expect(Reflect.getMetadata(PERMISSION_META_KEY, fn)).toBeUndefined();
     });
+  });
+});
+
+describe('IsSuperAdminGuard', () => {
+  const run = (type?: string) =>
+    new IsSuperAdminGuard().canActivate({
+      switchToHttp: () => ({ getRequest: () => ({ info: { user: { id: 1, type } } }) }),
+    } as never);
+
+  it('lets super_admin through and refuses everyone else', () => {
+    expect(run('super_admin')).toBe(true);
+    expect(() => run('user')).toThrow(ForbiddenException);
+    expect(() => run(undefined)).toThrow(ForbiddenException);
   });
 });
 
