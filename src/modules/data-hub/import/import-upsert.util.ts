@@ -47,7 +47,12 @@ export async function loadUpsertRights(
   return { create, update };
 }
 
+// TẠM THỜI: import chỉ tạo mới; dòng có mã đã tồn tại bị báo lỗi CODE_EXISTS thay vì cập nhật bản ghi đó.
+// Bật lại cập nhật theo mã: đổi allowUpdate thành true (toàn bộ luồng cập nhật vẫn giữ nguyên bên dưới).
+export const IMPORT_OPTIONS = { allowUpdate: false };
+
 // A row needs the right of what it does: creating needs the create code, updating the update code.
+// While updates are off, a row whose code already exists is refused here.
 export function checkRowRight(
   rights: UpsertRights,
   action: UpsertAction,
@@ -55,6 +60,10 @@ export function checkRowRight(
   what: string,
   issues: ImportIssueCollector,
 ): void {
+  if (action === 'update' && !IMPORT_OPTIONS.allowUpdate) {
+    issues.add(at.sheet, at.row, at.key, 'CODE_EXISTS', `Mã đã tồn tại, import hiện chỉ cho tạo mới ${what}`);
+    return;
+  }
   if (rights[action]) return;
   const verb = action === 'create' ? 'tạo' : 'cập nhật';
   issues.add(at.sheet, at.row, at.key, 'PERMISSION_DENIED', `Bạn không có quyền ${verb} ${what}`);

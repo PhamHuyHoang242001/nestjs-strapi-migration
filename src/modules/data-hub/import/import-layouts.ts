@@ -152,7 +152,7 @@ const SERVICE_TAIL: ImportColumn[] = [
 export const API_COLUMNS: ImportColumn[] = [
   sttCol(),
   SERVICE_CODE,
-  col('name', 'Tên dịch vụ API', 'r', 36, 'Tối đa 90 ký tự.'),
+  col('name', 'Tên dịch vụ API', 'r', 36, 'Tối đa 255 ký tự.'),
   ...SERVICE_HEAD,
   col('method', 'Method', 'r', 12, 'HTTP method.', values(DataHubApiMethod)),
   col(
@@ -177,7 +177,7 @@ export const API_COLUMNS: ImportColumn[] = [
 export const SFTP_COLUMNS: ImportColumn[] = [
   sttCol(),
   SERVICE_CODE,
-  col('name', 'Tên dịch vụ SFTP', 'r', 36, 'Tối đa 90 ký tự.'),
+  col('name', 'Tên dịch vụ SFTP', 'r', 36, 'Tối đa 255 ký tự.'),
   ...SERVICE_HEAD,
   col('folder_path', 'Thư mục trên SFTP Server', 'o', 26, 'Tối đa 1000 ký tự.'),
   col('file_name_pattern', 'Tên file quy ước', 'o', 26, 'Tối đa 500 ký tự. Vd CARD_TXN_{yyyyMMdd}.csv.'),

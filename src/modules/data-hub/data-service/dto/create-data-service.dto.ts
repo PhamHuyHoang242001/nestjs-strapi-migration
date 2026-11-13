@@ -40,11 +40,11 @@ export class CreateDataServiceDto {
   @IsEnum(DataHubServiceType)
   readonly service_type: DataHubServiceType;
 
-  @ApiProperty({ maxLength: 90 })
+  @ApiProperty({ maxLength: 255 })
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()
-  @MaxLength(90)
+  @MaxLength(255)
   readonly name: string;
 
   @ApiProperty({ maxLength: 400 })

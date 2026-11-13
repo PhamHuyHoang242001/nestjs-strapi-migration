@@ -1,3 +1,4 @@
+import { MicroCacheService, stableCacheKey } from '@common/micro-cache';
 import { standardizePagination } from '@common/utils';
 import { Config } from '@modules/databases/config.entity';
 import { User } from '@modules/databases/user.entity';
@@ -11,14 +12,40 @@ const USER_FIELDS: (keyof User)[] = ['id', 'username', 'email', 'first_name', 'l
 
 type ConfigValue = Config['value'];
 
+// GET list / detail are served through the shared micro-cache: a burst of reads costs one DB query per
+// key and TTL. Every write clears the cache, so a change is visible on the next read.
+const CONFIGS_MICRO_CACHE_TTL_MS = 10_000;
+
 @Injectable()
 export class ConfigsService {
   constructor(
     @InjectRepository(Config) private readonly configRepo: Repository<Config>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    private readonly microCache: MicroCacheService,
   ) {}
 
-  async list(query: ListConfigDto) {
+  list(query: ListConfigDto) {
+    // Normalized so equivalent requests share an entry (same defaults and caps as listFromDb).
+    const key = stableCacheKey('configs:list', {
+      keyword: query.keyword?.trim() || undefined,
+      sortField: query.sortField || 'id',
+      sortValue: String(query.sortValue).toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
+      page: Number(query.page || 1),
+      limit: Math.min(Number(query.limit || 10), 100),
+    });
+    return this.microCache.getOrLoad(key, CONFIGS_MICRO_CACHE_TTL_MS, () => this.listFromDb(query), 'GET /v1/configs');
+  }
+
+  findOne(id: number) {
+    return this.microCache.getOrLoad(
+      `configs:detail:${id}`,
+      CONFIGS_MICRO_CACHE_TTL_MS,
+      () => this.findOneFromDb(id),
+      'GET /v1/configs/:id',
+    );
+  }
+
+  private async listFromDb(query: ListConfigDto) {
     const page = Number(query.page || 1);
     const limit = Math.min(Number(query.limit || 10), 100);
     const qb = this.configRepo.createQueryBuilder('c');
@@ -44,7 +71,7 @@ export class ConfigsService {
     };
   }
 
-  async findOne(id: number) {
+  private async findOneFromDb(id: number) {
     const config = await this.configRepo.findOne({ where: { id } });
     if (!config) throw new NotFoundException('Config not found');
     const users = await this.resolveUsers([config]);
@@ -62,6 +89,7 @@ export class ConfigsService {
         updated_by_user_id: userId,
       }),
     );
+    this.microCache.clear();
     return this.findOne(saved.id);
   }
 
@@ -78,6 +106,7 @@ export class ConfigsService {
     config.updated_by_user_id = userId;
 
     await this.configRepo.save(config);
+    this.microCache.clear();
     return this.findOne(id);
   }
 
@@ -86,6 +115,7 @@ export class ConfigsService {
     if (!config) throw new NotFoundException('Config not found');
     // Soft delete: flag + timestamp, matching the soft-delete convention used across modules
     await this.configRepo.update(id, { is_deleted: true, deleted_at: new Date(), updated_by_user_id: userId });
+    this.microCache.clear();
     return { data: { id, deleted: true } };
   }
 

@@ -3,6 +3,7 @@ import { DataHubServiceType } from '@modules/databases/data-hub-enums';
 import { DH_PERMISSIONS as P } from '../../common/data-hub-permission-codes';
 import { CreateDataServiceDto } from '../../data-service/dto';
 import { DataServiceImportService, SERVICE_CODE_PATTERN } from '../data-service-import.service';
+import { IMPORT_OPTIONS } from '../import-upsert.util';
 import { SERVICE_IMPORT_LAYOUTS, ServiceImportKind } from '../import-layouts';
 import { ExistingService, ImportReferences } from '../import-lookups.service';
 import { DataServiceImportTemplateService } from '../import-templates.service';
@@ -79,6 +80,27 @@ const at =
   (issues: Array<{ column?: string; row: number; code: string }>, key: string, row: number) =>
     issues.filter((i) => i.column === letterOfKey(layout, key) && i.row === row).map((i) => i.code);
 const atApi = at(API);
+
+// Updating by code is switched off for now (IMPORT_OPTIONS); the tests below keep covering that flow for when it is
+// switched back on. The create-only behaviour has its own test with the switch off.
+beforeEach(() => {
+  IMPORT_OPTIONS.allowUpdate = true;
+});
+afterEach(() => {
+  IMPORT_OPTIONS.allowUpdate = false;
+});
+
+describe('DataServiceImportService while import only creates', () => {
+  it('an existing service code fails its row with CODE_EXISTS; new codes are created', async () => {
+    const { file, codes } = await example();
+    const h = harness(references({ [codes[0]]: { id: 55, type: DataHubServiceType.API, departmentId: 2 } }));
+    IMPORT_OPTIONS.allowUpdate = false;
+    const res = await h.service.import('API', file, false, CALLER);
+    expect(res.issues.map((i) => [i.row, i.code])).toEqual([[2, 'CODE_EXISTS']]);
+    expect(h.writeService.update).not.toHaveBeenCalled();
+    expect(res.summary.services).toMatchObject({ created: 1, updated: 0, failed: 1 });
+  });
+});
 
 describe('DataServiceImportService - create and update by service code', () => {
   it('dry run of the API example: every row will be created, nothing is written', async () => {

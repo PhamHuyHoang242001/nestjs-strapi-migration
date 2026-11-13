@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { DH_PERMISSIONS as P } from '../../common/data-hub-permission-codes';
 import { CreateConsumerDto } from '../../consumer/dto';
 import { ConsumerImportService } from '../consumer-import.service';
+import { IMPORT_OPTIONS } from '../import-upsert.util';
 import { CONSUMER_IMPORT_LAYOUT as LAYOUT } from '../import-layouts';
 import { ConsumerImportTemplateService } from '../import-templates.service';
 import { cellText } from '../import-workbook.util';
@@ -51,6 +52,27 @@ async function exampleWithCodes(): Promise<{ file: Buffer; codes: string[] }> {
 }
 const at = (issues: Array<{ column?: string; row: number; code: string }>, key: string, row: number) =>
   issues.filter((i) => i.column === letterOfKey(LAYOUT, key) && i.row === row).map((i) => i.code);
+
+// Updating by code is switched off for now (IMPORT_OPTIONS); the tests below keep covering that flow for when it is
+// switched back on. The create-only behaviour has its own test with the switch off.
+beforeEach(() => {
+  IMPORT_OPTIONS.allowUpdate = true;
+});
+afterEach(() => {
+  IMPORT_OPTIONS.allowUpdate = false;
+});
+
+describe('ConsumerImportService while import only creates', () => {
+  it('an existing code fails its row with CODE_EXISTS; new codes are created', async () => {
+    const { file, codes } = await exampleWithCodes();
+    const h = harness({ [codes[0]]: 77 });
+    IMPORT_OPTIONS.allowUpdate = false;
+    const res = await h.service.import(file, false, CALLER);
+    expect(res.issues.map((i) => [i.row, i.code])).toEqual([[2, 'CODE_EXISTS']]);
+    expect(h.writeService.update).not.toHaveBeenCalled();
+    expect(res.summary.consumers).toMatchObject({ created: 1, updated: 0, failed: 1 });
+  });
+});
 
 describe('ConsumerImportService', () => {
   it('dry run of the example: both rows will be created, nothing is written', async () => {
