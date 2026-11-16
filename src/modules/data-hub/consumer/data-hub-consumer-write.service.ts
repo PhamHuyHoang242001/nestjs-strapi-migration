@@ -12,6 +12,10 @@ import { CreateConsumerDto, UpdateConsumerDto } from './dto';
 
 const CODE_CONSTRAINT = 'uq_data_hub_consumers_code_live';
 
+// Names compare trimmed and case-insensitive, Vietnamese included (folded in JS: the DB collation may not fold
+// accented capitals).
+const foldName = (name: string): string => name.normalize('NFC').trim().toLowerCase();
+
 type SnapshotSource = Parameters<typeof buildConsumerSnapshot>[0];
 type CurrentRow = ConsumerSnapshot & { id: number; version_no: number };
 
@@ -34,6 +38,7 @@ export class DataHubConsumerWriteService {
         await this.userRefs.assertUsers(manager, dto.so_app_user_ids);
 
         const snapshot = buildConsumerSnapshot({ ...dto, status: DataHubStatus.ACTIVE });
+        await this.assertCodeAndNameFree(manager, snapshot.code, snapshot.name, null);
         const [row] = await sqlRows<{ id: number }>(
           manager,
           `INSERT INTO data_hub_consumers
@@ -77,6 +82,7 @@ export class DataHubConsumerWriteService {
         // live-code unique index (409 below).
         const next = buildConsumerSnapshot({ ...dto, code: dto.code ?? current.code, status: current.status });
         if (snapshotsEqual(this.currentSnapshot(current), next)) throw new BadRequestException('NO_CHANGES');
+        await this.assertCodeAndNameFree(manager, next.code, next.name, id);
 
         const versionNo = current.version_no + 1;
         await manager.query(
@@ -147,6 +153,32 @@ export class DataHubConsumerWriteService {
 
   private currentSnapshot(row: CurrentRow): ConsumerSnapshot {
     return buildConsumerSnapshot(row);
+  }
+
+  // Code and name are unique among live apps, checked here so it holds on a database without the unique
+  // indexes too. The transaction lock makes concurrent creates / edits take turns, so two requests cannot both
+  // pass the check with the same code or name.
+  private async assertCodeAndNameFree(
+    manager: EntityManager,
+    code: string,
+    name: string,
+    exceptId: number | null,
+  ): Promise<void> {
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext('data_hub_consumers:code_name'))`);
+    // Name candidates by length, compared case-insensitively below.
+    const rows = await sqlRows<{ id: number; code: string; name: string }>(
+      manager,
+      `SELECT c.id, c.code, c.name FROM data_hub_consumers c
+       WHERE ${liveSql('c')} AND ($3::int IS NULL OR c.id <> $3)
+         AND (UPPER(c.code) = $1 OR char_length(btrim(c.name)) = char_length($2))`,
+      [code.toUpperCase(), name.trim(), exceptId],
+    );
+    if (rows.some((r) => r.code.toUpperCase() === code.toUpperCase())) {
+      throw new ConflictException('CONSUMER_CODE_EXISTS: consumer code already exists');
+    }
+    if (rows.some((r) => foldName(r.name) === foldName(name))) {
+      throw new ConflictException('CONSUMER_NAME_EXISTS: consumer name already exists');
+    }
   }
 
   private async assertSystem(manager: EntityManager, systemId: number): Promise<void> {

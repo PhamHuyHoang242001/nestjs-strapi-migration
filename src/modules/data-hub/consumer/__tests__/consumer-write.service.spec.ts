@@ -26,7 +26,14 @@ const stored = {
 
 // Manager answers by SQL shape; every call is recorded for assertions.
 function setup(
-  opts: { current?: unknown; insertError?: Error; updateError?: Error; soRows?: unknown[]; noSystem?: boolean } = {},
+  opts: {
+    current?: unknown;
+    insertError?: Error;
+    updateError?: Error;
+    soRows?: unknown[];
+    noSystem?: boolean;
+    taken?: Array<{ id: number; code: string; name: string }>;
+  } = {},
 ) {
   const calls: Call[] = [];
   const manager = {
@@ -35,6 +42,7 @@ function setup(
       if (sql.includes('FROM data_hub_owner_units') || sql.includes('FROM data_hub_departments'))
         return Promise.resolve([{ ok: 1 }]);
       if (sql.includes('FROM data_hub_systems')) return Promise.resolve(opts.noSystem ? [] : [{ ok: 1 }]);
+      if (sql.includes('char_length')) return Promise.resolve(opts.taken ?? []);
       if (/INSERT INTO data_hub_consumers\s/.test(sql)) {
         return opts.insertError ? Promise.reject(opts.insertError) : Promise.resolve([{ id: 9 }]);
       }
@@ -155,6 +163,35 @@ describe('DataHubConsumerWriteService', () => {
     };
     const { service } = setup({ insertError: err });
     await expect(service.create(createDto, 5)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('create refuses a code or a name (any case, Vietnamese too) already used by a live app, without a DB index', async () => {
+    const taken = [{ id: 3, code: 'LOS', name: 'Ứng dụng CRM' }];
+    let t = setup({ taken });
+    await expect(t.service.create({ ...createDto, code: 'LOS' } as CreateConsumerDto, 5)).rejects.toThrow(
+      new ConflictException('CONSUMER_CODE_EXISTS: consumer code already exists'),
+    );
+    t = setup({ taken });
+    await expect(t.service.create({ ...createDto, name: ' ứng dụng crm ' } as CreateConsumerDto, 5)).rejects.toThrow(
+      new ConflictException('CONSUMER_NAME_EXISTS: consumer name already exists'),
+    );
+    expect(t.calls.some((c) => /INSERT INTO data_hub_consumers\s/.test(c.sql))).toBe(false);
+    // Checked under a transaction lock, among live apps only.
+    expect(t.calls.some((c) => c.sql.includes('pg_advisory_xact_lock'))).toBe(true);
+    const check = t.calls.find((c) => c.sql.includes('char_length'));
+    expect(check?.sql).toContain('c.deleted_at IS NULL AND c.is_deleted IS NOT TRUE');
+    expect(check?.params).toEqual(['CRM', 'ứng dụng crm', null]);
+  });
+
+  it('update refuses a code or name of another app, but not its own', async () => {
+    const t = setup({ taken: [{ id: 3, code: 'LOS', name: 'Loan' }] });
+    await expect(t.service.update(9, { ...createDto, name: 'LOAN' } as UpdateConsumerDto, 5)).rejects.toThrow(
+      'CONSUMER_NAME_EXISTS',
+    );
+    expect(t.calls.some((c) => c.sql.includes('UPDATE data_hub_consumers'))).toBe(false);
+    const own = setup({ taken: [] });
+    await own.service.update(9, { ...createDto, name: 'CRM v2' } as UpdateConsumerDto, 5);
+    expect(own.calls.find((c) => c.sql.includes('char_length'))?.params[2]).toBe(9);
   });
 
   it('create rejects an unknown or deleted owner unit', async () => {
