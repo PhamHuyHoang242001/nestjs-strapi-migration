@@ -33,6 +33,9 @@ const PG_UNIQUE_VIOLATION = '23505';
 const PENDING_VERSION_CONFLICT_MESSAGE =
   'A pending version already exists for this package. Approve or reject it before submitting a new one.';
 const LATEST_REJECTED_ONLY_MESSAGE = 'Only the latest rejected version of this package can be edited.';
+const DRAFT_ALREADY_SUBMITTED_MESSAGE = 'This draft was already submitted.';
+// Reject reason stored on a pending version replaced by a newly submitted sync draft.
+const SUPERSEDED_BY_DRAFT_REASON = 'Được thay bằng bản mới';
 
 /** Fields skipped on an approver pending-edit. Push names here to lock more. Body still requires them. */
 export const API_APPROVER_PENDING_LOCKED_FIELDS = ['mock_req', 'mock_res'] as const;
@@ -250,8 +253,10 @@ export class ApiCatalogUploadService {
     }
   }
 
-  // Resubmit the latest rejected version in place, or let an approver patch a pending version.
-  // Approver pending-edit ignores API_APPROVER_PENDING_LOCKED_FIELDS (body still sends them).
+  // Resubmit the latest rejected version in place, submit a sync draft, or let an approver patch a
+  // pending version. Approver pending-edit ignores API_APPROVER_PENDING_LOCKED_FIELDS (body still sends them).
+  // Submitting a draft replaces any version already pending for the package: that pending row is
+  // soft-deleted and the draft becomes the one pending version.
   async editVersion(versionId: number, dto: CreateApiVersionDto, userId: number) {
     const version = await this.versionRepo.findOne({ where: { id: versionId, is_deleted: false } });
     if (!version) throw new NotFoundException('API version not found');
@@ -261,10 +266,13 @@ export class ApiCatalogUploadService {
     });
     if (!pkg) throw new NotFoundException('API package not found');
 
+    const isDraft = version.state === ApiVersionState.DRAFT;
     const soPending = version.state === ApiVersionState.PENDING && (await this.isApiSo(userId));
     const approverPending = soPending;
 
-    if (!approverPending) {
+    if (isDraft) {
+      await this.assertCanBump(userId, pkg.created_by, pkg.id);
+    } else if (!approverPending) {
       await this.assertCanBump(userId, pkg.created_by, pkg.id);
 
       const pendingVersion = await this.versionRepo.findOne({
@@ -286,7 +294,8 @@ export class ApiCatalogUploadService {
     }
 
     if (dto.avatar_url) this.avatarUrl.assertStrapiUrl(dto.avatar_url);
-    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, false);
+    // A draft arrives from the sync without a guide; completing it is the point of submitting.
+    const usageGuideHtml = this.prepareUsageGuide(dto.usage_guide_html, isDraft);
     const specInput = { ...dto };
     if (approverPending) {
       for (const field of API_APPROVER_PENDING_LOCKED_FIELDS) {
@@ -299,7 +308,27 @@ export class ApiCatalogUploadService {
       return await this.dataSource.transaction(async (manager) => {
         await manager.query('SELECT id FROM api_catalog_packages WHERE id = $1 FOR UPDATE', [pkg.id]);
 
-        if (!approverPending) {
+        let draftOldVersion: number | null = null;
+        if (isDraft) {
+          // Reject the pending version this submit replaces (one-pending invariant) so it stays in the
+          // history with a reason, then base the draft on the latest approved version, same as a bump.
+          await manager.update(
+            ApiVersion,
+            { api_catalog_package_id: pkg.id, state: ApiVersionState.PENDING, is_deleted: false },
+            {
+              state: ApiVersionState.REJECTED,
+              reject_reason: SUPERSEDED_BY_DRAFT_REASON,
+              reviewed_by: userId,
+              reviewed_at: new Date(),
+            },
+          );
+          const maxRow = await manager.query<{ max: string | null }[]>(
+            `SELECT MAX(version_no) AS max FROM api_catalog_versions
+             WHERE api_catalog_package_id = $1 AND state = 'approved' AND is_deleted = false AND deleted_at IS NULL`,
+            [pkg.id],
+          );
+          draftOldVersion = maxRow[0]?.max == null ? null : Number(maxRow[0].max);
+        } else if (!approverPending) {
           const pendingRows = await manager.query<{ id: number }[]>(
             `SELECT id FROM api_catalog_versions
              WHERE api_catalog_package_id = $1 AND state = 'pending' AND is_deleted = false AND deleted_at IS NULL
@@ -326,7 +355,13 @@ export class ApiCatalogUploadService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!locked) throw new NotFoundException('API version not found');
-        if (approverPending) {
+        if (isDraft) {
+          if (locked.state !== ApiVersionState.DRAFT) {
+            throw new ConflictException(DRAFT_ALREADY_SUBMITTED_MESSAGE);
+          }
+          locked.old_version = draftOldVersion;
+          locked.version_no = draftOldVersion ?? 1;
+        } else if (approverPending) {
           if (locked.state !== ApiVersionState.PENDING) {
             throw new ForbiddenException(LATEST_REJECTED_ONLY_MESSAGE);
           }

@@ -90,6 +90,8 @@ export class LatestArtifactsService {
          INNER JOIN ${packageTable} p ON p.id = v.${fkColumn}
          WHERE v.is_deleted = false AND v.deleted_at IS NULL
            AND p.is_deleted = false AND p.deleted_at IS NULL
+           -- Drafts (API catalog sync) are private work-in-progress, never part of the public feed.
+           AND v.state <> 'draft'
          ORDER BY v.${fkColumn}, v.id DESC
        ) latest
        ORDER BY latest.created_at DESC, latest.version_no DESC
@@ -119,6 +121,7 @@ export class LatestArtifactsService {
           AND p.deleted_at IS NULL AND p.is_deleted = false
           -- Inactive (hidden) packages are left out of the lifecycle counters, as for published.
           AND p.status = 'active'
+          AND v.state <> 'draft'
         ORDER BY v.${fkColumn}, v.id DESC
       )
       SELECT

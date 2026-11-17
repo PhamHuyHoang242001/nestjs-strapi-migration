@@ -4,6 +4,8 @@ import { ApiPackage } from './api-catalog-package.entity';
 import { AssetHubTagKind } from './asset-hub-tag.entity';
 
 export enum ApiVersionState {
+  // Written by the third-party sync; private to its owners until they complete and submit it.
+  DRAFT = 'draft',
   PENDING = 'pending',
   APPROVED = 'approved',
   REJECTED = 'rejected',

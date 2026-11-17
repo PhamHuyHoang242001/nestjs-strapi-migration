@@ -514,6 +514,73 @@ describe('ApiCatalogUploadService', () => {
     });
   });
 
+  describe('editVersion — submitting a sync draft', () => {
+    const dto = { name: 'from-sync', short_description: 'desc', category_id: 1, ...META_FIELDS };
+
+    function stubDraft(opts?: { createdBy?: number }) {
+      versionRepo.findOne = jest.fn().mockResolvedValue({
+        id: VERSION_ID,
+        api_catalog_package_id: PACKAGE_ID,
+        state: ApiVersionState.DRAFT,
+        version_no: 1,
+        old_version: null,
+        submitted_by: OTHER_USER_ID,
+      });
+      packageRepo.findOne = jest.fn().mockResolvedValue({ id: PACKAGE_ID, is_deleted: false, created_by: opts?.createdBy ?? USER_ID });
+      permissionQuery.getUserPermissions.mockResolvedValue(['api_upload']);
+    }
+
+    function draftManager() {
+      return {
+        query: jest.fn(async (sql: string) => (sql.includes('MAX(version_no)') ? [{ max: '3' }] : [])),
+        findOne: jest.fn().mockResolvedValue({
+          id: VERSION_ID,
+          api_catalog_package_id: PACKAGE_ID,
+          state: ApiVersionState.DRAFT,
+          version_no: 1,
+          old_version: null,
+        }),
+        update: jest.fn(),
+        save: jest.fn(async (_E: any, obj: any) => obj),
+      };
+    }
+
+    it('rejects the existing pending version as superseded and turns the draft into the pending one', async () => {
+      stubDraft();
+      const manager = draftManager();
+      dataSource.transaction = jest.fn(async (cb: any) => cb(manager));
+      service = new ApiCatalogUploadService(packageRepo, versionRepo, dataSource, avatarUrl, permissionQuery, itemMeta);
+
+      const result = await service.editVersion(VERSION_ID, dto as any, USER_ID);
+
+      expect(manager.update).toHaveBeenCalledWith(
+        expect.anything(),
+        { api_catalog_package_id: PACKAGE_ID, state: ApiVersionState.PENDING, is_deleted: false },
+        {
+          state: ApiVersionState.REJECTED,
+          reject_reason: 'Được thay bằng bản mới',
+          reviewed_by: USER_ID,
+          reviewed_at: expect.any(Date),
+        },
+      );
+      const saved = manager.save.mock.calls.find((c: any[]) => c[1].id === VERSION_ID)[1];
+      expect(saved).toMatchObject({ state: ApiVersionState.PENDING, old_version: 3, version_no: 3, submitted_by: USER_ID });
+      expect(result.version).toEqual({ id: VERSION_ID, version_no: 3 });
+    });
+
+    it('requires a usage guide when submitting a draft', async () => {
+      stubDraft();
+      await expect(
+        service.editVersion(VERSION_ID, { ...dto, usage_guide_html: '<p> </p>' } as any, USER_ID),
+      ).rejects.toThrow('INVALID_USAGE_GUIDE');
+    });
+
+    it('someone who neither created nor supports the package cannot submit it', async () => {
+      stubDraft({ createdBy: OTHER_USER_ID });
+      await expect(service.editVersion(VERSION_ID, dto as any, USER_ID)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
   describe('editVersion — latest rejected only', () => {
     const dto = {
       name: 'v2-fixed',

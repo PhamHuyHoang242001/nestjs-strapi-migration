@@ -140,14 +140,16 @@ export class ApiCatalogQueryService {
     return new Map(rows.map((r) => [Number(r.id), r.email]));
   }
 
-  // Edit affordance: rejected + newest live id + upload. Submitter/creator access is already
-  // enforced by the calling endpoint (list own-scope, detail/diff access union).
+  // Edit affordance: a draft (always), or rejected + newest live id; both need upload. Submitter/creator
+  // access is already enforced by the calling endpoint (list own-scope, detail/diff access union).
   private async resolveIsUpdate(
     packageId: number,
     version: { id: number; state: string },
     canUpload: boolean,
   ): Promise<boolean> {
-    if (!canUpload || version.state !== ApiVersionState.REJECTED) {
+    if (!canUpload) return false;
+    if ((version.state as ApiVersionState) === ApiVersionState.DRAFT) return true;
+    if (version.state !== ApiVersionState.REJECTED) {
       return false;
     }
     const newestRows = (await this.versionRepo.manager.query(
@@ -429,7 +431,8 @@ export class ApiCatalogQueryService {
       `SELECT p.id AS package_id, p.code, v.id AS version_id, v.name AS package_name,
               v.old_version, v.version_no, v.state, v.submitted_by, v.created_at, v.avatar_url,
               (
-                v.state = 'rejected'
+                v.state = 'draft'
+                OR v.state = 'rejected'
                 AND v.id = (
                   SELECT MAX(latest.id) FROM api_catalog_versions latest
                   WHERE latest.api_catalog_package_id = v.api_catalog_package_id

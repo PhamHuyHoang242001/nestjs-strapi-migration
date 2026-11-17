@@ -3,7 +3,7 @@ import { Transform } from 'class-transformer';
 import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 // State filter for the version-management list. 'all' (default) returns every state.
-export const VERSION_STATE_FILTERS = ['pending', 'approved', 'rejected', 'all'] as const;
+export const VERSION_STATE_FILTERS = ['draft', 'pending', 'approved', 'rejected', 'all'] as const;
 export type VersionStateFilter = (typeof VERSION_STATE_FILTERS)[number];
 
 // Query DTO for GET /v1/ai-hub/api-catalog/versions — the flat 1-row-per-version management list.

@@ -5,3 +5,4 @@ export { ListVersionsDto } from './list-versions.dto';
 export { ReviewQueryDto } from './review-query.dto';
 export { RejectApiVersionDto } from './reject-api-version.dto';
 export { ToggleStatusDto } from './toggle-status.dto';
+export { SyncApiCatalogItemDto } from './sync-api-catalog-item.dto';
