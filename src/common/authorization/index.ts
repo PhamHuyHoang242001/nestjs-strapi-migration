@@ -3,6 +3,7 @@ export * from './constants/authorization.constant';
 export * from './decorators/require-data-access.decorator';
 export * from './decorators/require-owner-scope.decorator';
 export * from './decorators/require-permission.decorator';
+export * from './decorators/skip-portal-permission.decorator';
 export * from './guards/owner-scope.guard';
 export * from './guards/permission.guard';
 export * from './helpers/data-access-scope.helper';

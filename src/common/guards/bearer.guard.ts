@@ -1,4 +1,5 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
 import { TOKEN_TYPE, USER_CLIENT } from '@common/enums';
 import { encryptDevice } from '@common/utils';
@@ -8,6 +9,14 @@ import { TokenRepository } from '@modules/token/repository/token.repository';
 import { UserRepository } from '@modules/users/repository/users.repository';
 import { DataSource } from 'typeorm';
 import { AdminRepository } from '@modules/admins/repository/admin.repository';
+import { UserType } from '@modules/databases/user.entity';
+import {
+  PORTAL_VIEW_PERMISSION,
+  SKIP_PORTAL_PERMISSION_META_KEY,
+} from '@common/authorization/constants/authorization.constant';
+import { PermissionCacheService } from '@common/authorization/services/permission-cache.service';
+
+export const PORTAL_ACCESS_DENIED = `PORTAL_ACCESS_DENIED: missing permission ${PORTAL_VIEW_PERMISSION}`;
 
 @Injectable()
 export class BearerGuard implements CanActivate {
@@ -17,6 +26,8 @@ export class BearerGuard implements CanActivate {
     private readonly adminRepository: AdminRepository,
 
     private readonly connection: DataSource,
+    private readonly reflector: Reflector,
+    private readonly permissionCache: PermissionCacheService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -74,6 +85,29 @@ export class BearerGuard implements CanActivate {
     req.info.host = hostname;
     req.info.url = req.originalUrl;
 
+    await this.checkPortalAccess(context, req);
     return true;
+  }
+
+  // Every portal API requires the portal permission on top of its own checks. Only super_admin skips it;
+  // admin-client tokens hold no role permissions, so they are rejected like any user without the grant.
+  private async checkPortalAccess(context: ExecutionContext, req: RequestWithInfo): Promise<void> {
+    const user = req.info.user;
+    if (user?.type === UserType.SUPER_ADMIN) {
+      req.info.hasPortalAccess = true;
+      return;
+    }
+    const userId = Number(user?.id);
+    req.info.hasPortalAccess =
+      (req.info.client as USER_CLIENT) === USER_CLIENT.USER &&
+      userId > 0 &&
+      (await this.permissionCache.hasPermission(userId, PORTAL_VIEW_PERMISSION));
+    if (req.info.hasPortalAccess) return;
+
+    const skip = this.reflector.getAllAndOverride<boolean | undefined>(SKIP_PORTAL_PERMISSION_META_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (!skip) throw new ForbiddenException(PORTAL_ACCESS_DENIED);
   }
 }

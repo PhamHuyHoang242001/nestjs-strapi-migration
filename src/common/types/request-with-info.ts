@@ -27,6 +27,9 @@ export interface RequestInfo {
    */
   verbFromExplicit?: boolean;
 
+  /** Set by BearerGuard: whether the caller holds the portal permission (always true for super_admin). */
+  hasPortalAccess?: boolean;
+
   [key: string]: unknown;
 }
 

@@ -4,7 +4,9 @@ import { BearerGuard, DynamicAuthGuard, HeaderGuard } from '@common/guards';
 import { BasicGuard } from '@common/guards/basic.guard';
 import { IsMaintenanceGuard } from '@common/guards/is-maintenance.guard';
 import { IsUserGuard } from '@common/guards/is-user.guard';
-import { Body, Controller, Delete, Get, HttpCode, Post, Put, Res, UseGuards, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Post, Put, Res, UseGuards, Query, Req } from '@nestjs/common';
+import { SkipPortalPermission } from '@common/authorization/decorators/skip-portal-permission.decorator';
+import { RequestWithInfo } from '@common/types/request-with-info';
 import { ApiBasicAuth, ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { OidcSsoService } from './oidc-sso.service';
@@ -97,6 +99,7 @@ export class AuthController {
   @HttpCode(200)
   @ApiBearerAuth()
   @UseGuards(BearerGuard)
+  @SkipPortalPermission()
   async logOut(@Body() body: LogoutDto, @UserScope() user: Record<string, unknown>) {
     return this.authService.logOut(body, user);
   }
@@ -104,9 +107,11 @@ export class AuthController {
   @ApiOperation({ summary: 'fetch-profile' })
   @ApiBearerAuth()
   @UseGuards(BearerGuard)
+  @SkipPortalPermission()
   @Get('fetch-profile')
-  profile(@UserScope() user: Record<string, unknown>) {
-    return this.authService.profile(user as never);
+  profile(@UserScope() user: Record<string, unknown>, @Req() req: RequestWithInfo) {
+    // Open to users without the portal permission; the flag tells the web app to show "no access".
+    return { ...this.authService.profile(user as never), has_portal_access: req.info.hasPortalAccess === true };
   }
 
   @ApiOperation({ summary: 'delete-my-account' })
