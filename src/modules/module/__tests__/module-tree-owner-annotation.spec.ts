@@ -84,3 +84,18 @@ describe('getTree() — ownerResourceType annotation', () => {
     expect((result.data[0].children[1] as any).ownerResourceType).toBeUndefined();
   });
 });
+
+describe('getTree() — root order', () => {
+  it('lists the module holding view_portal first and keeps the others in query order', async () => {
+    const service = createService();
+    mockRepo.findTrees.mockResolvedValue([
+      { id: 1, name: 'A', permissions: [{ code: 'view_a' }], children: [] },
+      { id: 9, name: 'Portal', permissions: [{ code: 'view_portal' }], children: [] },
+      { id: 2, name: 'B', permissions: [], children: [] },
+    ]);
+
+    const result = await service.getTree();
+
+    expect(result.data.map((m) => m.id)).toEqual([9, 1, 2]);
+  });
+});

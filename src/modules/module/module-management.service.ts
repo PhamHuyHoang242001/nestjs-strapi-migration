@@ -1,3 +1,4 @@
+import { PORTAL_VIEW_PERMISSION } from '@common/authorization/constants/authorization.constant';
 import { PaginationParams } from '@common/decorators/pagination.decorator';
 import { SortParams } from '@common/decorators/sort.decorator';
 import { execQueryAll, execQueryPaignation } from '@common/utils';
@@ -24,7 +25,14 @@ export class ModuleManagementService {
     for (const root of roots) {
       this.annotateOwnerResourceType(root);
     }
-    return { data: roots };
+    return { data: this.portalModuleFirst(roots) };
+  }
+
+  // The root holding view_portal (the permission every portal API requires) is listed first so it
+  // is the first thing granted when building a role. Other roots keep the order the query returned.
+  private portalModuleFirst(roots: ModuleEntity[]): ModuleEntity[] {
+    const holdsPortal = (m: ModuleEntity) => (m.permissions ?? []).some((p) => p.code === PORTAL_VIEW_PERMISSION);
+    return [...roots.filter(holdsPortal), ...roots.filter((m) => !holdsPortal(m))];
   }
 
   private annotateOwnerResourceType(node: ModuleEntity) {
