@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsInt, IsOptional } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsIn, IsInt, IsOptional } from 'class-validator';
 import { DataHubConsumerCategory, DataHubServiceType } from '@modules/databases/data-hub-enums';
 import { DataHubPageQueryDto, toNumberArray } from '../../common/data-hub-query.util';
 
@@ -43,4 +43,15 @@ export class ListConsumerQueryDto extends DataHubPageQueryDto {
   @IsOptional()
   @IsEnum(DataHubServiceType)
   readonly connection_type?: DataHubServiceType;
+
+  @ApiProperty({
+    required: false,
+    type: Boolean,
+    description:
+      'true = chỉ app có ít nhất 1 kết nối API/SFTP (bản active của dịch vụ active). Bỏ trống/false = không lọc.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  readonly has_connection?: boolean;
 }

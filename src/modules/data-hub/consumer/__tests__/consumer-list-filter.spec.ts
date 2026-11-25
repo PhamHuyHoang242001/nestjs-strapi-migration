@@ -41,6 +41,15 @@ describe('buildConsumerWhere', () => {
     expect(ACTIVE_LINK_FROM).toContain('ds.active_version_id = l.data_service_version_id');
   });
 
+  it('has_connection requires an active-version link of any service type', () => {
+    const { where, params } = buildConsumerWhere({ has_connection: true });
+    expect(where).toContain('EXISTS');
+    expect(where).toContain('l.consumer_id = c.id');
+    expect(where).not.toContain('ds.service_type');
+    expect(params).toEqual(['active']);
+    expect(buildConsumerWhere({ has_connection: false }).where).not.toContain('EXISTS');
+  });
+
   it('logical_term_ids goes through version physical terms to physical.logical_term_id', () => {
     const { where, params } = buildConsumerWhere({ logical_term_ids: [5, 6] });
     expect(where).toContain('data_hub_data_service_version_physical_terms');

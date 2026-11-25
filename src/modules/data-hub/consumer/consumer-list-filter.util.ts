@@ -8,6 +8,7 @@ export interface ConsumerListFilter {
   system_ids?: number[];
   logical_term_ids?: number[];
   connection_type?: string;
+  has_connection?: boolean;
 }
 
 // A consumer "counts" for a service only through the ACTIVE version of an ACTIVE live package:
@@ -44,6 +45,10 @@ export function buildConsumerWhere(f: ConsumerListFilter): { where: string; para
     conds.push(
       `EXISTS (SELECT 1 FROM ${ACTIVE_LINK_FROM} WHERE l.consumer_id = c.id AND ds.service_type = ${bind(f.connection_type)})`,
     );
+  }
+  // Only apps that consume at least one API / SFTP service (any type), counted like connection_type.
+  if (f.has_connection) {
+    conds.push(`EXISTS (SELECT 1 FROM ${ACTIVE_LINK_FROM} WHERE l.consumer_id = c.id)`);
   }
   if (f.logical_term_ids?.length) {
     conds.push(`EXISTS (
