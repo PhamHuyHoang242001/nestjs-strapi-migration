@@ -46,7 +46,7 @@ function sanitizeExt(rawExt: string): string {
 export function buildStoredFileName(originalName: string): StoredFileName {
   const ext = sanitizeExt(path.extname(originalName));
   const base = slugify(path.basename(originalName, path.extname(originalName)));
-  const suffix = crypto.randomBytes(5).toString('hex');
+  const suffix = crypto.randomBytes(8).toString('hex');
 
   // An all-punctuation name slugs down to '' — fall back so the file is never just "_abc123".
   const hash = `${base || 'file'}_${suffix}`;

@@ -22,13 +22,13 @@ interface MediaRow {
 describe('buildStoredFileName', () => {
   it('keeps a slugified base name and appends a random suffix', () => {
     const { hash, ext, fileName } = buildStoredFileName('Báo Cáo Quý 3.XLSX');
-    expect(hash).toMatch(/^bao_cao_quy_3_[0-9a-f]{10}$/);
+    expect(hash).toMatch(/^bao_cao_quy_3_[0-9a-f]{16}$/);
     expect(ext).toBe('.xlsx');
     expect(fileName).toBe(`${hash}.xlsx`);
   });
 
   it('strips Vietnamese đ and diacritics', () => {
-    expect(buildStoredFileName('Đơn hàng.pdf').hash).toMatch(/^don_hang_[0-9a-f]{10}$/);
+    expect(buildStoredFileName('Đơn hàng.pdf').hash).toMatch(/^don_hang_[0-9a-f]{16}$/);
   });
 
   it('never collides for the same original name', () => {
@@ -44,7 +44,7 @@ describe('buildStoredFileName', () => {
   });
 
   it('falls back when the name slugs down to nothing', () => {
-    expect(buildStoredFileName('___.png').hash).toMatch(/^file_[0-9a-f]{10}$/);
+    expect(buildStoredFileName('___.png').hash).toMatch(/^file_[0-9a-f]{16}$/);
   });
 
   it.each([
@@ -138,7 +138,7 @@ describe('CustomUploadService', () => {
         created_by_id: 42,
         updated_by_id: 42,
       });
-      expect(media.hash).toMatch(/^bao_cao_[0-9a-f]{10}$/);
+      expect(media.hash).toMatch(/^bao_cao_[0-9a-f]{16}$/);
       expect(media.url).toBe(`/uploads/${media.hash}.pdf`);
     });
 
