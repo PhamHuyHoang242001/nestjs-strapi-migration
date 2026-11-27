@@ -16,12 +16,15 @@ describe('DataHubStatsService', () => {
       c_total: 43,
       c_internal: 27,
       c_partner: 16,
+      c_conn_total: 30,
+      c_conn_internal: 20,
+      c_conn_partner: 10,
       logical: 22,
       physical: 54,
     });
     await expect(service.stats()).resolves.toEqual({
       data_services: { total: 145, api: 109, sftp: 36 },
-      consumers: { total: 43, internal: 27, partner: 16 },
+      consumers: { total: 43, internal: 27, partner: 16, with_connection: { total: 30, internal: 20, partner: 10 } },
       data_terms: { logical: 22, physical: 54 },
     });
     expect(query).toHaveBeenCalledTimes(1);
@@ -37,6 +40,9 @@ describe('DataHubStatsService', () => {
       "WHERE os.id = pt.data_service_id AND os.deleted_at IS NULL AND os.is_deleted IS NOT TRUE AND os.status = 'active'",
     );
     expect(sql).toContain('ov.id = os.active_version_id AND ov.deleted_at IS NULL');
+    // consumers with a connection use the list filter's active-link rule
+    expect(sql).toContain('data_hub_data_service_version_consumers l');
+    expect(sql).toContain('WHERE l.consumer_id = c.id');
     expect(sql).not.toContain('pt.status');
     expect(sql).not.toMatch(/SELECT\s+\*/);
   });
@@ -45,7 +51,7 @@ describe('DataHubStatsService', () => {
     const { service } = makeService(undefined);
     await expect(service.stats()).resolves.toEqual({
       data_services: { total: 0, api: 0, sftp: 0 },
-      consumers: { total: 0, internal: 0, partner: 0 },
+      consumers: { total: 0, internal: 0, partner: 0, with_connection: { total: 0, internal: 0, partner: 0 } },
       data_terms: { logical: 0, physical: 0 },
     });
   });

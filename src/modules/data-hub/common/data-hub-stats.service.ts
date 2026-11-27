@@ -2,10 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { activeSql, liveSql } from './data-hub-query.util';
 import { termOfActiveServiceSql } from './source-table-groups.util';
+import { ACTIVE_LINK_FROM } from '../consumer/consumer-list-filter.util';
 
 export interface DataHubStats {
   data_services: { total: number; api: number; sftp: number };
-  consumers: { total: number; internal: number; partner: number };
+  consumers: {
+    total: number;
+    internal: number;
+    partner: number;
+    with_connection: { total: number; internal: number; partner: number };
+  };
   data_terms: { logical: number; physical: number };
 }
 
@@ -25,12 +31,16 @@ export class DataHubStatsService {
         c_total: number;
         c_internal: number;
         c_partner: number;
+        c_conn_total: number;
+        c_conn_internal: number;
+        c_conn_partner: number;
         logical: number;
         physical: number;
       }>
     >(
       `SELECT ds.total AS ds_total, ds.api AS ds_api, ds.sftp AS ds_sftp,
               c.total AS c_total, c.internal AS c_internal, c.partner AS c_partner,
+              c.conn_total AS c_conn_total, c.conn_internal AS c_conn_internal, c.conn_partner AS c_conn_partner,
               (SELECT COUNT(*)::int FROM data_hub_logical_terms lt WHERE ${liveSql('lt')}) AS logical,
               (SELECT COUNT(*)::int FROM data_hub_physical_terms pt WHERE ${termOfActiveServiceSql('pt')}) AS physical
        FROM (SELECT COUNT(*)::int AS total,
@@ -41,14 +51,29 @@ export class DataHubStatsService {
              WHERE ${activeSql('s')}) ds,
             (SELECT COUNT(*)::int AS total,
                     COUNT(*) FILTER (WHERE c.category = 'INTERNAL_APP')::int AS internal,
-                    COUNT(*) FILTER (WHERE c.category = 'PARTNER_ECOSYSTEM')::int AS partner
-             FROM data_hub_consumers c
-             WHERE ${activeSql('c')}) c`,
+                    COUNT(*) FILTER (WHERE c.category = 'PARTNER_ECOSYSTEM')::int AS partner,
+                    COUNT(*) FILTER (WHERE c.has_conn)::int AS conn_total,
+                    COUNT(*) FILTER (WHERE c.has_conn AND c.category = 'INTERNAL_APP')::int AS conn_internal,
+                    COUNT(*) FILTER (WHERE c.has_conn AND c.category = 'PARTNER_ECOSYSTEM')::int AS conn_partner
+             FROM (SELECT c.category,
+                          -- same rule as the list's has_connection filter: at least one active API/SFTP link
+                          EXISTS (SELECT 1 FROM ${ACTIVE_LINK_FROM} WHERE l.consumer_id = c.id) AS has_conn
+                   FROM data_hub_consumers c
+                   WHERE ${activeSql('c')}) c) c`,
     );
     const n = (v: unknown) => Number(v ?? 0);
     return {
       data_services: { total: n(row?.ds_total), api: n(row?.ds_api), sftp: n(row?.ds_sftp) },
-      consumers: { total: n(row?.c_total), internal: n(row?.c_internal), partner: n(row?.c_partner) },
+      consumers: {
+        total: n(row?.c_total),
+        internal: n(row?.c_internal),
+        partner: n(row?.c_partner),
+        with_connection: {
+          total: n(row?.c_conn_total),
+          internal: n(row?.c_conn_internal),
+          partner: n(row?.c_conn_partner),
+        },
+      },
       data_terms: { logical: n(row?.logical), physical: n(row?.physical) },
     };
   }
